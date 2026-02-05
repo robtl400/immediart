@@ -1,0 +1,284 @@
+/* DiscoveryFeed - Main container */
+.discovery-feed {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  width: 100%;
+  background-color: #121212;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+/* Desktop wrapper - centers and constrains to mobile-like width */
+@media (min-width: 481px) {
+  .discovery-feed {
+    max-width: 430px;
+    margin: 0 auto;
+    border-radius: 40px;
+    box-shadow: 0 0 60px rgba(0, 0, 0, 0.5);
+    overflow: hidden;
+  }
+}
+
+/* Banner Section */
+.banner {
+  width: 100%;
+  padding: 15px 0;
+  background-color: #121212;
+  border-bottom: 1px solid rgba(212, 175, 55, 0.2);
+  flex-shrink: 0;
+}
+
+.banner-title {
+  font-family: 'Allura', cursive;
+  color: #D4AF37;
+  font-size: 2rem;
+  text-align: center;
+  margin: 0;
+  font-weight: 400;
+  letter-spacing: 1px;
+}
+
+/* Image Container */
+.image-container {
+  width: 100%;
+  background-color: #1a1a1a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  position: relative;
+}
+
+.image-container.landscape {
+  height: 55vh;
+}
+
+.image-container.portrait {
+  height: 68vh;
+}
+
+.artwork-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.image-placeholder {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(135deg, #1a1a1a 0%, #2a2a2a 100%);
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
+/* Action Buttons Row */
+.action-buttons {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 15px;
+  padding: 10px 15px;
+  background-color: #121212;
+  flex-shrink: 0;
+}
+
+.action-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 8px;
+  transition: transform 0.2s ease, opacity 0.2s ease;
+  min-width: 44px;
+  min-height: 44px;
+}
+
+.action-btn:hover {
+  transform: scale(1.05);
+}
+
+.action-btn:active {
+  transform: scale(0.95);
+}
+
+/* Like Button */
+.like-btn .icon {
+  color: #D4AF37;
+  font-size: 24px;
+  line-height: 1;
+}
+
+.like-btn.liked .icon {
+  color: #D4AF37;
+  animation: heartPop 0.3s ease;
+}
+
+@keyframes heartPop {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.2);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.like-btn .btn-label {
+  color: #D4AF37;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.like-btn.liked .btn-label {
+  color: #D4AF37;
+}
+
+/* Share Button */
+.share-btn {
+  color: #D4AF37;
+}
+
+.share-btn:hover {
+  filter: brightness(1.2);
+}
+
+.share-btn .share-icon {
+  width: 24px;
+  height: 24px;
+  /* Apply gold monochrome filter - converts entire image to gold */
+  filter: brightness(0) saturate(100%) invert(70%) sepia(90%) saturate(400%) hue-rotate(360deg) brightness(95%);
+}
+
+.share-btn .btn-label {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+/* Text Information Box */
+.text-info {
+  padding: 12px 15px;
+  background-color: #121212;
+  flex-shrink: 0;
+}
+
+.artwork-description {
+  color: #e0e0e0;
+  font-size: 14px;
+  line-height: 1.5;
+  margin: 0 0 8px 0;
+}
+
+.artist-name {
+  color: #ffffff;
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.artwork-date {
+  color: #888888;
+  font-size: 13px;
+  margin: 0 0 10px 0;
+}
+
+/* Hashtags */
+.hashtags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.hashtag {
+  color: #D4AF37;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.2s ease;
+}
+
+.hashtag:hover,
+.hashtag:focus {
+  opacity: 0.8;
+  outline: none;
+}
+
+/* Comment Section */
+.comment-section {
+  padding: 10px 15px 20px;
+  background-color: #121212;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  flex-shrink: 0;
+}
+
+.comment {
+  margin-bottom: 8px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.comment:last-child {
+  margin-bottom: 0;
+}
+
+.comment-username {
+  color: #D4AF37;
+  font-weight: 700;
+}
+
+.comment-text {
+  color: #b0b0b0;
+  font-weight: 400;
+}
+
+/* Responsive adjustments for smaller screens */
+@media (max-width: 360px) {
+  .banner-title {
+    font-size: 1.75rem;
+  }
+
+  .artwork-description,
+  .artist-name,
+  .hashtag {
+    font-size: 13px;
+  }
+
+  .comment {
+    font-size: 12px;
+  }
+}
+
+/* Responsive adjustments for larger mobile screens */
+@media (min-width: 414px) {
+  .banner-title {
+    font-size: 2.25rem;
+  }
+
+  .action-buttons {
+    padding: 12px 20px;
+  }
+
+  .text-info {
+    padding: 14px 20px;
+  }
+
+  .comment-section {
+    padding: 12px 20px 24px;
+  }
+}

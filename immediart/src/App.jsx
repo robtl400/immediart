@@ -1,9 +1,6 @@
 import './App.css'
+import DiscoveryFeed from './components/DiscoveryFeed'
 
 export default function App() {
-  return (
-    <div id="app">
-      <h1>Welcome to immediart</h1>
-    </div>
-  )
+  return <DiscoveryFeed />
 }

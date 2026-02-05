@@ -1,14 +1,51 @@
-/* Global styles (minimal) */
+/* Global Styles - Dark Theme */
 :root {
-  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  color-scheme: light dark;
+  color-scheme: dark;
 }
 
-body {
+* {
+  box-sizing: border-box;
+}
+
+html, body {
   margin: 0;
+  padding: 0;
+  width: 100%;
   min-height: 100vh;
-  background: #ffffff;
-  color: #111111;
+  background: #121212;
+  color: #ffffff;
+  overflow-x: hidden;
+}
+
+#root {
+  width: 100%;
+  min-height: 100vh;
+}
+
+/* Desktop: darker background behind phone container */
+@media (min-width: 481px) {
+  html, body {
+    background: #0a0a0a;
+  }
+
+  #root {
+    display: flex;
+    justify-content: center;
+    padding: 20px 0;
+  }
+}
+
+/* Remove default button styles */
+button {
+  font-family: inherit;
+}
+
+/* Improve touch experience on mobile */
+@media (hover: none) and (pointer: coarse) {
+  button, a, [role="button"] {
+    -webkit-tap-highlight-color: transparent;
+  }
 }
