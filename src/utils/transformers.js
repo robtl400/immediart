@@ -5,12 +5,12 @@ import { shuffleArray } from '../services/metAPI';
 /**
  * USERNAMES: 
  * @param {string} artistName - e.g., "Vincent van Gogh"
- * @returns {string} e.g., "@Vincent_van_Gogh"
+ * @returns {string} e.g., "@vincent_van_gogh"
  */
 export function formatArtistUsername(artistName) {
   if (!artistName) return '@Unknown_Artist';
   // Replace spaces with underscores
-  const formatted = artistName.replace(/\s+/g, '_');
+  const formatted = artistName.toLowerCase().replace(/\s+/g, '_').replace('-', '_').replace(/\s*\(.*?\)\s*/g, '');
   return `@${formatted}`;
 }
 
@@ -20,7 +20,7 @@ export function formatArtistUsername(artistName) {
  * @param {number} count - Maximum tags to return
  * @returns {string[]} Array of tag terms (without # prefix)
  */
-export function extractRandomTags(tagsArray, count = 4) {
+export function extractRandomTags(tagsArray, count = 5) {
   if (!tagsArray || !Array.isArray(tagsArray) || tagsArray.length === 0) {
     return [];
   }
@@ -43,7 +43,7 @@ export function buildDescription(artwork) {
 
   if (artwork.title) parts.push(artwork.title);
   if (artwork.medium) parts.push(artwork.medium);
-  if (artwork.objectDate) parts.push(artwork.objectDate);
+  //if (artwork.objectDate) parts.push(artwork.objectDate);
   if (artwork.culture) parts.push(artwork.culture);
   if (artwork.period) parts.push(artwork.period);
 
@@ -60,32 +60,16 @@ export function buildComments(artwork) {
 
   // Department comment with gallery info
   if (artwork.department) {
-    const deptUsername = `@${artwork.department.replace(/\s+/g, '')}`;
+    const deptUsername = '@TheMetMuseum';
     let text;
 
     if (artwork.GalleryNumber) {
-      text = `Currently on display in Gallery ${artwork.GalleryNumber} - come visit us!`;
+      text = `From the ${artwork.department} department and currently on display in Gallery ${artwork.GalleryNumber} - come visit us!`;
     } else {
-      text = 'Not currently on view';
+      text = `From the ${artwork.department} department! ${artwork.creditLine} ${artwork.rightsAndReproduction}`;
     }
 
     comments.push({ username: deptUsername, text });
-  }
-
-  // Credit line comment
-  if (artwork.creditLine) {
-    comments.push({
-      username: '@TheMetMuseum',
-      text: artwork.creditLine
-    });
-  }
-
-  // Rights and reproduction 
-  if (artwork.rightsAndReproduction && artwork.rightsAndReproduction.trim()) {
-    comments.push({
-      username: '@TheMetMuseum',
-      text: artwork.rightsAndReproduction
-    });
   }
 
   return comments;

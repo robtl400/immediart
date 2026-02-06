@@ -7,6 +7,8 @@
   background-color: #121212;
   overflow-x: hidden;
   overflow-y: auto;
+  scroll-snap-type: y mandatory;
+  scroll-padding-top: 50px;
 }
 
 /* Desktop wrapper - centers and constrains to mobile-like width */
@@ -173,8 +175,9 @@
   display: flex;
   flex-direction: row;
   align-items: center;
+  justify-content: center;
   gap: 15px;
-  padding: 10px 15px;
+  padding: 10px 15px 0px 15px;
   background-color: #121212;
   flex-shrink: 0;
 }
@@ -260,9 +263,11 @@
 
 /* Text Information Box */
 .text-info {
-  padding: 12px 15px;
+  padding: 0px 15px 12px;
   background-color: #121212;
   flex-shrink: 0;
+  margin: 0;
+  margin-top: -20px;
 }
 
 .artwork-description {
@@ -279,16 +284,15 @@
 }
 
 .artwork-date {
-  color: #888888;
+  color: #7e6200;
   font-size: 13px;
-  margin: 0 0 10px 0;
+  margin: 0 0 0 0;
 }
 
 /* Hashtags */
 .hashtags {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
 }
 
 .hashtag {
@@ -297,6 +301,8 @@
   font-weight: 600;
   cursor: pointer;
   transition: opacity 0.2s ease;
+  text-decoration: underline;
+  margin-left: 4px;
 }
 
 .hashtag:hover,
@@ -307,14 +313,14 @@
 
 /* Comment Section */
 .comment-section {
-  padding: 10px 15px 20px;
+  padding: 0px 15px 4px;
   background-color: #121212;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
   flex-shrink: 0;
+  margin-top: -19px;
 }
 
 .comment {
-  margin-bottom: 8px;
+  margin-bottom: 2px;
   font-size: 13px;
   line-height: 1.5;
 }
@@ -324,7 +330,7 @@
 }
 
 .comment-username {
-  color: #b58c00;
+  color: #ffffff;
   font-weight: 700;
 }
 
@@ -380,12 +386,19 @@
 /* Artwork Card - wrapper for each artwork in feed */
 .artwork-card {
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-  padding-bottom: 15px;
-  margin-bottom: 15px;
+  padding-bottom: 0px;
+  margin-bottom: 0px;
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
 }
 
 .artwork-card:last-child {
   border-bottom: none;
+}
+
+/* First artwork card - add top margin to push first image down */
+.artwork-card:first-of-type .image-container {
+  margin-top: 23px;
 }
 
 /* Error Container */

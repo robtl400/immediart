@@ -25,8 +25,8 @@ export default function DiscoveryFeed() {
 
     const { scrollTop, scrollHeight, clientHeight } = feedRef.current;
 
-    // Toggle banner state at 200px scroll threshold
-    setIsScrolled(scrollTop > 200);
+    // Toggle banner state at 500px scroll threshold
+    setIsScrolled(scrollTop > 500);
 
     // Infinite scroll detection
     if (!loadingMore && hasMore) {
@@ -182,27 +182,29 @@ function ArtworkCard({ artwork, isLiked, onLike }) {
       <div className="text-info">
         <p className="artwork-description">
           <span className="artist-name">{artwork.username}</span>{' '}
-          {artwork.description}
+          {artwork.description}.
+          {artwork.tags.length > 0 && (
+            <>
+              {artwork.tags.map((tag, index) => (
+                <>
+                  {'  '}
+                  <span
+                    key={index}
+                    className="hashtag"
+                    onClick={() => handleHashtagClick(tag)}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => e.key === 'Enter' && handleHashtagClick(tag)}
+                  >
+                    #{tag.replace(/\s+/g, '')}
+                  </span>
+                </>
+              ))}
+            </>
+          )}
         </p>
 
         {artwork.date && <p className="artwork-date">{artwork.date}</p>}
-
-        {artwork.tags.length > 0 && (
-          <div className="hashtags">
-            {artwork.tags.map((tag, index) => (
-              <span
-                key={index}
-                className="hashtag"
-                onClick={() => handleHashtagClick(tag)}
-                role="button"
-                tabIndex={0}
-                onKeyDown={(e) => e.key === 'Enter' && handleHashtagClick(tag)}
-              >
-                #{tag.replace(/\s+/g, '')}
-              </span>
-            ))}
-          </div>
-        )}
       </div>
 
       {/* Comments */}
