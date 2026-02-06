@@ -1,8 +1,10 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, Fragment } from 'react';
+import { useNavigate } from 'react-router-dom';
 import './DiscoveryFeed.css';
 import flyingMachineIcon from '../assets/FlyingMachine2.png';
 import { useArtworks } from '../context/ArtworksContext';
 import LoadingSpinner, { InlineLoader } from './LoadingSpinner';
+import Banner from './Banner';
 
 export default function DiscoveryFeed() {
   const {
@@ -84,12 +86,7 @@ export default function DiscoveryFeed() {
   if (loading) {
     return (
       <div className="discovery-feed">
-        <header className="banner">
-          <div className="banner-content">
-            <img src={flyingMachineIcon} alt="" className="banner-logo" />
-            <h1 className="banner-title">ImmediArt</h1>
-          </div>
-        </header>
+        <Banner />
         <LoadingSpinner />
       </div>
     );
@@ -99,12 +96,7 @@ export default function DiscoveryFeed() {
   if (error && artworks.length === 0) {
     return (
       <div className="discovery-feed">
-        <header className="banner">
-          <div className="banner-content">
-            <img src={flyingMachineIcon} alt="" className="banner-logo" />
-            <h1 className="banner-title">ImmediArt</h1>
-          </div>
-        </header>
+        <Banner />
         <div className="error-container">
           <p className="error-message">Unable to load artworks</p>
           <p className="error-detail">{error}</p>
@@ -118,12 +110,7 @@ export default function DiscoveryFeed() {
 
   return (
     <div className="discovery-feed" ref={feedRef}>
-      <header className={`banner ${isScrolled ? 'scrolled' : ''}`}>
-        <div className="banner-content">
-          <img src={flyingMachineIcon} alt="" className="banner-logo" />
-          <h1 className="banner-title">ImmediArt</h1>
-        </div>
-      </header>
+      <Banner isScrolled={isScrolled} />
 
       {/* Render each artwork */}
       {artworks.map((artwork) => (
@@ -154,6 +141,7 @@ export default function DiscoveryFeed() {
 
 // Extract ArtworkCard to separate component for performance
 function ArtworkCard({ artwork, isLiked, onLike }) {
+  const navigate = useNavigate();
   const [imageLoaded, setImageLoaded] = useState(false);
   const [isLandscape, setIsLandscape] = useState(true);
 
@@ -167,8 +155,12 @@ function ArtworkCard({ artwork, isLiked, onLike }) {
     console.log(`Share artwork: ${artwork.title}`);
   };
 
+  const handleArtistClick = () => {
+    navigate(`/artist/${encodeURIComponent(artwork.artistName)}`);
+  };
+
   const handleHashtagClick = (tag) => {
-    console.log(`Hashtag #${tag} clicked - will navigate to grid view`);
+    navigate(`/tag/${encodeURIComponent(tag)}`);
   };
 
   return (
@@ -205,27 +197,30 @@ function ArtworkCard({ artwork, isLiked, onLike }) {
       {/* Text Information */}
       <div className="text-info">
         <p className="artwork-description">
-          <span className="artist-name">{artwork.username}</span>{' '}
+          <span
+            className="artist-name clickable"
+            onClick={handleArtistClick}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => e.key === 'Enter' && handleArtistClick()}
+          >
+            {artwork.username}
+          </span>{' '}
           {artwork.description}.
-          {artwork.tags.length > 0 && (
-            <>
-              {artwork.tags.map((tag, index) => (
-                <>
-                  {'  '}
-                  <span
-                    key={index}
-                    className="hashtag"
-                    onClick={() => handleHashtagClick(tag)}
-                    role="button"
-                    tabIndex={0}
-                    onKeyDown={(e) => e.key === 'Enter' && handleHashtagClick(tag)}
-                  >
-                    #{tag.replace(/\s+/g, '')}
-                  </span>
-                </>
-              ))}
-            </>
-          )}
+          {artwork.tags.map((tag, index) => (
+            <Fragment key={index}>
+              {'  '}
+              <span
+                className="hashtag"
+                onClick={() => handleHashtagClick(tag)}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => e.key === 'Enter' && handleHashtagClick(tag)}
+              >
+                #{tag.replace(/\s+/g, '')}
+              </span>
+            </Fragment>
+          ))}
         </p>
 
         {artwork.date && <p className="artwork-date">{artwork.date}</p>}

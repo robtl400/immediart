@@ -44,7 +44,7 @@
   background: linear-gradient(
     to bottom,
     rgba(181, 140, 0, 0.6) 0%,
-    #b58c00 50%,
+    #F0B900 50%,
     rgba(181, 140, 0, 0.3) 100%
   );
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
@@ -53,15 +53,15 @@
 .banner-logo {
   height: 2.4rem;
   width: auto;
-  /* Apply gold monochrome filter */
-  filter: brightness(0) saturate(100%) invert(70%) sepia(90%) saturate(400%) hue-rotate(360deg) brightness(95%);
-  opacity: 0.7;
+  /* Apply gold monochrome filter (adjusted slightly lighter to match #F0B900) */
+  filter: brightness(0) saturate(100%) invert(70%) sepia(90%) saturate(700%) hue-rotate(360deg) brightness(95%);
+  opacity: 1;
   transition: transform 0.4s ease, opacity 0.4s ease;
 }
 
 .banner-title {
   font-family: 'Allura', cursive;
-  color: #b58c00;
+  color: #F0B900;
   font-size: 2.5rem;
   text-align: center;
   margin: 0;
@@ -206,7 +206,7 @@
 
 /* Like Button */
 .like-btn .icon {
-  color: #b58c00;
+  color: #F0B900;
   font-size: 29px;
   line-height: 1;
   position: relative;
@@ -214,7 +214,7 @@
 }
 
 .like-btn.liked .icon {
-  color: #b58c00;
+  color: #F0B900;
   animation: heartPop 0.3s ease;
 }
 
@@ -231,18 +231,18 @@
 }
 
 .like-btn .btn-label {
-  color: #b58c00;
+  color: #F0B900;
   font-size: 14px;
   font-weight: 500;
 }
 
 .like-btn.liked .btn-label {
-  color: #b58c00;
+  color: #F0B900;
 }
 
 /* Share Button */
 .share-btn {
-  color: #b58c00;
+  color: #F0B900;
 }
 
 .share-btn:hover {
@@ -283,6 +283,17 @@
   font-size: 14px;
 }
 
+.artist-name.clickable {
+  cursor: pointer;
+  transition: opacity 0.2s ease;
+}
+
+.artist-name.clickable:hover,
+.artist-name.clickable:focus {
+  opacity: 0.8;
+  outline: none;
+}
+
 .artwork-date {
   color: #7e6200;
   font-size: 13px;
@@ -296,7 +307,7 @@
 }
 
 .hashtag {
-  color: #b58c00;
+  color: #F0B900;
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
@@ -413,7 +424,7 @@
 }
 
 .error-message {
-  color: #b58c00;
+  color: #F0B900;
   font-size: 18px;
   font-weight: 600;
   margin: 0 0 10px 0;
@@ -426,7 +437,7 @@
 }
 
 .retry-button {
-  background-color: #b58c00;
+  background-color: #F0B900;
   color: #121212;
   border: none;
   padding: 12px 24px;
@@ -458,7 +469,7 @@
 }
 
 .end-message p:first-child {
-  color: #b58c00;
+  color: #F0B900;
   font-weight: 500;
 }
 
