@@ -17,7 +17,6 @@ function delay(ms) {
 }
 
 /**
- * Fisher-Yates shuffle for randomizing arrays
  * @param {Array} array - Array to shuffle
  * @returns {Array} New shuffled array
  */

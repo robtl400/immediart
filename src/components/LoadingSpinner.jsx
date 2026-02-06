@@ -5,7 +5,7 @@
 
 import './LoadingSpinner.css';
 
-export default function LoadingSpinner({ size = 'large', message = 'Loading artworks...' }) {
+export default function LoadingSpinner({ size = 'large', message = 'Art is loading...' }) {
   return (
     <div className={`loading-spinner-container ${size}`}>
       <div className="spinner"></div>

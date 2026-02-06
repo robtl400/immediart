@@ -1,12 +1,9 @@
-/**
- * Data Transformation Utilities
- * Transforms Met Museum API data into display format for the app
- */
+
 
 import { shuffleArray } from '../services/metAPI';
 
 /**
- * Formats artist name as Instagram-style username
+ * USERNAMES: 
  * @param {string} artistName - e.g., "Vincent van Gogh"
  * @returns {string} e.g., "@Vincent_van_Gogh"
  */
@@ -18,7 +15,7 @@ export function formatArtistUsername(artistName) {
 }
 
 /**
- * Extracts up to N random tags from the tags array
+ * HASHTAGS:
  * @param {Array} tagsArray - API tags array with {term, AAT_URL, Wikidata_URL}
  * @param {number} count - Maximum tags to return
  * @returns {string[]} Array of tag terms (without # prefix)
@@ -28,7 +25,7 @@ export function extractRandomTags(tagsArray, count = 4) {
     return [];
   }
 
-  // Shuffle and take first N
+  // Shuffle
   const shuffled = shuffleArray(tagsArray);
   return shuffled
     .slice(0, count)
@@ -37,7 +34,7 @@ export function extractRandomTags(tagsArray, count = 4) {
 }
 
 /**
- * Builds the main description text from artwork metadata
+ * DESCRIPTION BUILDER:
  * @param {Object} artwork - API artwork object
  * @returns {string} Combined description
  */
@@ -54,7 +51,7 @@ export function buildDescription(artwork) {
 }
 
 /**
- * Builds comment-style entries from metadata
+ * COMMENTS BUILDER:
  * @param {Object} artwork - API artwork object
  * @returns {Array} Array of comment objects
  */
@@ -83,7 +80,7 @@ export function buildComments(artwork) {
     });
   }
 
-  // Rights and reproduction (only if exists)
+  // Rights and reproduction 
   if (artwork.rightsAndReproduction && artwork.rightsAndReproduction.trim()) {
     comments.push({
       username: '@TheMetMuseum',
@@ -112,7 +109,7 @@ export function transformAPIToDisplay(apiArtwork) {
     tags: extractRandomTags(apiArtwork.tags, 4),
     comments: buildComments(apiArtwork),
 
-    // Additional metadata (stored for future use)
+    // Additional metadata
     medium: apiArtwork.medium || '',
     culture: apiArtwork.culture || '',
     period: apiArtwork.period || '',
