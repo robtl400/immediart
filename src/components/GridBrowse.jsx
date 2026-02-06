@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import './GridBrowse.css';
 import { useGridBrowse } from '../context/GridBrowseContext';
+import { useArtworkModal } from '../context/ArtworkModalContext';
 import Banner from './Banner';
 import LoadingSpinner, { InlineLoader } from './LoadingSpinner';
 
@@ -21,6 +22,7 @@ export default function GridBrowse({ type }) {
     initSearch,
     loadMore
   } = useGridBrowse();
+  const { openModal } = useArtworkModal();
 
   const gridRef = useRef(null);
   const sentinelRef = useRef(null);
@@ -120,7 +122,7 @@ export default function GridBrowse({ type }) {
 
       <div className={`thumbnail-grid columns-${columnCount}`}>
         {artworks.map((artwork) => (
-          <ThumbnailCard key={artwork.id} artwork={artwork} />
+          <ThumbnailCard key={artwork.id} artwork={artwork} onClick={() => openModal(artwork)} />
         ))}
       </div>
 
@@ -140,19 +142,14 @@ export default function GridBrowse({ type }) {
   );
 }
 
-function ThumbnailCard({ artwork }) {
-  // Placeholder for future click handler (third view)
-  const handleClick = () => {
-    console.log(`Thumbnail clicked: ${artwork.title}`);
-  };
-
+function ThumbnailCard({ artwork, onClick }) {
   return (
     <div
       className="thumbnail-card"
-      onClick={handleClick}
+      onClick={onClick}
       role="button"
       tabIndex={0}
-      onKeyDown={(e) => e.key === 'Enter' && handleClick()}
+      onKeyDown={(e) => e.key === 'Enter' && onClick()}
     >
       <img
         src={artwork.imageUrl}

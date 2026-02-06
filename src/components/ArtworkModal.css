@@ -1,0 +1,123 @@
+/* Artwork Modal - Letterbox Detail View */
+
+.artwork-modal-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.85);
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  cursor: pointer;
+}
+
+.artwork-modal-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+/* Banner stays at top */
+.artwork-modal-container .banner {
+  flex-shrink: 0;
+}
+
+/* Card container - the outer frame with shadow */
+.artwork-modal-card {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  margin: 16px;
+  background-color: #3B3B3B;
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  overflow: hidden;
+  max-height: calc(100vh - 100px);
+}
+
+/* Scrollable content area - image and text scroll together */
+.artwork-modal-content {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Image container */
+.artwork-modal-image-container {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #3B3B3B;
+}
+
+.artwork-modal-image {
+  max-width: 100%;
+  max-height: 70vh;
+  object-fit: contain;
+}
+
+/* Metadata section - dark grey background */
+.artwork-modal-metadata {
+  flex-shrink: 0;
+  padding: 20px;
+  background-color: #3B3B3B;
+}
+
+.metadata-line {
+  display: flex;
+  padding: 8px 0;
+  border-bottom: 1px solid #A37D00;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.metadata-line:last-child {
+  border-bottom: none;
+}
+
+.metadata-label {
+  font-weight: 600;
+  color: #fff;
+  min-width: 100px;
+  flex-shrink: 0;
+}
+
+.metadata-value {
+  color: #e0e0e0;
+  flex: 1;
+}
+
+/* Responsive adjustments */
+@media (max-width: 480px) {
+  .artwork-modal-card {
+    margin: 8px;
+    border-radius: 8px;
+  }
+
+  .artwork-modal-metadata {
+    padding: 16px;
+  }
+
+  .metadata-line {
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .metadata-label {
+    min-width: unset;
+    font-size: 12px;
+    color: #ccc;
+  }
+
+  .metadata-value {
+    font-size: 14px;
+    color: #fff;
+  }
+}

@@ -97,6 +97,7 @@ export function transformAPIToDisplay(apiArtwork) {
     medium: apiArtwork.medium || '',
     culture: apiArtwork.culture || '',
     period: apiArtwork.period || '',
+    dynasty: apiArtwork.dynasty || '',
     department: apiArtwork.department || '',
     gallery: apiArtwork.GalleryNumber || null,
     creditLine: apiArtwork.creditLine || '',

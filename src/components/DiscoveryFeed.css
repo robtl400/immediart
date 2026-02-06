@@ -43,9 +43,9 @@
   height: 3px;
   background: linear-gradient(
     to bottom,
-    rgba(181, 140, 0, 0.6) 0%,
+    rgba(163, 125, 0, 0.6) 0%,
     #F0B900 50%,
-    rgba(181, 140, 0, 0.3) 100%
+    rgba(163, 125, 0, 0.3) 100%
   );
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
 }
@@ -295,7 +295,7 @@
 }
 
 .artwork-date {
-  color: #7e6200;
+  color: #A37D00;
   font-size: 13px;
   margin: 0 0 0 0;
 }
@@ -327,7 +327,7 @@
   padding: 0px 15px 4px;
   background-color: #121212;
   flex-shrink: 0;
-  margin-top: -19px;
+  margin-top: -18px;
 }
 
 .comment {
@@ -396,7 +396,7 @@
 
 /* Artwork Card - wrapper for each artwork in feed */
 .artwork-card {
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  border-bottom: 1px solid rgba(163, 125, 0, 0.3);
   padding-bottom: 0px;
   margin-bottom: 0px;
   scroll-snap-align: start;

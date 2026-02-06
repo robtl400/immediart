@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import './DiscoveryFeed.css';
 import flyingMachineIcon from '../assets/FlyingMachine2.png';
 import { useArtworks } from '../context/ArtworksContext';
+import { useArtworkModal } from '../context/ArtworkModalContext';
 import LoadingSpinner, { InlineLoader } from './LoadingSpinner';
 import Banner from './Banner';
 
@@ -16,6 +17,7 @@ export default function DiscoveryFeed() {
     loadMoreArtworks,
     retry
   } = useArtworks();
+  const { openModal } = useArtworkModal();
 
   const feedRef = useRef(null);
   const sentinelRef = useRef(null);
@@ -85,8 +87,8 @@ export default function DiscoveryFeed() {
   // Initial loading state
   if (loading) {
     return (
-      <div className="discovery-feed">
-        <Banner />
+      <div className="discovery-feed" ref={feedRef}>
+        <Banner feedRef={feedRef} />
         <LoadingSpinner />
       </div>
     );
@@ -95,8 +97,8 @@ export default function DiscoveryFeed() {
   // Error state
   if (error && artworks.length === 0) {
     return (
-      <div className="discovery-feed">
-        <Banner />
+      <div className="discovery-feed" ref={feedRef}>
+        <Banner feedRef={feedRef} />
         <div className="error-container">
           <p className="error-message">Unable to load artworks</p>
           <p className="error-detail">{error}</p>
@@ -110,7 +112,7 @@ export default function DiscoveryFeed() {
 
   return (
     <div className="discovery-feed" ref={feedRef}>
-      <Banner isScrolled={isScrolled} />
+      <Banner isScrolled={isScrolled} feedRef={feedRef} />
 
       {/* Render each artwork */}
       {artworks.map((artwork) => (
@@ -119,6 +121,7 @@ export default function DiscoveryFeed() {
           artwork={artwork}
           isLiked={likedArtworks.has(artwork.id)}
           onLike={() => handleLike(artwork.id)}
+          onImageDoubleClick={() => openModal(artwork)}
         />
       ))}
 
@@ -140,7 +143,7 @@ export default function DiscoveryFeed() {
 }
 
 // Extract ArtworkCard to separate component for performance
-function ArtworkCard({ artwork, isLiked, onLike }) {
+function ArtworkCard({ artwork, isLiked, onLike, onImageDoubleClick }) {
   const navigate = useNavigate();
   const [imageLoaded, setImageLoaded] = useState(false);
   const [isLandscape, setIsLandscape] = useState(true);
@@ -172,6 +175,7 @@ function ArtworkCard({ artwork, isLiked, onLike }) {
           alt={`${artwork.title} by ${artwork.artistName}`}
           className="artwork-image"
           onLoad={handleImageLoad}
+          onDoubleClick={onImageDoubleClick}
           loading="lazy"
         />
         {!imageLoaded && <div className="image-placeholder" />}

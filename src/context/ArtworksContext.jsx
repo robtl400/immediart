@@ -40,6 +40,8 @@ export function ArtworksProvider({ children }) {
   const currentIndexRef = useRef(0);
   const shownIDsRef = useRef(new Set());
   const fetchingRef = useRef(false);
+  const abortControllerRef = useRef(null);
+  const fetchIdRef = useRef(0);
 
   // Single fetch function for both initial and subsequent loads
   const fetchArtworks = useCallback(async (isInitial = false) => {
@@ -47,11 +49,21 @@ export function ArtworksProvider({ children }) {
     if (fetchingRef.current) return;
     fetchingRef.current = true;
 
+    // Cancel any previous request
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    abortControllerRef.current = new AbortController();
+    const signal = abortControllerRef.current.signal;
+    const currentFetchId = ++fetchIdRef.current;
+
     try {
       if (isInitial) {
         setLoading(true);
         // Fetch and shuffle all IDs once
-        const allIDs = await fetchAllObjectIDs();
+        const allIDs = await fetchAllObjectIDs(signal);
+        // Check if this fetch is still current
+        if (fetchIdRef.current !== currentFetchId) return;
         allIDsRef.current = shuffleArray(allIDs);
         currentIndexRef.current = 0;
         shownIDsRef.current = new Set();
@@ -78,13 +90,18 @@ export function ArtworksProvider({ children }) {
       }
 
       // Fetch artworks
-      const rawArtworks = await batchFetchArtworks(idsToTry, BATCH_SIZE);
+      const rawArtworks = await batchFetchArtworks(idsToTry, BATCH_SIZE, signal);
+      // Check if this fetch is still current
+      if (fetchIdRef.current !== currentFetchId) return;
       const newArtworks = rawArtworks.map(transformAPIToDisplay);
 
       // Preload images before showing (only for initial load)
       if (isInitial) {
         await preloadArtworkImages(newArtworks);
       }
+
+      // Final check before updating state
+      if (fetchIdRef.current !== currentFetchId) return;
 
       // Track shown IDs
       newArtworks.forEach(a => shownIDsRef.current.add(a.id));
@@ -100,11 +117,18 @@ export function ArtworksProvider({ children }) {
       setHasMore(currentIndexRef.current < allIDsRef.current.length);
       setError(null);
     } catch (err) {
-      setError(err.message);
+      // Ignore abort errors
+      if (err.name === 'AbortError') return;
+      // Only set error if this fetch is still current
+      if (fetchIdRef.current === currentFetchId) {
+        setError(err.message);
+      }
     } finally {
-      setLoading(false);
-      setLoadingMore(false);
-      fetchingRef.current = false;
+      if (fetchIdRef.current === currentFetchId) {
+        setLoading(false);
+        setLoadingMore(false);
+        fetchingRef.current = false;
+      }
     }
   }, []);
 
@@ -122,12 +146,33 @@ export function ArtworksProvider({ children }) {
 
   // Retry function
   const retry = useCallback(() => {
+    // Abort any in-flight request
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    fetchingRef.current = false;
     if (artworks.length === 0) {
       fetchArtworks(true);
     } else {
       fetchArtworks(false);
     }
   }, [fetchArtworks, artworks.length]);
+
+  // Refresh function - clears artworks and fetches fresh ones
+  const refresh = useCallback(() => {
+    // Abort any in-flight request
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    setArtworks([]);
+    setHasMore(true);
+    setError(null);
+    allIDsRef.current = [];
+    currentIndexRef.current = 0;
+    shownIDsRef.current = new Set();
+    fetchingRef.current = false;
+    fetchArtworks(true);
+  }, [fetchArtworks]);
 
   const value = {
     artworks,
@@ -136,7 +181,8 @@ export function ArtworksProvider({ children }) {
     error,
     hasMore,
     loadMoreArtworks,
-    retry
+    retry,
+    refresh
   };
 
   return (

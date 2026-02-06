@@ -89,7 +89,7 @@
 .inline-loader .dot {
   width: 8px;
   height: 8px;
-  background-color: #b58c00;
+  background-color: #A37D00;
   border-radius: 50%;
   animation: bounce 1.4s ease-in-out infinite both;
 }

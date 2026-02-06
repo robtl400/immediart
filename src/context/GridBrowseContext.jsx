@@ -12,7 +12,7 @@ import { transformAPIToDisplay } from '../utils/transformers';
 const GridBrowseContext = createContext(null);
 
 const BATCH_SIZE = 3; // Load 3 thumbnails at a time to avoid API rate limits
-const SEARCH_COOLDOWN_MS = 1000; // Minimum time between searches
+const SEARCH_COOLDOWN_MS = 300; // Minimum time between searches
 
 // Preload an image and return a promise (cancellable)
 function preloadImage(url, signal) {

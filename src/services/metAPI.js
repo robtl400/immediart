@@ -4,7 +4,7 @@
  */
 
 const BASE_URL = 'https://collectionapi.metmuseum.org/public/collection/v1';
-const BATCH_DELAY_MS = 200; // Delay between requests
+const BATCH_DELAY_MS = 50; // Delay between requests
 
 /**
  * Promise-based delay utility
@@ -61,11 +61,12 @@ export function shuffleArray(array) {
 /**
  * Fetches object IDs from the search endpoint
  * @param {string} query - Search term (e.g., 'paintings', 'prints')
+ * @param {AbortSignal} signal - Optional abort signal
  * @returns {Promise<number[]>} Array of object IDs
  */
-async function fetchSearchResults(query) {
+async function fetchSearchResults(query, signal = null) {
   const url = `${BASE_URL}/search?hasImages=true&q=${encodeURIComponent(query)}`;
-  const response = await fetch(url);
+  const response = await fetchWithRetry(url, 3, signal);
   if (!response.ok) {
     throw new Error(`Search failed: ${response.status}`);
   }
@@ -75,9 +76,10 @@ async function fetchSearchResults(query) {
 
 /**
  * Fetches all painting IDs from the API
+ * @param {AbortSignal} signal - Optional abort signal
  * @returns {Promise<number[]>} Array of object IDs
  */
-export const fetchAllObjectIDs = () => fetchSearchResults('paintings');
+export const fetchAllObjectIDs = (signal = null) => fetchSearchResults('paintings', signal);
 
 /**
  * Searches for artworks by artist name
