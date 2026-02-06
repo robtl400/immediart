@@ -282,3 +282,85 @@
     padding: 12px 20px 24px;
   }
 }
+
+/* Artwork Card - wrapper for each artwork in feed */
+.artwork-card {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  padding-bottom: 15px;
+  margin-bottom: 15px;
+}
+
+.artwork-card:last-child {
+  border-bottom: none;
+}
+
+/* Error Container */
+.error-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 50vh;
+  padding: 20px;
+  text-align: center;
+}
+
+.error-message {
+  color: #D4AF37;
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0 0 10px 0;
+}
+
+.error-detail {
+  color: #888;
+  font-size: 14px;
+  margin: 0 0 20px 0;
+}
+
+.retry-button {
+  background-color: #D4AF37;
+  color: #121212;
+  border: none;
+  padding: 12px 24px;
+  border-radius: 8px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.2s, opacity 0.2s;
+}
+
+.retry-button:hover {
+  transform: scale(1.05);
+}
+
+.retry-button:active {
+  transform: scale(0.95);
+}
+
+/* End of Feed Message */
+.end-message {
+  text-align: center;
+  padding: 30px 20px;
+  color: #888;
+}
+
+.end-message p {
+  margin: 5px 0;
+  font-size: 14px;
+}
+
+.end-message p:first-child {
+  color: #D4AF37;
+  font-weight: 500;
+}
+
+/* Lazy loading image optimization */
+.artwork-image {
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.artwork-image[src]:not([src=""]) {
+  opacity: 1;
+}

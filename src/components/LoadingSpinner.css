@@ -1,0 +1,83 @@
+/* Loading Spinner Styles */
+
+.loading-spinner-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 40px 20px;
+}
+
+.loading-spinner-container.large {
+  min-height: 60vh;
+}
+
+.loading-spinner-container.small {
+  padding: 20px;
+  min-height: auto;
+}
+
+.spinner {
+  width: 48px;
+  height: 48px;
+  border: 3px solid rgba(212, 175, 55, 0.2);
+  border-top-color: #D4AF37;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+.loading-spinner-container.small .spinner {
+  width: 32px;
+  height: 32px;
+  border-width: 2px;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.loading-message {
+  color: #888;
+  font-size: 14px;
+  margin-top: 16px;
+}
+
+/* Inline loader for infinite scroll */
+.inline-loader {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  padding: 20px;
+}
+
+.inline-loader .dot {
+  width: 8px;
+  height: 8px;
+  background-color: #D4AF37;
+  border-radius: 50%;
+  animation: bounce 1.4s ease-in-out infinite both;
+}
+
+.inline-loader .dot:nth-child(1) {
+  animation-delay: -0.32s;
+}
+
+.inline-loader .dot:nth-child(2) {
+  animation-delay: -0.16s;
+}
+
+.inline-loader .dot:nth-child(3) {
+  animation-delay: 0;
+}
+
+@keyframes bounce {
+  0%, 80%, 100% {
+    transform: scale(0);
+  }
+  40% {
+    transform: scale(1);
+  }
+}
