@@ -16,28 +16,18 @@ export default function DiscoveryFeed() {
   } = useArtworks();
 
   const feedRef = useRef(null);
+  const sentinelRef = useRef(null);
   const [likedArtworks, setLikedArtworks] = useState(new Set());
   const [isScrolled, setIsScrolled] = useState(false);
 
-  // Scroll detection for infinite scroll and banner state
+  // Scroll detection for banner state
   const handleScroll = useCallback(() => {
     if (!feedRef.current) return;
-
-    const { scrollTop, scrollHeight, clientHeight } = feedRef.current;
-
-    // Toggle banner state at 500px scroll threshold
+    const { scrollTop } = feedRef.current;
     setIsScrolled(scrollTop > 500);
+  }, []);
 
-    // Infinite scroll detection
-    if (!loadingMore && hasMore) {
-      const scrollThreshold = 300; // pixels from bottom
-      if (scrollHeight - scrollTop - clientHeight < scrollThreshold) {
-        loadMoreArtworks();
-      }
-    }
-  }, [loadingMore, hasMore, loadMoreArtworks]);
-
-  // Attach scroll listener
+  // Attach scroll listener for banner
   useEffect(() => {
     const feedElement = feedRef.current;
     if (feedElement) {
@@ -45,6 +35,37 @@ export default function DiscoveryFeed() {
       return () => feedElement.removeEventListener('scroll', handleScroll);
     }
   }, [handleScroll]);
+
+  // Pre-fetch next batch immediately after initial load
+  useEffect(() => {
+    if (!loading && artworks.length > 0 && hasMore && !loadingMore) {
+      loadMoreArtworks();
+    }
+  }, [loading]); // Only run when loading state changes
+
+  // IntersectionObserver for infinite scroll - triggers ~2 artworks ahead
+  useEffect(() => {
+    if (loading) return;
+
+    const sentinel = sentinelRef.current;
+    const feed = feedRef.current;
+    if (!sentinel || !feed) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasMore && !loadingMore) {
+          loadMoreArtworks();
+        }
+      },
+      {
+        root: feed,
+        rootMargin: '1200px' // Trigger ~2 artworks before sentinel is visible
+      }
+    );
+
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [loading, hasMore, loadingMore, loadMoreArtworks]);
 
   // Handle like toggle
   const handleLike = (artworkId) => {
@@ -113,6 +134,9 @@ export default function DiscoveryFeed() {
           onLike={() => handleLike(artwork.id)}
         />
       ))}
+
+      {/* Sentinel element for IntersectionObserver */}
+      <div ref={sentinelRef} className="scroll-sentinel" />
 
       {/* Loading more indicator */}
       {loadingMore && <InlineLoader />}

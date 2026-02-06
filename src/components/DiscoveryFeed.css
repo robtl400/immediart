@@ -471,3 +471,9 @@
 .artwork-image[src]:not([src=""]) {
   opacity: 1;
 }
+
+/* Scroll sentinel for IntersectionObserver */
+.scroll-sentinel {
+  height: 1px;
+  width: 100%;
+}
