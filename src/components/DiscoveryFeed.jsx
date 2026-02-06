@@ -17,16 +17,23 @@ export default function DiscoveryFeed() {
 
   const feedRef = useRef(null);
   const [likedArtworks, setLikedArtworks] = useState(new Set());
+  const [isScrolled, setIsScrolled] = useState(false);
 
-  // Scroll detection for infinite scroll
+  // Scroll detection for infinite scroll and banner state
   const handleScroll = useCallback(() => {
-    if (!feedRef.current || loadingMore || !hasMore) return;
+    if (!feedRef.current) return;
 
     const { scrollTop, scrollHeight, clientHeight } = feedRef.current;
-    const scrollThreshold = 300; // pixels from bottom
 
-    if (scrollHeight - scrollTop - clientHeight < scrollThreshold) {
-      loadMoreArtworks();
+    // Toggle banner state at 200px scroll threshold
+    setIsScrolled(scrollTop > 200);
+
+    // Infinite scroll detection
+    if (!loadingMore && hasMore) {
+      const scrollThreshold = 300; // pixels from bottom
+      if (scrollHeight - scrollTop - clientHeight < scrollThreshold) {
+        loadMoreArtworks();
+      }
     }
   }, [loadingMore, hasMore, loadMoreArtworks]);
 
@@ -57,9 +64,12 @@ export default function DiscoveryFeed() {
     return (
       <div className="discovery-feed">
         <header className="banner">
-          <h1 className="banner-title">ImmediArt</h1>
+          <div className="banner-content">
+            <img src={flyingMachineIcon} alt="" className="banner-logo" />
+            <h1 className="banner-title">ImmediArt</h1>
+          </div>
         </header>
-        <LoadingSpinner message="Discovering artworks..." />
+        <LoadingSpinner />
       </div>
     );
   }
@@ -69,7 +79,10 @@ export default function DiscoveryFeed() {
     return (
       <div className="discovery-feed">
         <header className="banner">
-          <h1 className="banner-title">ImmediArt</h1>
+          <div className="banner-content">
+            <img src={flyingMachineIcon} alt="" className="banner-logo" />
+            <h1 className="banner-title">ImmediArt</h1>
+          </div>
         </header>
         <div className="error-container">
           <p className="error-message">Unable to load artworks</p>
@@ -84,8 +97,11 @@ export default function DiscoveryFeed() {
 
   return (
     <div className="discovery-feed" ref={feedRef}>
-      <header className="banner">
-        <h1 className="banner-title">ImmediArt</h1>
+      <header className={`banner ${isScrolled ? 'scrolled' : ''}`}>
+        <div className="banner-content">
+          <img src={flyingMachineIcon} alt="" className="banner-logo" />
+          <h1 className="banner-title">ImmediArt</h1>
+        </div>
       </header>
 
       {/* Render each artwork */}

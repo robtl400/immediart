@@ -4,7 +4,9 @@
  */
 
 const BASE_URL = 'https://collectionapi.metmuseum.org/public/collection/v1';
-const BATCH_SIZE = 10;
+const INITIAL_BATCH_SIZE = 1;
+const SUBSEQUENT_BATCH_SIZE = 2;
+const BATCH_SIZE = SUBSEQUENT_BATCH_SIZE; // For backwards compatibility
 const BATCH_DELAY_MS = 75;
 
 /**
@@ -114,4 +116,4 @@ export async function batchFetchArtworks(objectIDs, targetCount = BATCH_SIZE) {
   return artworks;
 }
 
-export { BASE_URL, BATCH_SIZE };
+export { BASE_URL, BATCH_SIZE, INITIAL_BATCH_SIZE, SUBSEQUENT_BATCH_SIZE };

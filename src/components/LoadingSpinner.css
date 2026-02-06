@@ -6,7 +6,7 @@
   align-items: center;
   justify-content: center;
   width: 100%;
-  padding: 40px 20px;
+  padding: 40px 0;
 }
 
 .loading-spinner-container.large {
@@ -18,25 +18,58 @@
   min-height: auto;
 }
 
-.spinner {
-  width: 48px;
-  height: 48px;
-  border: 3px solid rgba(212, 175, 55, 0.2);
-  border-top-color: #D4AF37;
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
+/* Sweep container for the flying machine animation */
+.sweep-container {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  max-width: 430px;
+  position: relative;
+  overflow: hidden;
+  background-color: #121212;
 }
 
-.loading-spinner-container.small .spinner {
-  width: 32px;
-  height: 32px;
-  border-width: 2px;
+.flying-machine-loader {
+  width: 125px;
+  height: 125px;
+  position: absolute;
+  /* Apply gold monochrome filter */
+  filter: brightness(0) saturate(100%) invert(70%) sepia(90%) saturate(400%) hue-rotate(360deg) brightness(95%);
+  animation: sweepAcross 3s ease-in-out infinite;
 }
 
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
+/* 2s sweep (66.67%), 1s pause (33.33%) */
+@keyframes sweepAcross {
+  0% {
+    /* Start bottom-left, off-screen */
+    bottom: -10px;
+    left: -150px;
+    opacity: 1;
   }
+  66.67% {
+    /* End top-right, off-screen (2 seconds) */
+    bottom: calc(100% + 100px);
+    left: calc(100% + 100px);
+    opacity: 1;
+  }
+  66.68% {
+    /* Hide immediately */
+    opacity: 0;
+  }
+  100% {
+    /* Stay hidden for 1 second, reset position */
+    bottom: -10px;
+    left: -150px;
+    opacity: 0;
+  }
+}
+
+.loading-spinner-container.small .sweep-container {
+  max-width: 200px;
+}
+
+.loading-spinner-container.small .flying-machine-loader {
+  width: 60px;
+  height: 60px;
 }
 
 .loading-message {
@@ -56,7 +89,7 @@
 .inline-loader .dot {
   width: 8px;
   height: 8px;
-  background-color: #D4AF37;
+  background-color: #b58c00;
   border-radius: 50%;
   animation: bounce 1.4s ease-in-out infinite both;
 }

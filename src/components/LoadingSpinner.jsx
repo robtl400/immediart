@@ -4,11 +4,18 @@
  */
 
 import './LoadingSpinner.css';
+import flyingMachineIcon from '../assets/FlyingMachine2.png';
 
-export default function LoadingSpinner({ size = 'large', message = 'Art is loading...' }) {
+export default function LoadingSpinner({ size = 'large', message = '' }) {
   return (
     <div className={`loading-spinner-container ${size}`}>
-      <div className="spinner"></div>
+      <div className="sweep-container">
+        <img
+          src={flyingMachineIcon}
+          alt="Loading"
+          className="flying-machine-loader"
+        />
+      </div>
       {message && <p className="loading-message">{message}</p>}
     </div>
   );

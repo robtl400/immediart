@@ -6,7 +6,7 @@
 /* eslint-disable react-refresh/only-export-components */
 
 import { createContext, useContext, useReducer, useEffect, useCallback } from 'react';
-import { fetchAllObjectIDs, batchFetchArtworks, shuffleArray, BATCH_SIZE } from '../services/metAPI';
+import { fetchAllObjectIDs, batchFetchArtworks, shuffleArray, INITIAL_BATCH_SIZE, SUBSEQUENT_BATCH_SIZE } from '../services/metAPI';
 import { transformAPIToDisplay } from '../utils/transformers';
 
 const ArtworksContext = createContext(null);
@@ -111,7 +111,7 @@ function getUnusedIDs(allIDs, shownIDs, startIndex, count) {
 export function ArtworksProvider({ children }) {
   const [state, dispatch] = useReducer(artworksReducer, initialState);
 
-  // Initialize on mount
+  // Initialize on mount - load first artwork immediately, then 2 more in background
   const initializeArtworks = useCallback(async () => {
     dispatch({ type: ACTIONS.INIT_START });
 
@@ -120,26 +120,43 @@ export function ArtworksProvider({ children }) {
       const allIDs = await fetchAllObjectIDs();
       const shuffledIDs = shuffleArray(allIDs);
 
-      // Fetch initial batch (fetch more IDs than needed to account for invalid ones)
-      const idsToTry = shuffledIDs.slice(0, BATCH_SIZE * 3);
-      const rawArtworks = await batchFetchArtworks(idsToTry, BATCH_SIZE);
-      const artworks = rawArtworks.map(transformAPIToDisplay);
+      // Fetch first artwork immediately (try more IDs to account for invalid ones)
+      const firstBatchIDs = shuffledIDs.slice(0, INITIAL_BATCH_SIZE * 3);
+      const firstRawArtworks = await batchFetchArtworks(firstBatchIDs, INITIAL_BATCH_SIZE);
+      const firstArtwork = firstRawArtworks.map(transformAPIToDisplay);
 
+      // Show first artwork immediately
       dispatch({
         type: ACTIONS.INIT_SUCCESS,
         payload: {
           allIDs: shuffledIDs,
-          artworks,
-          nextIndex: BATCH_SIZE * 3,
-          hasMore: shuffledIDs.length > BATCH_SIZE * 3
+          artworks: firstArtwork,
+          nextIndex: INITIAL_BATCH_SIZE * 3,
+          hasMore: shuffledIDs.length > INITIAL_BATCH_SIZE * 3
         }
       });
+
+      // Then fetch next 2 artworks in background
+      const nextBatchIDs = shuffledIDs.slice(INITIAL_BATCH_SIZE * 3, INITIAL_BATCH_SIZE * 3 + SUBSEQUENT_BATCH_SIZE * 3);
+      const nextRawArtworks = await batchFetchArtworks(nextBatchIDs, SUBSEQUENT_BATCH_SIZE);
+      const nextArtworks = nextRawArtworks.map(transformAPIToDisplay);
+
+      if (nextArtworks.length > 0) {
+        dispatch({
+          type: ACTIONS.LOAD_MORE_SUCCESS,
+          payload: {
+            artworks: nextArtworks,
+            nextIndex: INITIAL_BATCH_SIZE * 3 + SUBSEQUENT_BATCH_SIZE * 3,
+            hasMore: shuffledIDs.length > INITIAL_BATCH_SIZE * 3 + SUBSEQUENT_BATCH_SIZE * 3
+          }
+        });
+      }
     } catch (error) {
       dispatch({ type: ACTIONS.INIT_ERROR, payload: error.message });
     }
   }, []);
 
-  // Load more artworks for infinite scroll
+  // Load more artworks for infinite scroll (2 at a time)
   const loadMoreArtworks = useCallback(async () => {
     if (state.loadingMore || !state.hasMore) return;
 
@@ -153,8 +170,8 @@ export function ArtworksProvider({ children }) {
       if (state.currentIndex >= state.allObjectIDs.length) {
         // Reshuffle and start over
         const reshuffled = shuffleArray(state.allObjectIDs);
-        idsToTry = reshuffled.slice(0, BATCH_SIZE * 3);
-        nextIndex = BATCH_SIZE * 3;
+        idsToTry = reshuffled.slice(0, SUBSEQUENT_BATCH_SIZE * 3);
+        nextIndex = SUBSEQUENT_BATCH_SIZE * 3;
 
         // Dispatch reshuffle first
         dispatch({ type: ACTIONS.RESHUFFLE });
@@ -164,12 +181,12 @@ export function ArtworksProvider({ children }) {
           state.allObjectIDs,
           state.shownIDs,
           state.currentIndex,
-          BATCH_SIZE * 3
+          SUBSEQUENT_BATCH_SIZE * 3
         );
-        nextIndex = state.currentIndex + BATCH_SIZE * 3;
+        nextIndex = state.currentIndex + SUBSEQUENT_BATCH_SIZE * 3;
       }
 
-      const rawArtworks = await batchFetchArtworks(idsToTry, BATCH_SIZE);
+      const rawArtworks = await batchFetchArtworks(idsToTry, SUBSEQUENT_BATCH_SIZE);
       const artworks = rawArtworks.map(transformAPIToDisplay);
 
       dispatch({
