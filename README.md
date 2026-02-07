@@ -1,20 +1,71 @@
-# immediart
+# Immediart
 
+An Instagram-style art discovery app that lets you explore The Metropolitan Museum of Art's collection. Scroll through curated artworks, tap hashtags and artist names to discover related pieces, and view detailed artwork information in a modal overlay.
 
+**Live Site:** [immediart.netlify.app](https://immediart.netlify.app)
 
+## Features
 
+- Infinite scroll feed of public domain artworks
+- Click artist names to see more works by that artist
+- Click hashtags to discover artworks with similar themes
+- Modal view with detailed artwork metadata
+- Responsive mobile-first design
 
+## Setup Instructions
 
+### Prerequisites
+- Node.js 18+
+- npm
 
-Vite / React quick commands:
+### Installation
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+```bash
+# Clone the repository
+git clone https://github.com/robtl400/immediart.git
+cd immediart
 
-React Compiler:
+# Install dependencies
+npm install
+```
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+### Run Locally
 
-Expanding the ESLint configuration:
+```bash
+# Start development server
+npm run dev
+```
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+The app will be available at `http://localhost:5173`
+
+### Build for Production
+
+```bash
+npm run build
+npm run preview  # Preview the production build locally
+```
+
+## API
+
+This app uses **The Metropolitan Museum of Art Collection API**.
+
+**Base URL:** `https://collectionapi.metmuseum.org/public/collection/v1`
+
+### Endpoints Used
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /search?hasImages=true&q={query}` | Search for artworks by keyword |
+| `GET /search?hasImages=true&artistOrCulture=true&q={artist}` | Search by artist name |
+| `GET /objects/{objectID}` | Get detailed artwork data |
+
+**Documentation:** [metmuseum.github.io](https://metmuseum.github.io/)
+
+**Rate Limit:** 80 requests/second (the app implements parallel fetching with cooldowns to stay within limits)
+
+## Tech Stack
+
+- React 19
+- React Router 7
+- Vite
+- Netlify (hosting)
