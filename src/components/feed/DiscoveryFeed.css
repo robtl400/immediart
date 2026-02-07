@@ -178,7 +178,7 @@
   align-items: center;
   justify-content: center;
   gap: 15px;
-  padding: 10px 15px 0px 15px;
+  padding: 12px 15px;
   background-color: #121212;
   flex-shrink: 0;
 }
@@ -264,18 +264,16 @@
 
 /* Text Information Box */
 .text-info {
-  padding: 0px 15px 12px;
+  padding: 8px 15px 12px;
   background-color: #121212;
   flex-shrink: 0;
-  margin: 0;
-  margin-top: -20px;
 }
 
 .artwork-description {
   color: #e0e0e0;
   font-size: 14px;
-  line-height: 1.5;
-  margin: 0 0 8px 0;
+  line-height: 1.6;
+  margin: 0 0 10px 0;
 }
 
 .artist-name {
@@ -325,14 +323,13 @@
 
 /* Comment Section */
 .comment-section {
-  padding: 0px 15px 4px;
+  padding: 4px 15px 16px;
   background-color: #121212;
   flex-shrink: 0;
-  margin-top: -18px;
 }
 
 .comment {
-  margin-bottom: 2px;
+  margin-bottom: 6px;
   font-size: 13px;
   line-height: 1.5;
 }
@@ -383,15 +380,15 @@
   }
 
   .action-buttons {
-    padding: 12px 20px;
-  }
-
-  .text-info {
     padding: 14px 20px;
   }
 
+  .text-info {
+    padding: 10px 20px 14px;
+  }
+
   .comment-section {
-    padding: 12px 20px 24px;
+    padding: 6px 20px 20px;
   }
 }
 
