@@ -1,13 +1,14 @@
 import { useState, Fragment } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useArtworks } from '../../context/ArtworksContext';
 import flyingMachineIcon from '../../assets/FlyingMachine2.png';
 
 /**
  * ArtworkCard Component
- * Displays a single artwork in the discovery feed with image, actions, and metadata
  */
 export default function ArtworkCard({ artwork, isLiked, onLike, onImageDoubleClick }) {
   const navigate = useNavigate();
+  const { pause } = useArtworks();
   const [imageLoaded, setImageLoaded] = useState(false);
   const [isLandscape, setIsLandscape] = useState(true);
 
@@ -18,15 +19,16 @@ export default function ArtworkCard({ artwork, isLiked, onLike, onImageDoubleCli
   };
 
   const handleShare = () => {
-    // TODO: Implement share functionality
     console.log(`Share artwork: ${artwork.title}`);
   };
 
   const handleArtistClick = () => {
+    pause(); // Abort feed requests before navigating
     navigate(`/artist/${encodeURIComponent(artwork.artistName)}`);
   };
 
   const handleHashtagClick = (tag) => {
+    pause(); // Abort feed requests before navigating
     navigate(`/tag/${encodeURIComponent(tag)}`);
   };
 
