@@ -1,25 +1,42 @@
 /**
  * Met Museum Collection API Service
- * Handles all API communication with The Metropolitan Museum of Art Collection API
  */
 
-const BASE_URL = 'https://collectionapi.metmuseum.org/public/collection/v1';
-const BATCH_SIZE = 10;
-const BATCH_DELAY_MS = 75;
+import {
+  API_BASE_URL,
+  MAX_CONCURRENT_REQUESTS,
+  BATCH_COOLDOWN_MS,
+  RATE_LIMIT_RECOVERY_MS,
+  MAX_RETRIES,
+  RETRY_DELAYS,
+  RATE_LIMIT_DELAYS
+} from '../utils/constants';
 
-/**
- * Promise-based delay utility
- * @param {number} ms - Milliseconds to wait
- * @returns {Promise<void>}
- */
-function delay(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
+// Utilities
+const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+const addJitter = (ms) => ms + Math.floor(Math.random() * ms * 0.3);
+
+// Fetch with retry and rate limit handling
+async function fetchWithRetry(url, signal = null) {
+  for (let i = 0; i < MAX_RETRIES; i++) {
+    if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+
+    try {
+      const response = await fetch(url, { signal });
+      if (response.status === 403 && i < MAX_RETRIES - 1) {
+        await delay(addJitter(RATE_LIMIT_DELAYS[i] || RATE_LIMIT_DELAYS.at(-1)));
+        continue;
+      }
+      return response;
+    } catch (error) {
+      if (error.name === 'AbortError') throw error;
+      if (i === MAX_RETRIES - 1) throw error;
+      await delay(RETRY_DELAYS[i] || RETRY_DELAYS.at(-1));
+    }
+  }
 }
 
-/**
- * @param {Array} array - Array to shuffle
- * @returns {Array} New shuffled array
- */
+// Array shuffle
 export function shuffleArray(array) {
   const shuffled = [...array];
   for (let i = shuffled.length - 1; i > 0; i--) {
@@ -29,89 +46,103 @@ export function shuffleArray(array) {
   return shuffled;
 }
 
-/**
- * Fetches object IDs from the search endpoint
- * @param {string} query - Search term (e.g., 'paintings', 'prints')
- * @returns {Promise<number[]>} Array of object IDs
- */
-async function fetchSearchResults(query) {
-  const url = `${BASE_URL}/search?hasImages=true&q=${encodeURIComponent(query)}`;
-  const response = await fetch(url);
-  if (!response.ok) {
+// Search API - unified search function with 403 retry
+export async function search(query, { artistMode = false, signal = null } = {}) {
+  const params = artistMode ? 'hasImages=true&artistOrCulture=true' : 'hasImages=true';
+  const url = `${API_BASE_URL}/search?${params}&q=${encodeURIComponent(query)}`;
+
+  // Try search with additional retry for 403
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+
+    const response = await fetchWithRetry(url, signal);
+
+    if (response.ok) {
+      const data = await response.json();
+      return data.objectIDs || [];
+    }
+
+    // Retry on 403 with increasing delay
+    if (response.status === 403 && attempt < 2) {
+      await delay(RATE_LIMIT_RECOVERY_MS * (attempt + 1));
+      continue;
+    }
+
     throw new Error(`Search failed: ${response.status}`);
   }
-  const data = await response.json();
-  return data.objectIDs || [];
+  return [];
 }
 
-/**
- * Fetches and combines IDs for paintings and prints
- * @returns {Promise<number[]>} Combined, deduplicated array of IDs
- */
-export async function fetchAllObjectIDs() {
-  const paintingIDs = await fetchSearchResults('paintings');
-  return paintingIDs;
-}
+// Convenience wrappers
+export const fetchAllObjectIDs = (signal) => search('paintings', { signal });
+export const searchByArtist = (name, signal) => search(name, { artistMode: true, signal });
+export const searchByTag = (term, signal) => search(term, { signal });
 
-
-/**
- * Validates artwork meets display requirements
- * @param {Object} artwork - Raw API response
- * @returns {boolean} True if valid for display
- */
+// Artwork validation
 export function validateArtwork(artwork) {
-  return (
-    artwork &&
-    artwork.primaryImage &&
-    artwork.primaryImage.trim() !== '' &&
-    artwork.title &&
-    artwork.title.trim() !== '' &&
-    artwork.artistDisplayName &&
-    artwork.artistDisplayName.trim() !== '' &&
-    artwork.isPublicDomain === true
+  return Boolean(
+    artwork?.primaryImage?.trim() &&
+    artwork?.title?.trim() &&
+    artwork?.artistDisplayName?.trim() &&
+    artwork?.isPublicDomain
   );
 }
 
-/**
- * Fetches a single artwork by ID
- * @param {number} objectID - The object ID
- * @returns {Promise<Object|null>} Artwork data or null if invalid
- */
-export async function fetchArtworkByID(objectID) {
+// Fetch single artwork
+export async function fetchArtworkByID(objectID, signal = null) {
   try {
-    const response = await fetch(`${BASE_URL}/objects/${objectID}`);
+    const response = await fetchWithRetry(`${API_BASE_URL}/objects/${objectID}`, signal);
     if (!response.ok) return null;
     const artwork = await response.json();
     return validateArtwork(artwork) ? artwork : null;
   } catch (error) {
-    console.warn(`Failed to fetch artwork ${objectID}:`, error);
+    if (error.name === 'AbortError') throw error;
     return null;
   }
 }
 
-/**
- * Fetches multiple artworks with delays to respect rate limits
- * @param {number[]} objectIDs - Array of IDs to fetch
- * @param {number} targetCount - Target number of valid artworks to return
- * @returns {Promise<Object[]>} Array of valid artworks
- */
-export async function batchFetchArtworks(objectIDs, targetCount = BATCH_SIZE) {
+// Batch fetch with parallel requests and rate limit handling
+export async function batchFetchArtworks(objectIDs, targetCount = 4, signal = null) {
   const artworks = [];
+  let idIndex = 0;
+  let rateLimitStreak = 0;
 
-  for (const id of objectIDs) {
-    const artwork = await fetchArtworkByID(id);
-    if (artwork) {
-      artworks.push(artwork);
+  while (artworks.length < targetCount && idIndex < objectIDs.length) {
+    if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+
+    // Batch size: 2x what we need, capped at max concurrent
+    const remaining = targetCount - artworks.length;
+    const batchSize = Math.min(
+      MAX_CONCURRENT_REQUESTS,
+      Math.max(remaining * 2, 4),
+      objectIDs.length - idIndex
+    );
+
+    const batchIDs = objectIDs.slice(idIndex, idIndex + batchSize);
+    idIndex += batchSize;
+
+    // Parallel fetch
+    const results = await Promise.all(
+      batchIDs.map(id => fetchArtworkByID(id, signal).catch(() => null))
+    );
+    const valid = results.filter(Boolean);
+
+    // Handle rate limiting
+    if (valid.length === 0 && results.length > 0) {
+      rateLimitStreak++;
+      if (rateLimitStreak >= 2) await delay(RATE_LIMIT_RECOVERY_MS * rateLimitStreak);
+    } else {
+      rateLimitStreak = 0;
+      artworks.push(...valid);
     }
 
-    // Stop if we have enough valid artworks
-    if (artworks.length >= targetCount) break;
-
-    // Add delay between requests
-    await delay(BATCH_DELAY_MS);
+    // Cooldown between batches
+    if (artworks.length < targetCount && idIndex < objectIDs.length) {
+      await delay(BATCH_COOLDOWN_MS);
+    }
   }
 
-  return artworks;
+  return artworks.slice(0, targetCount);
 }
 
-export { BASE_URL, BATCH_SIZE };
+export { API_BASE_URL };

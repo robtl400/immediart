@@ -1,0 +1,116 @@
+/* Loading Spinner Styles */
+
+.loading-spinner-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 40px 0;
+}
+
+.loading-spinner-container.large {
+  min-height: 60vh;
+}
+
+.loading-spinner-container.small {
+  padding: 20px;
+  min-height: auto;
+}
+
+/* Sweep container for the flying machine animation */
+.sweep-container {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  max-width: 430px;
+  position: relative;
+  overflow: hidden;
+  background-color: #121212;
+}
+
+.flying-machine-loader {
+  width: 110px;
+  height: 110px;
+  position: absolute;
+  /* Apply gold monochrome filter */
+  filter: brightness(0) saturate(100%) invert(70%) sepia(90%) saturate(400%) hue-rotate(360deg) brightness(95%);
+  animation: sweepAcross 2s ease-in-out infinite;
+}
+
+/* 2s sweep (66.67%), 1s pause (33.33%) */
+@keyframes sweepAcross {
+  0% {
+    /* Start bottom-left, off-screen */
+    bottom: 150px;
+    left: -150px;
+    opacity: 1;
+  }
+  99.98% {
+    /* End top-right, off-screen (2 seconds) */
+    bottom: calc(100% + 100px);
+    left: calc(100% + 100px);
+    opacity: 1;
+  }
+  99.99% {
+    /* Hide immediately */
+    opacity: 0;
+  }
+  100% {
+    /* Stay hidden for 1 second, reset position */
+    bottom: 150px;
+    left: -150px;
+    opacity: 0;
+  }
+}
+
+.loading-spinner-container.small .sweep-container {
+  max-width: 200px;
+}
+
+.loading-spinner-container.small .flying-machine-loader {
+  width: 60px;
+  height: 60px;
+}
+
+.loading-message {
+  color: #888;
+  font-size: 14px;
+  margin-top: 16px;
+}
+
+/* Inline loader for infinite scroll */
+.inline-loader {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  padding: 20px;
+}
+
+.inline-loader .dot {
+  width: 8px;
+  height: 8px;
+  background-color: #A37D00;
+  border-radius: 50%;
+  animation: bounce 1.4s ease-in-out infinite both;
+}
+
+.inline-loader .dot:nth-child(1) {
+  animation-delay: -0.32s;
+}
+
+.inline-loader .dot:nth-child(2) {
+  animation-delay: -0.16s;
+}
+
+.inline-loader .dot:nth-child(3) {
+  animation-delay: 0;
+}
+
+@keyframes bounce {
+  0%, 80%, 100% {
+    transform: scale(0);
+  }
+  40% {
+    transform: scale(1);
+  }
+}

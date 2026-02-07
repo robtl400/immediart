@@ -1,214 +1,146 @@
 /**
- * Artworks Context
- * Manages state for fetching, storing, and providing artwork data
+ * Artworks Context - Discovery feed state management
  */
 
 /* eslint-disable react-refresh/only-export-components */
 
-import { createContext, useContext, useReducer, useEffect, useCallback } from 'react';
-import { fetchAllObjectIDs, batchFetchArtworks, shuffleArray, BATCH_SIZE } from '../services/metAPI';
+import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
+import { fetchAllObjectIDs, batchFetchArtworks, shuffleArray } from '../services/metAPI';
 import { transformAPIToDisplay } from '../utils/transformers';
+import { preloadArtworkImages } from '../utils/imageLoader';
+import { FEED_BATCH_SIZE, MAX_ARTWORKS_IN_MEMORY } from '../utils/constants';
 
 const ArtworksContext = createContext(null);
 
-// Action types
-const ACTIONS = {
-  INIT_START: 'INIT_START',
-  INIT_SUCCESS: 'INIT_SUCCESS',
-  INIT_ERROR: 'INIT_ERROR',
-  LOAD_MORE_START: 'LOAD_MORE_START',
-  LOAD_MORE_SUCCESS: 'LOAD_MORE_SUCCESS',
-  LOAD_MORE_ERROR: 'LOAD_MORE_ERROR',
-  RESHUFFLE: 'RESHUFFLE'
-};
-
-// Initial state
-const initialState = {
-  artworks: [],
-  allObjectIDs: [],
-  shownIDs: new Set(),
-  currentIndex: 0,
-  loading: false,
-  loadingMore: false,
-  error: null,
-  hasMore: true,
-  initialized: false
-};
-
-function artworksReducer(state, action) {
-  switch (action.type) {
-    case ACTIONS.INIT_START:
-      return { ...state, loading: true, error: null };
-
-    case ACTIONS.INIT_SUCCESS:
-      return {
-        ...state,
-        loading: false,
-        initialized: true,
-        allObjectIDs: action.payload.allIDs,
-        artworks: action.payload.artworks,
-        shownIDs: new Set(action.payload.artworks.map(a => a.id)),
-        currentIndex: action.payload.nextIndex,
-        hasMore: action.payload.hasMore
-      };
-
-    case ACTIONS.INIT_ERROR:
-      return { ...state, loading: false, error: action.payload };
-
-    case ACTIONS.LOAD_MORE_START:
-      return { ...state, loadingMore: true };
-
-    case ACTIONS.LOAD_MORE_SUCCESS: {
-      const newShownIDs = new Set(state.shownIDs);
-      action.payload.artworks.forEach(a => newShownIDs.add(a.id));
-
-      // Memory management: keep only last 30 artworks
-      const combinedArtworks = [...state.artworks, ...action.payload.artworks];
-      const trimmedArtworks = combinedArtworks.length > 30
-        ? combinedArtworks.slice(-30)
-        : combinedArtworks;
-
-      return {
-        ...state,
-        loadingMore: false,
-        artworks: trimmedArtworks,
-        shownIDs: newShownIDs,
-        currentIndex: action.payload.nextIndex,
-        hasMore: action.payload.hasMore
-      };
-    }
-
-    case ACTIONS.LOAD_MORE_ERROR:
-      return { ...state, loadingMore: false, error: action.payload };
-
-    case ACTIONS.RESHUFFLE:
-      return {
-        ...state,
-        allObjectIDs: shuffleArray(state.allObjectIDs),
-        shownIDs: new Set(),
-        currentIndex: 0,
-        hasMore: true
-      };
-
-    default:
-      return state;
-  }
-}
-
-/**
- * Gets unused IDs from the shuffled list
- */
-function getUnusedIDs(allIDs, shownIDs, startIndex, count) {
-  const unused = [];
-  for (let i = startIndex; i < allIDs.length && unused.length < count; i++) {
-    if (!shownIDs.has(allIDs[i])) {
-      unused.push(allIDs[i]);
-    }
-  }
-  return unused;
-}
-
 export function ArtworksProvider({ children }) {
-  const [state, dispatch] = useReducer(artworksReducer, initialState);
+  // State
+  const [artworks, setArtworks] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [error, setError] = useState(null);
+  const [hasMore, setHasMore] = useState(true);
 
-  // Initialize on mount
-  const initializeArtworks = useCallback(async () => {
-    dispatch({ type: ACTIONS.INIT_START });
+  // Refs for tracking fetch state
+  const allIDsRef = useRef([]);
+  const currentIndexRef = useRef(0);
+  const shownIDsRef = useRef(new Set());
+  const fetchingRef = useRef(false);
+  const abortControllerRef = useRef(null);
+  const fetchIdRef = useRef(0);
+
+  // Fetch artworks (initial or load more)
+  const fetchArtworks = useCallback(async (isInitial = false) => {
+    if (fetchingRef.current) return;
+    fetchingRef.current = true;
+
+    // Cancel previous request
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = new AbortController();
+    const signal = abortControllerRef.current.signal;
+    const currentFetchId = ++fetchIdRef.current;
 
     try {
-      // Fetch all IDs
-      const allIDs = await fetchAllObjectIDs();
-      const shuffledIDs = shuffleArray(allIDs);
+      if (isInitial) {
+        setLoading(true);
+        const allIDs = await fetchAllObjectIDs(signal);
+        if (fetchIdRef.current !== currentFetchId) return;
+        allIDsRef.current = shuffleArray(allIDs);
+        currentIndexRef.current = 0;
+        shownIDsRef.current = new Set();
+      } else {
+        setLoadingMore(true);
+      }
 
-      // Fetch initial batch (fetch more IDs than needed to account for invalid ones)
-      const idsToTry = shuffledIDs.slice(0, BATCH_SIZE * 3);
-      const rawArtworks = await batchFetchArtworks(idsToTry, BATCH_SIZE);
-      const artworks = rawArtworks.map(transformAPIToDisplay);
+      // Get next batch of unshown IDs
+      const idsToTry = [];
+      let i = currentIndexRef.current;
+      while (idsToTry.length < FEED_BATCH_SIZE * 3 && i < allIDsRef.current.length) {
+        const id = allIDsRef.current[i];
+        if (!shownIDsRef.current.has(id)) idsToTry.push(id);
+        i++;
+      }
+      currentIndexRef.current = i;
 
-      dispatch({
-        type: ACTIONS.INIT_SUCCESS,
-        payload: {
-          allIDs: shuffledIDs,
-          artworks,
-          nextIndex: BATCH_SIZE * 3,
-          hasMore: shuffledIDs.length > BATCH_SIZE * 3
-        }
+      if (idsToTry.length === 0) {
+        setHasMore(false);
+        return;
+      }
+
+      // Fetch and transform
+      const rawArtworks = await batchFetchArtworks(idsToTry, FEED_BATCH_SIZE, signal);
+      if (fetchIdRef.current !== currentFetchId) return;
+      const newArtworks = rawArtworks.map(transformAPIToDisplay);
+
+      // Preload images on initial load
+      if (isInitial) await preloadArtworkImages(newArtworks);
+      if (fetchIdRef.current !== currentFetchId) return;
+
+      // Track shown IDs and update state
+      newArtworks.forEach(a => shownIDsRef.current.add(a.id));
+      setArtworks(prev => {
+        const combined = [...prev, ...newArtworks];
+        return combined.length > MAX_ARTWORKS_IN_MEMORY
+          ? combined.slice(-MAX_ARTWORKS_IN_MEMORY)
+          : combined;
       });
-    } catch (error) {
-      dispatch({ type: ACTIONS.INIT_ERROR, payload: error.message });
+      setHasMore(currentIndexRef.current < allIDsRef.current.length);
+      setError(null);
+    } catch (err) {
+      if (err.name === 'AbortError') return;
+      if (fetchIdRef.current === currentFetchId) setError(err.message);
+    } finally {
+      if (fetchIdRef.current === currentFetchId) {
+        setLoading(false);
+        setLoadingMore(false);
+        fetchingRef.current = false;
+      }
     }
   }, []);
 
-  // Load more artworks for infinite scroll
-  const loadMoreArtworks = useCallback(async () => {
-    if (state.loadingMore || !state.hasMore) return;
-
-    dispatch({ type: ACTIONS.LOAD_MORE_START });
-
-    try {
-      let idsToTry;
-      let nextIndex;
-
-      // Check if we've shown all IDs - reshuffle if needed
-      if (state.currentIndex >= state.allObjectIDs.length) {
-        // Reshuffle and start over
-        const reshuffled = shuffleArray(state.allObjectIDs);
-        idsToTry = reshuffled.slice(0, BATCH_SIZE * 3);
-        nextIndex = BATCH_SIZE * 3;
-
-        // Dispatch reshuffle first
-        dispatch({ type: ACTIONS.RESHUFFLE });
-      } else {
-        // Get next batch of IDs (skip already shown)
-        idsToTry = getUnusedIDs(
-          state.allObjectIDs,
-          state.shownIDs,
-          state.currentIndex,
-          BATCH_SIZE * 3
-        );
-        nextIndex = state.currentIndex + BATCH_SIZE * 3;
-      }
-
-      const rawArtworks = await batchFetchArtworks(idsToTry, BATCH_SIZE);
-      const artworks = rawArtworks.map(transformAPIToDisplay);
-
-      dispatch({
-        type: ACTIONS.LOAD_MORE_SUCCESS,
-        payload: {
-          artworks,
-          nextIndex,
-          hasMore: nextIndex < state.allObjectIDs.length || state.allObjectIDs.length > 0
-        }
-      });
-    } catch (error) {
-      dispatch({ type: ACTIONS.LOAD_MORE_ERROR, payload: error.message });
-    }
-  }, [state.loadingMore, state.hasMore, state.currentIndex, state.allObjectIDs, state.shownIDs]);
-
-  // Retry after error
-  const retry = useCallback(() => {
-    if (!state.initialized) {
-      initializeArtworks();
-    } else {
-      loadMoreArtworks();
-    }
-  }, [state.initialized, initializeArtworks, loadMoreArtworks]);
-
-  // Auto-initialize on mount
+  // Initialize on mount
   useEffect(() => {
-    initializeArtworks();
-  }, [initializeArtworks]);
+    fetchArtworks(true);
+  }, [fetchArtworks]);
+
+  // Public API
+  const loadMoreArtworks = useCallback(() => {
+    if (!fetchingRef.current && hasMore && !loadingMore) fetchArtworks(false);
+  }, [fetchArtworks, hasMore, loadingMore]);
+
+  const retry = useCallback(() => {
+    abortControllerRef.current?.abort();
+    fetchingRef.current = false;
+    fetchArtworks(artworks.length === 0);
+  }, [fetchArtworks, artworks.length]);
+
+  const refresh = useCallback(() => {
+    abortControllerRef.current?.abort();
+    setArtworks([]);
+    setHasMore(true);
+    setError(null);
+    allIDsRef.current = [];
+    currentIndexRef.current = 0;
+    shownIDsRef.current = new Set();
+    fetchingRef.current = false;
+    fetchArtworks(true);
+  }, [fetchArtworks]);
+
+  // Pause fetching (for navigation away)
+  const pause = useCallback(() => {
+    abortControllerRef.current?.abort();
+    fetchingRef.current = false;
+  }, []);
 
   const value = {
-    artworks: state.artworks,
-    loading: state.loading,
-    loadingMore: state.loadingMore,
-    error: state.error,
-    hasMore: state.hasMore,
-    initialized: state.initialized,
+    artworks,
+    loading,
+    loadingMore,
+    error,
+    hasMore,
     loadMoreArtworks,
     retry,
-    initializeArtworks
+    refresh,
+    pause
   };
 
   return (
@@ -218,13 +150,8 @@ export function ArtworksProvider({ children }) {
   );
 }
 
-/**
- * Custom hook for consuming context
- */
 export function useArtworks() {
   const context = useContext(ArtworksContext);
-  if (!context) {
-    throw new Error('useArtworks must be used within an ArtworksProvider');
-  }
+  if (!context) throw new Error('useArtworks must be used within ArtworksProvider');
   return context;
 }
