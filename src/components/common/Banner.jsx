@@ -1,6 +1,6 @@
 import { useNavigate, useLocation } from 'react-router-dom';
-import flyingMachineIcon from '../assets/FlyingMachine2.png';
-import { useArtworks } from '../context/ArtworksContext';
+import flyingMachineIcon from '../../assets/FlyingMachine2.png';
+import { useArtworks } from '../../context/ArtworksContext';
 
 /**
  * Shared Banner component
@@ -31,7 +31,6 @@ export default function Banner({ isScrolled = false, feedRef = null }) {
     <header
       className={`banner ${isScrolled || !isHome ? 'scrolled' : ''}`}
       onClick={handleClick}
-      style={{ cursor: 'pointer' }}
       role="button"
       tabIndex={0}
       onKeyDown={(e) => e.key === 'Enter' && handleClick()}

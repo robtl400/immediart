@@ -1,6 +1,5 @@
 /**
- * Artworks Context
- * Manages state for fetching, storing, and providing artwork data
+ * Artworks Context - Discovery feed state management
  */
 
 /* eslint-disable react-refresh/only-export-components */
@@ -8,34 +7,20 @@
 import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { fetchAllObjectIDs, batchFetchArtworks, shuffleArray } from '../services/metAPI';
 import { transformAPIToDisplay } from '../utils/transformers';
+import { preloadArtworkImages } from '../utils/imageLoader';
+import { FEED_BATCH_SIZE, MAX_ARTWORKS_IN_MEMORY } from '../utils/constants';
 
 const ArtworksContext = createContext(null);
 
-const BATCH_SIZE = 2; // Artworks to fetch per load
-
-// Preload an image and return a promise that resolves when loaded
-function preloadImage(url) {
-  return new Promise((resolve) => {
-    const img = new Image();
-    img.onload = () => resolve(true);
-    img.onerror = () => resolve(false); // Still resolve to not block on failed images
-    img.src = url;
-  });
-}
-
-// Preload all images for a batch of artworks
-async function preloadArtworkImages(artworks) {
-  await Promise.all(artworks.map(a => preloadImage(a.imageUrl)));
-}
-
 export function ArtworksProvider({ children }) {
+  // State
   const [artworks, setArtworks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState(null);
   const [hasMore, setHasMore] = useState(true);
 
-  // Refs for data that persists across renders but doesn't trigger re-renders
+  // Refs for tracking fetch state
   const allIDsRef = useRef([]);
   const currentIndexRef = useRef(0);
   const shownIDsRef = useRef(new Set());
@@ -43,16 +28,13 @@ export function ArtworksProvider({ children }) {
   const abortControllerRef = useRef(null);
   const fetchIdRef = useRef(0);
 
-  // Single fetch function for both initial and subsequent loads
+  // Fetch artworks (initial or load more)
   const fetchArtworks = useCallback(async (isInitial = false) => {
-    // Prevent concurrent fetches
     if (fetchingRef.current) return;
     fetchingRef.current = true;
 
-    // Cancel any previous request
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-    }
+    // Cancel previous request
+    abortControllerRef.current?.abort();
     abortControllerRef.current = new AbortController();
     const signal = abortControllerRef.current.signal;
     const currentFetchId = ++fetchIdRef.current;
@@ -60,9 +42,7 @@ export function ArtworksProvider({ children }) {
     try {
       if (isInitial) {
         setLoading(true);
-        // Fetch and shuffle all IDs once
         const allIDs = await fetchAllObjectIDs(signal);
-        // Check if this fetch is still current
         if (fetchIdRef.current !== currentFetchId) return;
         allIDsRef.current = shuffleArray(allIDs);
         currentIndexRef.current = 0;
@@ -71,58 +51,43 @@ export function ArtworksProvider({ children }) {
         setLoadingMore(true);
       }
 
-      // Get next batch of IDs to try
+      // Get next batch of unshown IDs
       const idsToTry = [];
       let i = currentIndexRef.current;
-      while (idsToTry.length < BATCH_SIZE * 3 && i < allIDsRef.current.length) {
+      while (idsToTry.length < FEED_BATCH_SIZE * 3 && i < allIDsRef.current.length) {
         const id = allIDsRef.current[i];
-        if (!shownIDsRef.current.has(id)) {
-          idsToTry.push(id);
-        }
+        if (!shownIDsRef.current.has(id)) idsToTry.push(id);
         i++;
       }
       currentIndexRef.current = i;
 
-      // Check if we've exhausted all IDs
       if (idsToTry.length === 0) {
         setHasMore(false);
         return;
       }
 
-      // Fetch artworks
-      const rawArtworks = await batchFetchArtworks(idsToTry, BATCH_SIZE, signal);
-      // Check if this fetch is still current
+      // Fetch and transform
+      const rawArtworks = await batchFetchArtworks(idsToTry, FEED_BATCH_SIZE, signal);
       if (fetchIdRef.current !== currentFetchId) return;
       const newArtworks = rawArtworks.map(transformAPIToDisplay);
 
-      // Preload images before showing (only for initial load)
-      if (isInitial) {
-        await preloadArtworkImages(newArtworks);
-      }
-
-      // Final check before updating state
+      // Preload images on initial load
+      if (isInitial) await preloadArtworkImages(newArtworks);
       if (fetchIdRef.current !== currentFetchId) return;
 
-      // Track shown IDs
+      // Track shown IDs and update state
       newArtworks.forEach(a => shownIDsRef.current.add(a.id));
-
-      // Update state
       setArtworks(prev => {
         const combined = [...prev, ...newArtworks];
-        // Keep last 30 for memory management
-        return combined.length > 30 ? combined.slice(-30) : combined;
+        return combined.length > MAX_ARTWORKS_IN_MEMORY
+          ? combined.slice(-MAX_ARTWORKS_IN_MEMORY)
+          : combined;
       });
-
-      // Check if more available
       setHasMore(currentIndexRef.current < allIDsRef.current.length);
       setError(null);
     } catch (err) {
-      // Ignore abort errors
       if (err.name === 'AbortError') return;
-      // Only set error if this fetch is still current
-      if (fetchIdRef.current === currentFetchId) {
-        setError(err.message);
-      }
+      if (fetchIdRef.current === currentFetchId) setError(err.message);
     } finally {
       if (fetchIdRef.current === currentFetchId) {
         setLoading(false);
@@ -137,33 +102,19 @@ export function ArtworksProvider({ children }) {
     fetchArtworks(true);
   }, [fetchArtworks]);
 
-  // Public load more function
+  // Public API
   const loadMoreArtworks = useCallback(() => {
-    if (!fetchingRef.current && hasMore && !loadingMore) {
-      fetchArtworks(false);
-    }
+    if (!fetchingRef.current && hasMore && !loadingMore) fetchArtworks(false);
   }, [fetchArtworks, hasMore, loadingMore]);
 
-  // Retry function
   const retry = useCallback(() => {
-    // Abort any in-flight request
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-    }
+    abortControllerRef.current?.abort();
     fetchingRef.current = false;
-    if (artworks.length === 0) {
-      fetchArtworks(true);
-    } else {
-      fetchArtworks(false);
-    }
+    fetchArtworks(artworks.length === 0);
   }, [fetchArtworks, artworks.length]);
 
-  // Refresh function - clears artworks and fetches fresh ones
   const refresh = useCallback(() => {
-    // Abort any in-flight request
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-    }
+    abortControllerRef.current?.abort();
     setArtworks([]);
     setHasMore(true);
     setError(null);
@@ -174,6 +125,12 @@ export function ArtworksProvider({ children }) {
     fetchArtworks(true);
   }, [fetchArtworks]);
 
+  // Pause fetching (for navigation away)
+  const pause = useCallback(() => {
+    abortControllerRef.current?.abort();
+    fetchingRef.current = false;
+  }, []);
+
   const value = {
     artworks,
     loading,
@@ -182,7 +139,8 @@ export function ArtworksProvider({ children }) {
     hasMore,
     loadMoreArtworks,
     retry,
-    refresh
+    refresh,
+    pause
   };
 
   return (
@@ -192,13 +150,8 @@ export function ArtworksProvider({ children }) {
   );
 }
 
-/**
- * Custom hook for consuming context
- */
 export function useArtworks() {
   const context = useContext(ArtworksContext);
-  if (!context) {
-    throw new Error('useArtworks must be used within an ArtworksProvider');
-  }
+  if (!context) throw new Error('useArtworks must be used within ArtworksProvider');
   return context;
 }

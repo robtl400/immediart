@@ -1,6 +1,6 @@
 import { useEffect, useCallback } from 'react';
-import { useArtworkModal } from '../context/ArtworkModalContext';
-import Banner from './Banner';
+import { useArtworkModal } from '../../context/ArtworkModalContext';
+import Banner from '../common/Banner';
 import './ArtworkModal.css';
 
 export default function ArtworkModal() {

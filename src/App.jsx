@@ -3,9 +3,9 @@ import './App.css'
 import { ArtworksProvider } from './context/ArtworksContext'
 import { GridBrowseProvider } from './context/GridBrowseContext'
 import { ArtworkModalProvider } from './context/ArtworkModalContext'
-import DiscoveryFeed from './components/DiscoveryFeed'
-import GridBrowse from './components/GridBrowse'
-import ArtworkModal from './components/ArtworkModal'
+import DiscoveryFeed from './components/feed/DiscoveryFeed'
+import GridBrowse from './components/grid/GridBrowse'
+import ArtworkModal from './components/modal/ArtworkModal'
 
 export default function App() {
   return (

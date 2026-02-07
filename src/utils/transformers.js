@@ -1,88 +1,47 @@
-
+/**
+ * Data transformers - API to display format
+ */
 
 import { shuffleArray } from '../services/metAPI';
 
-/**
- * USERNAMES: 
- * @param {string} artistName - e.g., "Vincent van Gogh"
- * @returns {string} e.g., "@vincent_van_gogh"
- */
+// Format artist name as username: "Vincent van Gogh" → "@vincent_van_gogh"
 export function formatArtistUsername(artistName) {
   if (!artistName) return '@Unknown_Artist';
-  // Replace spaces with underscores
   const formatted = artistName.toLowerCase().replace(/\s+/g, '_').replace('-', '_').replace(/\s*\(.*?\)\s*/g, '');
   return `@${formatted}`;
 }
 
-/**
- * HASHTAGS:
- * @param {Array} tagsArray - API tags array with {term, AAT_URL, Wikidata_URL}
- * @param {number} count - Maximum tags to return
- * @returns {string[]} Array of tag terms (without # prefix)
- */
+// Extract random tags from API tags array
 export function extractRandomTags(tagsArray, count = 5) {
-  if (!tagsArray || !Array.isArray(tagsArray) || tagsArray.length === 0) {
-    return [];
-  }
-
-  // Shuffle
-  const shuffled = shuffleArray(tagsArray);
-  return shuffled
+  if (!tagsArray?.length) return [];
+  return shuffleArray(tagsArray)
     .slice(0, count)
     .map(tag => tag.term)
-    .filter(term => term && term.trim());
+    .filter(term => term?.trim());
 }
 
-/**
- * DESCRIPTION BUILDER:
- * @param {Object} artwork - API artwork object
- * @returns {string} Combined description
- */
+// Build description from artwork metadata
 export function buildDescription(artwork) {
-  const parts = [];
-
-  if (artwork.title) parts.push(artwork.title);
-  if (artwork.medium) parts.push(artwork.medium);
-  //if (artwork.objectDate) parts.push(artwork.objectDate);
-  if (artwork.culture) parts.push(artwork.culture);
-  if (artwork.period) parts.push(artwork.period);
-
-  return parts.join('. ');
+  return [artwork.title, artwork.medium, artwork.culture, artwork.period]
+    .filter(Boolean)
+    .join('. ');
 }
 
-/**
- * COMMENTS BUILDER:
- * @param {Object} artwork - API artwork object
- * @returns {Array} Array of comment objects
- */
+// Build comments array
 export function buildComments(artwork) {
-  const comments = [];
+  if (!artwork.department) return [];
 
-  // Department comment with gallery info
-  if (artwork.department) {
-    const deptUsername = '@TheMetMuseum';
-    let text;
+  const text = artwork.GalleryNumber
+    ? `From the ${artwork.department} department and currently on display in Gallery ${artwork.GalleryNumber} - come visit us!`
+    : `From the ${artwork.department} department! ${artwork.creditLine} ${artwork.rightsAndReproduction}`;
 
-    if (artwork.GalleryNumber) {
-      text = `From the ${artwork.department} department and currently on display in Gallery ${artwork.GalleryNumber} - come visit us!`;
-    } else {
-      text = `From the ${artwork.department} department! ${artwork.creditLine} ${artwork.rightsAndReproduction}`;
-    }
-
-    comments.push({ username: deptUsername, text });
-  }
-
-  return comments;
+  return [{ username: '@TheMetMuseum', text }];
 }
 
-/**
- * Transforms Met API artwork data to display format
- * @param {Object} apiArtwork - Raw API response
- * @returns {Object} Transformed artwork for UI display
- */
+// Transform API response to display format
 export function transformAPIToDisplay(apiArtwork) {
   return {
-    // Core display fields
+    // Core fields
     id: apiArtwork.objectID,
     imageUrl: apiArtwork.primaryImageSmall || apiArtwork.primaryImage,
     artistName: apiArtwork.artistDisplayName,
@@ -93,7 +52,7 @@ export function transformAPIToDisplay(apiArtwork) {
     tags: extractRandomTags(apiArtwork.tags, 4),
     comments: buildComments(apiArtwork),
 
-    // Additional metadata
+    // Metadata
     medium: apiArtwork.medium || '',
     culture: apiArtwork.culture || '',
     period: apiArtwork.period || '',

@@ -4,7 +4,7 @@
  */
 
 import './LoadingSpinner.css';
-import flyingMachineIcon from '../assets/FlyingMachine2.png';
+import flyingMachineIcon from '../../assets/FlyingMachine2.png';
 
 export default function LoadingSpinner({ size = 'large', message = '' }) {
   return (
