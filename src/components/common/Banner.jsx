@@ -1,5 +1,5 @@
 import { useNavigate, useLocation } from 'react-router-dom';
-import flyingMachineIcon from '../../assets/FlyingMachine2.png';
+import flyingMachineIcon from '../../assets/FlyingMachine2_tinted_gold.png';
 import { useArtworks } from '../../context/ArtworksContext';
 
 /**

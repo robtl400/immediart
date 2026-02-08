@@ -54,8 +54,6 @@
 .banner-logo {
   height: 2.4rem;
   width: auto;
-  /* Apply gold monochrome filter (adjusted slightly lighter to match #F0B900) */
-  filter: brightness(0) saturate(100%) invert(70%) sepia(90%) saturate(700%) hue-rotate(360deg) brightness(95%);
   opacity: 1;
   transition: transform 0.4s ease, opacity 0.4s ease;
 }
@@ -141,11 +139,9 @@
   position: absolute;
   width: 100px;
   height: 100px;
-  background-image: url('../../assets/FlyingMachine2.png');
+  background-image: url('../../assets/FlyingMachine2_tinted_gold.png');
   background-size: contain;
   background-repeat: no-repeat;
-  /* Apply gold monochrome filter */
-  filter: brightness(0) saturate(100%) invert(70%) sepia(90%) saturate(400%) hue-rotate(360deg) brightness(95%);
   animation: placeholderSweep 3s ease-in-out infinite;
 }
 
@@ -253,8 +249,6 @@
 .share-btn .share-icon {
   width: 24px;
   height: 24px;
-  /* Apply gold monochrome filter - converts entire image to gold */
-  filter: brightness(0) saturate(100%) invert(70%) sepia(90%) saturate(400%) hue-rotate(360deg) brightness(95%);
 }
 
 .share-btn .btn-label {

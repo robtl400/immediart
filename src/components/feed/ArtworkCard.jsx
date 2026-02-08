@@ -1,7 +1,7 @@
 import { useState, Fragment } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useArtworks } from '../../context/ArtworksContext';
-import flyingMachineIcon from '../../assets/FlyingMachine2.png';
+import flyingMachineIcon from '../../assets/FlyingMachine2_tinted_gold.png';
 
 /**
  * ArtworkCard Component
