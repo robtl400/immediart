@@ -71,8 +71,8 @@ export function ArtworksProvider({ children }) {
       if (fetchIdRef.current !== currentFetchId) return;
       const newArtworks = rawArtworks.map(transformAPIToDisplay);
 
-      // Preload images on initial load
-      if (isInitial) await preloadArtworkImages(newArtworks);
+      // Preload images on initial load (pass signal to allow abort)
+      if (isInitial) await preloadArtworkImages(newArtworks, signal);
       if (fetchIdRef.current !== currentFetchId) return;
 
       // Track shown IDs and update state

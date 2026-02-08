@@ -15,14 +15,14 @@ export default function Banner({ isScrolled = false, feedRef = null }) {
 
   const handleClick = () => {
     if (isHome) {
-      // Scroll to top and refresh artworks
+      // On home: scroll to top and refresh artworks
       if (feedRef?.current) {
         feedRef.current.scrollTo({ top: 0, behavior: 'smooth' });
       }
-    }
-    // Always refresh artworks when banner is clicked
-    refresh();
-    if (!isHome) {
+      refresh();
+    } else {
+      // From other pages: just navigate home (avoid race condition with refresh)
+      // User can click banner again once on home to refresh if needed
       navigate('/');
     }
   };

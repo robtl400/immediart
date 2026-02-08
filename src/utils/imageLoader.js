@@ -8,11 +8,34 @@ export function preloadImage(url, signal = null) {
     if (signal?.aborted) return resolve(false);
 
     const img = new Image();
-    img.onload = () => resolve(true);
-    img.onerror = () => resolve(false);
-    img.src = url;
+    let resolved = false;
 
-    signal?.addEventListener('abort', () => resolve(false));
+    const cleanup = () => {
+      if (resolved) return;
+      resolved = true;
+      img.onload = null;
+      img.onerror = null;
+      if (signal) signal.removeEventListener('abort', handleAbort);
+    };
+
+    const handleAbort = () => {
+      cleanup();
+      img.src = ''; // Cancel the image load
+      resolve(false);
+    };
+
+    img.onload = () => {
+      cleanup();
+      resolve(true);
+    };
+
+    img.onerror = () => {
+      cleanup();
+      resolve(false);
+    };
+
+    if (signal) signal.addEventListener('abort', handleAbort);
+    img.src = url;
   });
 }
 
