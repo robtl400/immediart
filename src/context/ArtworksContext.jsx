@@ -8,7 +8,7 @@ import { createContext, useContext, useState, useEffect, useCallback, useRef } f
 import { fetchAllObjectIDs, batchFetchArtworks, shuffleArray } from '../services/metAPI';
 import { transformAPIToDisplay } from '../utils/transformers';
 import { preloadArtworkImages } from '../utils/imageLoader';
-import { FEED_BATCH_SIZE, MAX_ARTWORKS_IN_MEMORY } from '../utils/constants';
+import { FEED_BATCH_SIZE, MAX_ARTWORKS_IN_MEMORY, RATE_LIMIT_RECOVERY_MS } from '../utils/constants';
 
 const ArtworksContext = createContext(null);
 
@@ -107,21 +107,27 @@ export function ArtworksProvider({ children }) {
     if (!fetchingRef.current && hasMore && !loadingMore) fetchArtworks(false);
   }, [fetchArtworks, hasMore, loadingMore]);
 
-  const retry = useCallback(() => {
+  const retry = useCallback(async () => {
     abortControllerRef.current?.abort();
     fetchingRef.current = false;
+    setLoading(true);
+    // Wait for rate limit recovery after aborting previous requests
+    await new Promise(r => setTimeout(r, RATE_LIMIT_RECOVERY_MS));
     fetchArtworks(artworks.length === 0);
   }, [fetchArtworks, artworks.length]);
 
-  const refresh = useCallback(() => {
+  const refresh = useCallback(async () => {
     abortControllerRef.current?.abort();
     setArtworks([]);
     setHasMore(true);
     setError(null);
+    setLoading(true);
     allIDsRef.current = [];
     currentIndexRef.current = 0;
     shownIDsRef.current = new Set();
     fetchingRef.current = false;
+    // Wait for rate limit recovery after aborting previous requests
+    await new Promise(r => setTimeout(r, RATE_LIMIT_RECOVERY_MS));
     fetchArtworks(true);
   }, [fetchArtworks]);
 
