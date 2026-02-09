@@ -1,16 +1,18 @@
 import { useNavigate, useLocation } from 'react-router-dom';
 import flyingMachineIcon from '../../assets/FlyingMachine2_tinted_gold.png';
 import { useArtworks } from '../../context/ArtworksContext';
+import { useGridBrowse } from '../../context/GridBrowseContext';
 
 /**
  * Shared Banner component
  * - On home page: clickable to refresh artworks and scroll to top
- * - On other pages: displays compact banner, clickable to go home
+ * - On other pages: aborts grid requests and navigates home with refresh
  */
 export default function Banner({ isScrolled = false, feedRef = null }) {
   const navigate = useNavigate();
   const location = useLocation();
   const { refresh } = useArtworks();
+  const { abort: abortGrid } = useGridBrowse();
   const isHome = location.pathname === '/';
 
   const handleClick = () => {
@@ -21,9 +23,11 @@ export default function Banner({ isScrolled = false, feedRef = null }) {
       }
       refresh();
     } else {
-      // From other pages: just navigate home (avoid race condition with refresh)
-      // User can click banner again once on home to refresh if needed
+      // From other pages: abort grid requests, navigate home, then refresh
+      abortGrid();
       navigate('/');
+      // Refresh after navigation (delay allows navigation to complete)
+      setTimeout(refresh, 100);
     }
   };
 

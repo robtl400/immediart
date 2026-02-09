@@ -46,15 +46,16 @@ export function shuffleArray(array) {
   return shuffled;
 }
 
-// Search API - unified search function with 403 retry
+// Search API - unified search function with rate limit handling
 export async function search(query, { artistMode = false, signal = null } = {}) {
   const params = artistMode ? 'hasImages=true&artistOrCulture=true' : 'hasImages=true';
   const url = `${API_BASE_URL}/search?${params}&q=${encodeURIComponent(query)}`;
 
-  // Try search with additional retry for 403
-  for (let attempt = 0; attempt < 3; attempt++) {
-    if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+  // Single attempt - rely on batch-level rate limit handling
+  // Retries at this level cause cascading failures
+  if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
 
+  try {
     const response = await fetchWithRetry(url, signal);
 
     if (response.ok) {
@@ -62,15 +63,12 @@ export async function search(query, { artistMode = false, signal = null } = {}) 
       return data.objectIDs || [];
     }
 
-    // Retry on 403 with increasing delay
-    if (response.status === 403 && attempt < 2) {
-      await delay(RATE_LIMIT_RECOVERY_MS * (attempt + 1));
-      continue;
-    }
-
+    // 403 at search level is a hard failure - don't retry
     throw new Error(`Search failed: ${response.status}`);
+  } catch (error) {
+    if (error.name === 'AbortError') throw error;
+    throw error;
   }
-  return [];
 }
 
 // Convenience wrappers

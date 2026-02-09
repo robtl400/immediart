@@ -141,10 +141,13 @@ export function GridBrowseProvider({ children }) {
     }
   }, [hasMore]);
 
-  // Abort requests
+  // Abort requests and reset loading states
   const abort = useCallback(() => {
     abortControllerRef.current?.abort();
+    abortControllerRef.current = null;
     fetchingRef.current = false;
+    setLoading(false);
+    setLoadingMore(false);
   }, []);
 
   const value = {
