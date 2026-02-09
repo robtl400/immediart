@@ -7,11 +7,10 @@
 export const API_BASE_URL = 'https://collectionapi.metmuseum.org/public/collection/v1';
 
 // Parallel Fetching Configuration
-// The Met API has a rolling window rate limit (~80 req/sec) but bursts trigger 403s
-// Conservative pattern: fewer parallel requests with longer cooldowns
-export const MAX_CONCURRENT_REQUESTS = 5; // Max parallel requests per batch (reduced from 10)
-export const BATCH_COOLDOWN_MS = 800; // Cooldown between parallel batches (increased from 500)
-export const RATE_LIMIT_RECOVERY_MS = 2000; // Wait time after 403 before retry (increased from 1000)
+// The Met API rate limits aggressively - prioritize reliability over speed
+export const MAX_CONCURRENT_REQUESTS = 2; // Sequential-ish fetching to avoid rate limits
+export const BATCH_COOLDOWN_MS = 1000; // 1 second between batches
+export const RATE_LIMIT_RECOVERY_MS = 3000; // Wait time after errors
 
 // Batch Sizes
 export const FEED_BATCH_SIZE = 4; // Artworks to fetch per load in discovery feed (increased)

@@ -81,6 +81,10 @@ export function GridBrowseProvider({ children }) {
         return;
       }
 
+      // Wait before fetching objects to avoid rate limit after search
+      await new Promise(r => setTimeout(r, SEARCH_COOLDOWN_MS));
+      if (signal.aborted) return;
+
       // Fetch first batch
       const idsToTry = allIDs.slice(0, GRID_BATCH_SIZE * 2);
       currentIndexRef.current = GRID_BATCH_SIZE * 2;
@@ -116,6 +120,7 @@ export function GridBrowseProvider({ children }) {
     setLoadingMore(true);
 
     const signal = abortControllerRef.current.signal;
+    const currentSearchId = searchIdRef.current; // Capture current search ID
 
     try {
       const startIndex = currentIndexRef.current;
@@ -128,16 +133,25 @@ export function GridBrowseProvider({ children }) {
       }
 
       const rawArtworks = await batchFetchArtworks(idsToTry, GRID_BATCH_SIZE, signal);
+      // Check if a new search started during fetch
+      if (searchIdRef.current !== currentSearchId) return;
+
       const newArtworks = rawArtworks.map(transformAPIToDisplay);
       await preloadArtworkImages(newArtworks, signal);
+
+      // Check again after image preload
+      if (searchIdRef.current !== currentSearchId) return;
 
       setArtworks(prev => [...prev, ...newArtworks]);
       setHasMore(currentIndexRef.current < allIDsRef.current.length);
     } catch (err) {
       if (err.name !== 'AbortError') setError(err.message);
     } finally {
-      setLoadingMore(false);
-      fetchingRef.current = false;
+      // Only reset if this is still the current search
+      if (searchIdRef.current === currentSearchId) {
+        setLoadingMore(false);
+        fetchingRef.current = false;
+      }
     }
   }, [hasMore]);
 

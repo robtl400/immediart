@@ -47,6 +47,9 @@ export function ArtworksProvider({ children }) {
         allIDsRef.current = shuffleArray(allIDs);
         currentIndexRef.current = 0;
         shownIDsRef.current = new Set();
+        // Wait before fetching objects to avoid rate limit after search
+        await new Promise(r => setTimeout(r, RATE_LIMIT_RECOVERY_MS));
+        if (signal.aborted) return;
       } else {
         setLoadingMore(true);
       }

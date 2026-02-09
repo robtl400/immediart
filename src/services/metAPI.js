@@ -119,10 +119,15 @@ export async function batchFetchArtworks(objectIDs, targetCount = 4, signal = nu
     const batchIDs = objectIDs.slice(idIndex, idIndex + batchSize);
     idIndex += batchSize;
 
-    // Parallel fetch
+    // Parallel fetch - properly propagate AbortError
     const results = await Promise.all(
-      batchIDs.map(id => fetchArtworkByID(id, signal).catch(() => null))
+      batchIDs.map(id => fetchArtworkByID(id, signal).catch(err => {
+        if (err.name === 'AbortError') throw err;
+        return null;
+      }))
     );
+    // If we get here after abort, check signal again
+    if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
     const valid = results.filter(Boolean);
 
     // Handle rate limiting
