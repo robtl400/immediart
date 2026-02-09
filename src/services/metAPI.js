@@ -8,7 +8,6 @@ import {
   BATCH_COOLDOWN_MS,
   RATE_LIMIT_RECOVERY_MS,
   MAX_RETRIES,
-  RETRY_DELAYS,
   RATE_LIMIT_DELAYS
 } from '../utils/constants';
 
@@ -31,7 +30,8 @@ async function fetchWithRetry(url, signal = null) {
     } catch (error) {
       if (error.name === 'AbortError') throw error;
       if (i === MAX_RETRIES - 1) throw error;
-      await delay(RETRY_DELAYS[i] || RETRY_DELAYS.at(-1));
+      // Network errors (including CORS-blocked 403s) use rate limit delays
+      await delay(addJitter(RATE_LIMIT_DELAYS[i] || RATE_LIMIT_DELAYS.at(-1)));
     }
   }
 }
