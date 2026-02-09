@@ -6,7 +6,6 @@ import {
   API_BASE_URL,
   MAX_CONCURRENT_REQUESTS,
   BATCH_COOLDOWN_MS,
-  RATE_LIMIT_RECOVERY_MS,
   MAX_RETRIES,
   RATE_LIMIT_DELAYS
 } from '../utils/constants';
@@ -15,13 +14,33 @@ import {
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 const addJitter = (ms) => ms + Math.floor(Math.random() * ms * 0.3);
 
+// Global rate limiter - ensures minimum gap between ALL requests across all contexts
+const MIN_REQUEST_GAP_MS = 100; // Minimum 100ms between any two requests
+let lastRequestTime = 0;
+let requestQueue = Promise.resolve();
+
+async function throttledFetch(url, signal) {
+  // Queue this request to ensure sequential execution of throttle logic
+  const myRequest = requestQueue.then(async () => {
+    const now = Date.now();
+    const timeSinceLastRequest = now - lastRequestTime;
+    if (timeSinceLastRequest < MIN_REQUEST_GAP_MS) {
+      await delay(MIN_REQUEST_GAP_MS - timeSinceLastRequest);
+    }
+    lastRequestTime = Date.now();
+    return fetch(url, { signal });
+  });
+  requestQueue = myRequest.catch(() => {}); // Don't let errors break the chain
+  return myRequest;
+}
+
 // Fetch with retry and rate limit handling
 async function fetchWithRetry(url, signal = null) {
   for (let i = 0; i < MAX_RETRIES; i++) {
     if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
 
     try {
-      const response = await fetch(url, { signal });
+      const response = await throttledFetch(url, signal);
       if (response.status === 403 && i < MAX_RETRIES - 1) {
         await delay(addJitter(RATE_LIMIT_DELAYS[i] || RATE_LIMIT_DELAYS.at(-1)));
         continue;
@@ -99,11 +118,10 @@ export async function fetchArtworkByID(objectID, signal = null) {
   }
 }
 
-// Batch fetch with parallel requests and rate limit handling
+// Batch fetch with parallel requests
 export async function batchFetchArtworks(objectIDs, targetCount = 4, signal = null) {
   const artworks = [];
   let idIndex = 0;
-  let rateLimitStreak = 0;
 
   while (artworks.length < targetCount && idIndex < objectIDs.length) {
     if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
@@ -128,16 +146,10 @@ export async function batchFetchArtworks(objectIDs, targetCount = 4, signal = nu
     );
     // If we get here after abort, check signal again
     if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
-    const valid = results.filter(Boolean);
 
-    // Handle rate limiting
-    if (valid.length === 0 && results.length > 0) {
-      rateLimitStreak++;
-      if (rateLimitStreak >= 2) await delay(RATE_LIMIT_RECOVERY_MS * rateLimitStreak);
-    } else {
-      rateLimitStreak = 0;
-      artworks.push(...valid);
-    }
+    // Add valid artworks (null = failed validation or fetch error)
+    const valid = results.filter(Boolean);
+    artworks.push(...valid);
 
     // Cooldown between batches
     if (artworks.length < targetCount && idIndex < objectIDs.length) {
