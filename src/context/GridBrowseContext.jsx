@@ -108,10 +108,14 @@ export function GridBrowseProvider({ children }) {
   // Load more for infinite scroll
   const loadMore = useCallback(async () => {
     if (fetchingRef.current || !hasMore) return;
+    // Ensure we have a valid abort controller
+    if (!abortControllerRef.current || abortControllerRef.current.signal.aborted) {
+      abortControllerRef.current = new AbortController();
+    }
     fetchingRef.current = true;
     setLoadingMore(true);
 
-    const signal = abortControllerRef.current?.signal;
+    const signal = abortControllerRef.current.signal;
 
     try {
       const startIndex = currentIndexRef.current;

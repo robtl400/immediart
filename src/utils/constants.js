@@ -31,6 +31,8 @@ export const FEED_ROOT_MARGIN = '1200px'; // Trigger ~2 artworks before sentinel
 export const GRID_ROOT_MARGIN = '400px'; // Root margin for grid infinite scroll
 
 // Retry Configuration
-export const MAX_RETRIES = 2; // Reduced from 3 to avoid retry storms
-export const RETRY_DELAYS = [1000, 2000]; // Exponential backoff delays
-export const RATE_LIMIT_DELAYS = [2000, 4000]; // Longer delays for 403 errors (with jitter added)
+// Note: Retries disabled (MAX_RETRIES=1) because CORS-blocked 403s can't be distinguished
+// from real network errors, and retrying just doubles request count during rate limiting
+export const MAX_RETRIES = 1; // No retries - fail fast to avoid request storms
+export const RETRY_DELAYS = [2000]; // Not used when MAX_RETRIES=1
+export const RATE_LIMIT_DELAYS = [3000]; // Not used when MAX_RETRIES=1
