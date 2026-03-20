@@ -11,6 +11,9 @@ An Instagram-style art discovery app that lets you explore The Metropolitan Muse
 - Click hashtags to discover artworks with similar themes
 - Modal view with detailed artwork metadata
 - Responsive mobile-first design
+- **IndexedDB caching** — repeat sessions load instantly from local cache (ID lists 24h, artwork objects 7d)
+- **Skeleton screens** — shimmer card placeholders while loading, matching real card layout
+- **Background prefetch** — next batch fetches silently while you view the current one; scroll hits are instant
 
 ## Setup Instructions
 
@@ -68,4 +71,14 @@ This app uses **The Metropolitan Museum of Art Collection API**.
 - React 19
 - React Router 7
 - Vite
+- Vitest + fake-indexeddb (testing)
 - Netlify (hosting)
+
+## Testing
+
+```bash
+npm test        # Run all tests once
+npm run test:watch  # Watch mode
+```
+
+Tests cover the IndexedDB cache layer (`artworkCache.js`) and Met API cache integration (`metAPI.js`), including TTL expiry, cache hit/miss, in-flight deduplication, key namespacing, and storage error resilience.
