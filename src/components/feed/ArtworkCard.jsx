@@ -18,8 +18,17 @@ export default function ArtworkCard({ artwork, isLiked, onLike, onImageDoubleCli
     setImageLoaded(true);
   };
 
-  const handleShare = () => {
-    console.log(`Share artwork: ${artwork.title}`);
+  const handleShare = async () => {
+    const url = `${window.location.origin}/artwork/${artwork.id}`;
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: artwork.title, text: `${artwork.title} by ${artwork.artistName}`, url });
+      } catch (err) {
+        if (err.name !== 'AbortError') navigator.clipboard?.writeText(url);
+      }
+    } else {
+      await navigator.clipboard?.writeText(url);
+    }
   };
 
   const handleArtistClick = () => {
