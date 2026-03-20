@@ -71,7 +71,7 @@ This app uses **The Metropolitan Museum of Art Collection API**.
 - React 19
 - React Router 7
 - Vite
-- Vitest + fake-indexeddb (testing)
+- Vitest + @testing-library/react + fake-indexeddb (testing)
 - Netlify (hosting)
 
 ## Testing
@@ -81,4 +81,7 @@ npm test        # Run all tests once
 npm run test:watch  # Watch mode
 ```
 
-Tests cover the IndexedDB cache layer (`artworkCache.js`) and Met API cache integration (`metAPI.js`), including TTL expiry, cache hit/miss, in-flight deduplication, key namespacing, and storage error resilience.
+Tests cover:
+- **IndexedDB cache layer** (`artworkCache.js`): TTL expiry, cache hit/miss, in-flight deduplication, key namespacing, storage error resilience
+- **Met API integration** (`metAPI.js`): cache integration, 403 retry exhaustion, AbortError propagation, network failure retry, batch 404 filtering, abort mid-batch
+- **Context layer** (`ArtworksContext`, `GridBrowseContext`): `loadMore` guard logic, prefetch merge, delay-skip on cache hit, MAX trim, abort behavior

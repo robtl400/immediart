@@ -4,12 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [0.0.1] - 2026-03-20
 
-### Added
-- Context-level test coverage: `ArtworksContext.test.jsx` (21 tests) and `GridBrowseContext.test.jsx` (21 tests) covering `loadMore` guard logic, prefetch merge, delay-skip on cache hit, MAX trim, and abort behavior
-- `artworkCache.test.js` expanded with 7 new tests for `metAPI` error paths: 403 retry exhaustion, AbortError propagation, network failure (TypeError) retry, batch 404 filtering, and abort mid-batch
-- `@testing-library/react` devDependency for React context testing
-- React plugin added to `vitest.config.js` for JSX transform in tests
-
 ### Fixed
-- `GridBrowseContext.loadMore`: added missing `loadingMore` state guard (brought in line with `ArtworksContext`)
-- `GridBrowseContext.loadMore`: added `loadingMore` to `useCallback` dependency array to prevent stale closure
+- Infinite scroll in the grid view could fire duplicate concurrent loads — now guarded correctly (brings `GridBrowseContext` in line with `ArtworksContext`)
+
+### For contributors
+- 49 tests across 3 files: `ArtworksContext.test.jsx` (21), `GridBrowseContext.test.jsx` (21), and expanded `artworkCache.test.js` (+7 metAPI error paths)
+- Added `@testing-library/react` and configured Vitest React plugin to enable JSX context testing
+- Fixed stale closure in `GridBrowseContext.loadMore` useCallback deps
