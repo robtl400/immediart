@@ -46,14 +46,6 @@ export default function DiscoveryFeed() {
     }
   }, [handleScroll]);
 
-  // Pre-fetch after initial load (with delay to avoid rate limits)
-  useEffect(() => {
-    if (!loading && artworks.length > 0 && hasMore && !loadingMore) {
-      const timer = setTimeout(loadMoreArtworks, 500);
-      return () => clearTimeout(timer);
-    }
-  }, [loading]);
-
   // Like toggle
   const handleLike = (id) => {
     setLikedArtworks(prev => {

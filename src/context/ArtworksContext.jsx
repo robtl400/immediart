@@ -7,7 +7,6 @@
 import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { fetchAllObjectIDs, batchFetchArtworks, shuffleArray } from '../services/metAPI';
 import { transformAPIToDisplay } from '../utils/transformers';
-import { preloadArtworkImages } from '../utils/imageLoader';
 import { FEED_BATCH_SIZE, MAX_ARTWORKS_IN_MEMORY, RATE_LIMIT_RECOVERY_MS } from '../utils/constants';
 
 const ArtworksContext = createContext(null);
@@ -73,10 +72,6 @@ export function ArtworksProvider({ children }) {
       const rawArtworks = await batchFetchArtworks(idsToTry, FEED_BATCH_SIZE, signal);
       if (fetchIdRef.current !== currentFetchId) return;
       const newArtworks = rawArtworks.map(transformAPIToDisplay);
-
-      // Preload images on initial load (pass signal to allow abort)
-      if (isInitial) await preloadArtworkImages(newArtworks, signal);
-      if (fetchIdRef.current !== currentFetchId) return;
 
       // Track shown IDs and update state
       newArtworks.forEach(a => shownIDsRef.current.add(a.id));

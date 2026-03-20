@@ -14,6 +14,19 @@ import {
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 const addJitter = (ms) => ms + Math.floor(Math.random() * ms * 0.3);
 
+// Delay that cancels immediately if the AbortSignal fires
+function delayOrAbort(ms, signal) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(resolve, ms);
+    if (signal) {
+      signal.addEventListener('abort', () => {
+        clearTimeout(timer);
+        reject(new DOMException('Aborted', 'AbortError'));
+      }, { once: true });
+    }
+  });
+}
+
 // Global rate limiter - ensures minimum gap between ALL requests across all contexts
 const MIN_REQUEST_GAP_MS = 100; // Minimum 100ms between any two requests
 let lastRequestTime = 0;
@@ -42,7 +55,7 @@ async function fetchWithRetry(url, signal = null) {
     try {
       const response = await throttledFetch(url, signal);
       if (response.status === 403 && i < MAX_RETRIES - 1) {
-        await delay(addJitter(RATE_LIMIT_DELAYS[i] || RATE_LIMIT_DELAYS.at(-1)));
+        await delayOrAbort(addJitter(RATE_LIMIT_DELAYS[i] || RATE_LIMIT_DELAYS.at(-1)), signal);
         continue;
       }
       return response;
@@ -50,7 +63,7 @@ async function fetchWithRetry(url, signal = null) {
       if (error.name === 'AbortError') throw error;
       if (i === MAX_RETRIES - 1) throw error;
       // Network errors (including CORS-blocked 403s) use rate limit delays
-      await delay(addJitter(RATE_LIMIT_DELAYS[i] || RATE_LIMIT_DELAYS.at(-1)));
+      await delayOrAbort(addJitter(RATE_LIMIT_DELAYS[i] || RATE_LIMIT_DELAYS.at(-1)), signal);
     }
   }
 }
