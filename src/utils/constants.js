@@ -9,8 +9,9 @@ export const API_BASE_URL = 'https://collectionapi.metmuseum.org/public/collecti
 // Parallel Fetching Configuration
 // With abort bugs fixed, we can be more aggressive while staying under 80 req/sec
 export const MAX_CONCURRENT_REQUESTS = 4; // 4 parallel requests per batch
-export const BATCH_COOLDOWN_MS = 400; // 400ms between batches (~10 req/sec max)
+export const BATCH_COOLDOWN_MS = 250; // 250ms between batches
 export const RATE_LIMIT_RECOVERY_MS = 1000; // 1 second after errors
+export const MIN_REQUEST_GAP_MS = 80; // Minimum gap between any two requests
 
 // Batch Sizes
 export const FEED_BATCH_SIZE = 4; // Artworks to fetch per load in discovery feed (increased)
@@ -20,8 +21,8 @@ export const GRID_BATCH_SIZE = 6; // Thumbnails to fetch per load in grid view (
 export const MAX_ARTWORKS_IN_MEMORY = 30; // Maximum artworks to keep in discovery feed
 
 // Timing
-export const SEARCH_COOLDOWN_MS = 800; // Minimum time between searches (allows rate limit recovery)
-export const NAVIGATION_DELAY_MS = 500; // Delay before search after navigation
+export const SEARCH_COOLDOWN_MS = 300; // Minimum time between searches (allows rate limit recovery)
+export const NAVIGATION_DELAY_MS = 150; // Delay before search after navigation
 export const MODAL_CLOSE_DELAY_MS = 200; // Delay for modal close animation
 
 // Scroll Detection
@@ -31,5 +32,4 @@ export const GRID_ROOT_MARGIN = '400px'; // Root margin for grid infinite scroll
 
 // Retry Configuration
 export const MAX_RETRIES = 3; // Retry up to 3x on 403/network errors with exponential backoff
-export const RETRY_DELAYS = [1000, 2000, 4000];
 export const RATE_LIMIT_DELAYS = [1000, 2000, 4000];
