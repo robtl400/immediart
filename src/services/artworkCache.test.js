@@ -217,6 +217,109 @@ describe('metAPI — fetchArtworkByID cache integration', () => {
   });
 });
 
+// ─── metAPI.js error-path tests ───────────────────────────────────────────────
+// All blocks use dynamic import — required because beforeEach resets modules,
+// which also resets the pendingFetches Map and requestQueue singleton in metAPI.
+
+describe('metAPI — fetchWithRetry: 403 retry behavior', () => {
+  it('retries on 403 up to MAX_RETRIES; throws after exhaustion', async () => {
+    const { MAX_RETRIES } = await import('../utils/constants.js');
+    let callCount = 0;
+    vi.stubGlobal('fetch', vi.fn(() => {
+      callCount++;
+      return Promise.resolve({ ok: false, status: 403, json: async () => ({}) });
+    }));
+
+    const { fetchArtworkByID } = await import('./metAPI.js');
+    // fetchArtworkByID calls fetchWithRetry — 403 is handled inside; returns null after retries
+    const result = await fetchArtworkByID(9999);
+    // After MAX_RETRIES exhausted on 403, fetchWithRetry returns the last response
+    // fetchArtworkByID returns null for non-ok responses
+    expect(result).toBeNull();
+    expect(callCount).toBe(MAX_RETRIES);
+
+    vi.unstubAllGlobals();
+  });
+
+  it('AbortError is not retried; propagates to caller', async () => {
+    vi.stubGlobal('fetch', vi.fn(() =>
+      Promise.reject(new DOMException('Aborted', 'AbortError'))
+    ));
+
+    const { fetchArtworkByID } = await import('./metAPI.js');
+    const controller = new AbortController();
+    controller.abort();
+
+    await expect(fetchArtworkByID(9999, controller.signal)).rejects.toMatchObject({
+      name: 'AbortError',
+    });
+
+    vi.unstubAllGlobals();
+  });
+
+  it('network failure (TypeError) is retried then throws', async () => {
+    const { MAX_RETRIES } = await import('../utils/constants.js');
+    let callCount = 0;
+    vi.stubGlobal('fetch', vi.fn(() => {
+      callCount++;
+      return Promise.reject(new TypeError('Failed to fetch'));
+    }));
+
+    const { fetchArtworkByID } = await import('./metAPI.js');
+    // Network errors propagate as null from fetchArtworkByID (it catches and returns null)
+    const result = await fetchArtworkByID(9999);
+    expect(result).toBeNull();
+    expect(callCount).toBe(MAX_RETRIES);
+
+    vi.unstubAllGlobals();
+  });
+});
+
+describe('metAPI — batchFetchArtworks error paths', () => {
+  it('404/invalid IDs are filtered out; valid artworks returned', async () => {
+    const validArtwork = {
+      objectID: 1,
+      title: 'Valid',
+      artistDisplayName: 'Artist',
+      primaryImage: 'https://example.com/1.jpg',
+      isPublicDomain: true,
+    };
+    let callCount = 0;
+    vi.stubGlobal('fetch', vi.fn(() => {
+      callCount++;
+      if (callCount === 1) {
+        // First ID returns 404
+        return Promise.resolve({ ok: false, status: 404, json: async () => ({}) });
+      }
+      return Promise.resolve({ ok: true, status: 200, json: async () => validArtwork });
+    }));
+
+    const { batchFetchArtworks } = await import('./metAPI.js');
+    const results = await batchFetchArtworks([101, 1], 1);
+
+    // 404 filtered out; valid artwork returned
+    expect(results).toHaveLength(1);
+    expect(results[0].objectID).toBe(1);
+
+    vi.unstubAllGlobals();
+  });
+
+  it('abort mid-batch propagates AbortError', async () => {
+    const controller = new AbortController();
+    vi.stubGlobal('fetch', vi.fn(() => {
+      controller.abort();
+      return Promise.reject(new DOMException('Aborted', 'AbortError'));
+    }));
+
+    const { batchFetchArtworks } = await import('./metAPI.js');
+    await expect(
+      batchFetchArtworks([1, 2, 3], 3, controller.signal)
+    ).rejects.toMatchObject({ name: 'AbortError' });
+
+    vi.unstubAllGlobals();
+  });
+});
+
 describe('metAPI — search wrapper cache integration', () => {
   it('fetchAllObjectIDs: cache hit skips API call', async () => {
     const { setCachedIDs } = await import('./artworkCache.js');

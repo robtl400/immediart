@@ -155,7 +155,7 @@ export function GridBrowseProvider({ children }) {
 
   // Load more for infinite scroll
   const loadMore = useCallback(async () => {
-    if (fetchingRef.current || !hasMore) return;
+    if (fetchingRef.current || !hasMore || loadingMore) return;
 
     // Use prefetched data if ready — instant merge
     if (prefetchRef.current) {
@@ -207,7 +207,7 @@ export function GridBrowseProvider({ children }) {
         fetchingRef.current = false;
       }
     }
-  }, [hasMore, startPrefetch]);
+  }, [hasMore, loadingMore, startPrefetch]);
 
   // Abort requests and reset loading states
   const abort = useCallback(() => {
