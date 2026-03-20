@@ -6,6 +6,7 @@
 
 import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { fetchAllObjectIDs, batchFetchArtworks, shuffleArray } from '../services/metAPI';
+import { getCachedIDs, clearCache } from '../services/artworkCache';
 import { transformAPIToDisplay } from '../utils/transformers';
 import { FEED_BATCH_SIZE, MAX_ARTWORKS_IN_MEMORY, RATE_LIMIT_RECOVERY_MS } from '../utils/constants';
 
@@ -27,6 +28,35 @@ export function ArtworksProvider({ children }) {
   const abortControllerRef = useRef(null);
   const fetchIdRef = useRef(0);
 
+  // Prefetch state
+  const prefetchRef = useRef(null);           // { artworks, nextIndex } | null
+  const prefetchControllerRef = useRef(null); // AbortController for background prefetch
+
+  // Start background prefetch for the next batch
+  const startPrefetch = useCallback((fromIndex) => {
+    prefetchControllerRef.current?.abort();
+    prefetchRef.current = null;
+    prefetchControllerRef.current = new AbortController();
+    const signal = prefetchControllerRef.current.signal;
+
+    const idsToTry = [];
+    let i = fromIndex;
+    while (idsToTry.length < FEED_BATCH_SIZE * 3 && i < allIDsRef.current.length) {
+      const id = allIDsRef.current[i];
+      if (!shownIDsRef.current.has(id)) idsToTry.push(id);
+      i++;
+    }
+    const nextIndex = i;
+    if (idsToTry.length === 0) return;
+
+    batchFetchArtworks(idsToTry, FEED_BATCH_SIZE, signal)
+      .then(raw => {
+        if (signal.aborted) return;
+        prefetchRef.current = { artworks: raw.map(transformAPIToDisplay), nextIndex };
+      })
+      .catch(() => {}); // prefetch failure is non-fatal
+  }, []);
+
   // Fetch artworks (initial or load more)
   const fetchArtworks = useCallback(async (isInitial = false) => {
     if (fetchingRef.current) return;
@@ -41,14 +71,23 @@ export function ArtworksProvider({ children }) {
     try {
       if (isInitial) {
         setLoading(true);
-        const allIDs = await fetchAllObjectIDs(signal);
-        if (fetchIdRef.current !== currentFetchId) return;
-        allIDsRef.current = shuffleArray(allIDs);
+
+        // Check cache first — cache hit lets us skip the 300ms post-search pause
+        const cachedIDs = await getCachedIDs('ids:feed:paintings');
+        if (cachedIDs) {
+          allIDsRef.current = shuffleArray(cachedIDs);
+          // Skip 300ms pause — IDs from cache, no rate-limit concern
+        } else {
+          const allIDs = await fetchAllObjectIDs(signal); // internally caches on miss
+          if (fetchIdRef.current !== currentFetchId) return;
+          allIDsRef.current = shuffleArray(allIDs);
+          // Brief pause after live search before fetching objects
+          await new Promise(r => setTimeout(r, 300));
+          if (signal.aborted) return;
+        }
+
         currentIndexRef.current = 0;
         shownIDsRef.current = new Set();
-        // Brief pause after search before fetching objects
-        await new Promise(r => setTimeout(r, 300));
-        if (signal.aborted) return;
       } else {
         setLoadingMore(true);
       }
@@ -83,6 +122,11 @@ export function ArtworksProvider({ children }) {
       });
       setHasMore(currentIndexRef.current < allIDsRef.current.length);
       setError(null);
+
+      // After initial batch renders, start background prefetch of next batch
+      if (isInitial) {
+        startPrefetch(currentIndexRef.current);
+      }
     } catch (err) {
       if (err.name === 'AbortError') return;
       if (fetchIdRef.current === currentFetchId) setError(err.message);
@@ -93,7 +137,7 @@ export function ArtworksProvider({ children }) {
         fetchingRef.current = false;
       }
     }
-  }, []);
+  }, [startPrefetch]);
 
   // Initialize on mount
   useEffect(() => {
@@ -102,8 +146,28 @@ export function ArtworksProvider({ children }) {
 
   // Public API
   const loadMoreArtworks = useCallback(() => {
-    if (!fetchingRef.current && hasMore && !loadingMore) fetchArtworks(false);
-  }, [fetchArtworks, hasMore, loadingMore]);
+    if (fetchingRef.current || !hasMore || loadingMore) return;
+
+    // Use prefetched data if ready — instant merge, no network wait
+    if (prefetchRef.current) {
+      const { artworks: prefetched, nextIndex } = prefetchRef.current;
+      prefetchRef.current = null;
+      prefetched.forEach(a => shownIDsRef.current.add(a.id));
+      currentIndexRef.current = nextIndex;
+      setArtworks(prev => {
+        const combined = [...prev, ...prefetched];
+        return combined.length > MAX_ARTWORKS_IN_MEMORY
+          ? combined.slice(-MAX_ARTWORKS_IN_MEMORY)
+          : combined;
+      });
+      setHasMore(nextIndex < allIDsRef.current.length);
+      // Start next prefetch immediately after merge
+      startPrefetch(nextIndex);
+      return;
+    }
+
+    fetchArtworks(false);
+  }, [fetchArtworks, hasMore, loadingMore, startPrefetch]);
 
   const retry = useCallback(async () => {
     abortControllerRef.current?.abort();
@@ -116,6 +180,8 @@ export function ArtworksProvider({ children }) {
 
   const refresh = useCallback(async () => {
     abortControllerRef.current?.abort();
+    prefetchControllerRef.current?.abort();
+    prefetchRef.current = null;
     setArtworks([]);
     setHasMore(true);
     setError(null);
@@ -124,6 +190,8 @@ export function ArtworksProvider({ children }) {
     currentIndexRef.current = 0;
     shownIDsRef.current = new Set();
     fetchingRef.current = false;
+    // Evict cache so the next fetch pulls fresh data from the API
+    await clearCache();
     // Wait for rate limit recovery after aborting previous requests
     await new Promise(r => setTimeout(r, RATE_LIMIT_RECOVERY_MS));
     fetchArtworks(true);
@@ -132,6 +200,8 @@ export function ArtworksProvider({ children }) {
   // Pause fetching (for navigation away)
   const pause = useCallback(() => {
     abortControllerRef.current?.abort();
+    prefetchControllerRef.current?.abort();
+    prefetchRef.current = null;
     fetchingRef.current = false;
   }, []);
 

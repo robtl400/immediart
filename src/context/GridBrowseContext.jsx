@@ -6,6 +6,7 @@
 
 import { createContext, useContext, useState, useCallback, useRef } from 'react';
 import { searchByArtist, searchByTag, batchFetchArtworks } from '../services/metAPI';
+import { getCachedIDs } from '../services/artworkCache';
 import { transformAPIToDisplay } from '../utils/transformers';
 import { preloadArtworkImages } from '../utils/imageLoader';
 import { GRID_BATCH_SIZE, SEARCH_COOLDOWN_MS, NAVIGATION_DELAY_MS } from '../utils/constants';
@@ -30,6 +31,10 @@ export function GridBrowseProvider({ children }) {
   const lastSearchTimeRef = useRef(0);
   const abortControllerRef = useRef(null);
 
+  // Prefetch state
+  const prefetchRef = useRef(null);           // { artworks, nextIndex } | null
+  const prefetchControllerRef = useRef(null); // AbortController for background prefetch
+
   // Reset state
   const resetState = useCallback(() => {
     setArtworks([]);
@@ -41,9 +46,31 @@ export function GridBrowseProvider({ children }) {
     currentIndexRef.current = 0;
   }, []);
 
+  // Start background prefetch for next batch
+  const startPrefetch = useCallback((fromIndex) => {
+    prefetchControllerRef.current?.abort();
+    prefetchRef.current = null;
+    prefetchControllerRef.current = new AbortController();
+    const signal = prefetchControllerRef.current.signal;
+
+    const startIndex = fromIndex;
+    const idsToTry = allIDsRef.current.slice(startIndex, startIndex + GRID_BATCH_SIZE * 2);
+    const nextIndex = startIndex + GRID_BATCH_SIZE * 2;
+    if (idsToTry.length === 0) return;
+
+    batchFetchArtworks(idsToTry, GRID_BATCH_SIZE, signal)
+      .then(raw => {
+        if (signal.aborted) return;
+        prefetchRef.current = { artworks: raw.map(transformAPIToDisplay), nextIndex };
+      })
+      .catch(() => {}); // prefetch failure is non-fatal
+  }, []);
+
   // Initialize search
   const initSearch = useCallback(async (type, term) => {
     abortControllerRef.current?.abort();
+    prefetchControllerRef.current?.abort();
+    prefetchRef.current = null;
     abortControllerRef.current = new AbortController();
     const signal = abortControllerRef.current.signal;
     const currentSearchId = ++searchIdRef.current;
@@ -55,22 +82,34 @@ export function GridBrowseProvider({ children }) {
     setSearchTerm(term);
     setLoading(true);
 
-    // Wait for rate limit recovery after navigation
-    await new Promise(r => setTimeout(r, NAVIGATION_DELAY_MS));
-    if (signal.aborted) return;
+    // Check cache — on hit, skip navigation delay and search cooldown
+    const cacheKey = type === 'artist' ? `ids:artist:${term}` : `ids:tag:${term}`;
+    const cachedIDs = await getCachedIDs(cacheKey);
+    const fromCache = Boolean(cachedIDs);
 
-    // Additional cooldown if searching again quickly
-    const timeSince = Date.now() - lastSearchTimeRef.current;
-    if (timeSince < SEARCH_COOLDOWN_MS) {
-      await new Promise(r => setTimeout(r, SEARCH_COOLDOWN_MS - timeSince));
+    if (!fromCache) {
+      // Wait for rate limit recovery after navigation
+      await new Promise(r => setTimeout(r, NAVIGATION_DELAY_MS));
+      if (signal.aborted) return;
+
+      // Additional cooldown if searching again quickly
+      const timeSince = Date.now() - lastSearchTimeRef.current;
+      if (timeSince < SEARCH_COOLDOWN_MS) {
+        await new Promise(r => setTimeout(r, SEARCH_COOLDOWN_MS - timeSince));
+      }
     }
     lastSearchTimeRef.current = Date.now();
 
     try {
-      // Fetch matching IDs
-      const searchFn = type === 'artist' ? searchByArtist : searchByTag;
-      const allIDs = await searchFn(term, signal);
-      if (searchIdRef.current !== currentSearchId) return;
+      // Fetch matching IDs (from cache or API)
+      let allIDs;
+      if (fromCache) {
+        allIDs = cachedIDs;
+      } else {
+        const searchFn = type === 'artist' ? searchByArtist : searchByTag;
+        allIDs = await searchFn(term, signal); // internally caches on miss
+        if (searchIdRef.current !== currentSearchId) return;
+      }
 
       allIDsRef.current = allIDs;
 
@@ -81,9 +120,11 @@ export function GridBrowseProvider({ children }) {
         return;
       }
 
-      // Brief pause after search before fetching objects
-      await new Promise(r => setTimeout(r, 300));
-      if (signal.aborted) return;
+      // Brief pause after live search before fetching objects (skip on cache hit)
+      if (!fromCache) {
+        await new Promise(r => setTimeout(r, 300));
+        if (signal.aborted) return;
+      }
 
       // Fetch first batch
       const idsToTry = allIDs.slice(0, GRID_BATCH_SIZE * 2);
@@ -98,6 +139,9 @@ export function GridBrowseProvider({ children }) {
 
       setArtworks(newArtworks);
       setHasMore(currentIndexRef.current < allIDsRef.current.length);
+
+      // Start background prefetch of next batch
+      startPrefetch(currentIndexRef.current);
     } catch (err) {
       if (err.name === 'AbortError') return;
       if (searchIdRef.current === currentSearchId) setError(err.message);
@@ -107,11 +151,23 @@ export function GridBrowseProvider({ children }) {
         fetchingRef.current = false;
       }
     }
-  }, [resetState]);
+  }, [resetState, startPrefetch]);
 
   // Load more for infinite scroll
   const loadMore = useCallback(async () => {
     if (fetchingRef.current || !hasMore) return;
+
+    // Use prefetched data if ready — instant merge
+    if (prefetchRef.current) {
+      const { artworks: prefetched, nextIndex } = prefetchRef.current;
+      prefetchRef.current = null;
+      currentIndexRef.current = nextIndex;
+      setArtworks(prev => [...prev, ...prefetched]);
+      setHasMore(nextIndex < allIDsRef.current.length);
+      startPrefetch(nextIndex);
+      return;
+    }
+
     // Ensure we have a valid abort controller
     if (!abortControllerRef.current || abortControllerRef.current.signal.aborted) {
       abortControllerRef.current = new AbortController();
@@ -151,11 +207,13 @@ export function GridBrowseProvider({ children }) {
         fetchingRef.current = false;
       }
     }
-  }, [hasMore]);
+  }, [hasMore, startPrefetch]);
 
   // Abort requests and reset loading states
   const abort = useCallback(() => {
     abortControllerRef.current?.abort();
+    prefetchControllerRef.current?.abort();
+    prefetchRef.current = null;
     abortControllerRef.current = null;
     fetchingRef.current = false;
     setLoading(false);

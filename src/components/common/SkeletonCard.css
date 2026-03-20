@@ -1,0 +1,56 @@
+/* SkeletonCard - Shimmer animation */
+@keyframes shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position:  200% 0; }
+}
+
+.skeleton-shimmer {
+  background: linear-gradient(
+    90deg,
+    #1a1a1a 25%,
+    rgba(201, 162, 39, 0.07) 50%,
+    #1a1a1a 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.8s infinite linear;
+}
+
+/* Feed variant — mirrors ArtworkCard layout */
+.skeleton-feed {
+  width: 100%;
+  margin-bottom: 8px;
+}
+
+.skeleton-image {
+  width: 100%;
+  min-height: 60vh;
+}
+
+.skeleton-actions {
+  height: 44px;
+  margin: 6px 0;
+}
+
+.skeleton-text {
+  padding: 6px 12px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.skeleton-line {
+  height: 14px;
+  border-radius: 4px;
+  width: 90%;
+}
+
+.skeleton-line-short {
+  height: 12px;
+  width: 60%;
+}
+
+/* Grid variant — mirrors ThumbnailCard layout */
+.skeleton-grid {
+  aspect-ratio: 1;
+  width: 100%;
+}

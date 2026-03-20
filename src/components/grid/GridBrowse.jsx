@@ -5,6 +5,7 @@ import { useGridBrowse } from '../../context/GridBrowseContext';
 import { useArtworkModal } from '../../context/ArtworkModalContext';
 import Banner from '../common/Banner';
 import LoadingSpinner, { InlineLoader } from '../common/LoadingSpinner';
+import SkeletonCard from '../common/SkeletonCard';
 import ThumbnailCard from './ThumbnailCard';
 import useInfiniteScroll from '../../hooks/useInfiniteScroll';
 import { GRID_ROOT_MARGIN } from '../../utils/constants';
@@ -66,7 +67,9 @@ export default function GridBrowse({ type }) {
     return (
       <div className="grid-browse" ref={gridRef}>
         <Header />
-        <LoadingSpinner />
+        <div className="thumbnail-grid columns-2">
+          {[0, 1, 2, 3, 4, 5].map(i => <SkeletonCard key={i} variant="grid" />)}
+        </div>
       </div>
     );
   }

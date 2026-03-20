@@ -7,8 +7,15 @@ import {
   MAX_CONCURRENT_REQUESTS,
   BATCH_COOLDOWN_MS,
   MAX_RETRIES,
-  RATE_LIMIT_DELAYS
+  RATE_LIMIT_DELAYS,
+  MIN_REQUEST_GAP_MS
 } from '../utils/constants';
+import {
+  getCachedIDs,
+  setCachedIDs,
+  getCachedArtwork,
+  setCachedArtwork
+} from './artworkCache';
 
 // Utilities
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
@@ -28,7 +35,6 @@ function delayOrAbort(ms, signal) {
 }
 
 // Global rate limiter - ensures minimum gap between ALL requests across all contexts
-const MIN_REQUEST_GAP_MS = 100; // Minimum 100ms between any two requests
 let lastRequestTime = 0;
 let requestQueue = Promise.resolve();
 
@@ -103,10 +109,32 @@ export async function search(query, { artistMode = false, signal = null } = {}) 
   }
 }
 
-// Convenience wrappers
-export const fetchAllObjectIDs = (signal) => search('paintings', { signal });
-export const searchByArtist = (name, signal) => search(name, { artistMode: true, signal });
-export const searchByTag = (term, signal) => search(term, { signal });
+// Convenience wrappers — cache result in IndexedDB with named keys
+export async function fetchAllObjectIDs(signal) {
+  const cached = await getCachedIDs('ids:feed:paintings');
+  if (cached) return cached;
+  const ids = await search('paintings', { signal });
+  await setCachedIDs('ids:feed:paintings', ids);
+  return ids;
+}
+
+export async function searchByArtist(name, signal) {
+  const key = `ids:artist:${name}`;
+  const cached = await getCachedIDs(key);
+  if (cached) return cached;
+  const ids = await search(name, { artistMode: true, signal });
+  await setCachedIDs(key, ids);
+  return ids;
+}
+
+export async function searchByTag(term, signal) {
+  const key = `ids:tag:${term}`;
+  const cached = await getCachedIDs(key);
+  if (cached) return cached;
+  const ids = await search(term, { signal });
+  await setCachedIDs(key, ids);
+  return ids;
+}
 
 // Artwork validation
 export function validateArtwork(artwork) {
@@ -118,17 +146,41 @@ export function validateArtwork(artwork) {
   );
 }
 
-// Fetch single artwork
+// In-flight dedup: if the same objectID is already being fetched, return the same Promise
+const pendingFetches = new Map(); // objectID → Promise
+
+// Fetch single artwork (with cache + in-flight dedup)
 export async function fetchArtworkByID(objectID, signal = null) {
-  try {
-    const response = await fetchWithRetry(`${API_BASE_URL}/objects/${objectID}`, signal);
-    if (!response.ok) return null;
-    const artwork = await response.json();
-    return validateArtwork(artwork) ? artwork : null;
-  } catch (error) {
-    if (error.name === 'AbortError') throw error;
-    return null;
+  // 1. Cache check
+  const cached = await getCachedArtwork(objectID);
+  if (cached) return cached;
+
+  // 2. In-flight dedup: return existing Promise if this ID is already being fetched
+  if (pendingFetches.has(objectID)) {
+    return pendingFetches.get(objectID);
   }
+
+  // 3. Start new fetch
+  const promise = (async () => {
+    try {
+      const response = await fetchWithRetry(`${API_BASE_URL}/objects/${objectID}`, signal);
+      if (!response.ok) return null;
+      const artwork = await response.json();
+      const result = validateArtwork(artwork) ? artwork : null;
+      if (result) await setCachedArtwork(objectID, result);
+      return result;
+    } catch (error) {
+      if (error.name === 'AbortError') throw error;
+      return null;
+    } finally {
+      pendingFetches.delete(objectID);
+    }
+  })();
+
+  pendingFetches.set(objectID, promise);
+  // Clear entry if signal aborts — allows the next caller to start a fresh fetch
+  signal?.addEventListener('abort', () => pendingFetches.delete(objectID), { once: true });
+  return promise;
 }
 
 // Batch fetch with parallel requests
@@ -164,9 +216,9 @@ export async function batchFetchArtworks(objectIDs, targetCount = 4, signal = nu
     const valid = results.filter(Boolean);
     artworks.push(...valid);
 
-    // Cooldown between batches
+    // Cooldown between batches — abort-aware
     if (artworks.length < targetCount && idIndex < objectIDs.length) {
-      await delay(BATCH_COOLDOWN_MS);
+      await delayOrAbort(BATCH_COOLDOWN_MS, signal);
     }
   }
 
