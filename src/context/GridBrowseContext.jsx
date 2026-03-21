@@ -35,6 +35,9 @@ export function GridBrowseProvider({ children }) {
     onBatchReady: (artworks, signal) => preloadArtworkImages(artworks, signal),
   });
 
+  // Destructure stable callbacks so useCallback deps don't change every render
+  const { reset: gridReset, pause: gridPause } = grid;
+
   // initSearch — constructs a fetchIDs closure with navigation/cooldown delays,
   // then kicks off a fresh fetch via grid.reset() synchronously.
   const initSearch = useCallback((type, term) => {
@@ -45,7 +48,7 @@ export function GridBrowseProvider({ children }) {
     const searchFn = type === 'artist' ? searchByArtist : searchByTag;
     const cacheKey = type === 'artist' ? `ids:artist:${term}` : `ids:tag:${term}`;
 
-    grid.reset(async (signal) => {
+    gridReset(async (signal) => {
       const cachedIDs = await getCachedIDs(cacheKey);
 
       if (!cachedIDs) {
@@ -64,12 +67,12 @@ export function GridBrowseProvider({ children }) {
       setTotalCount(ids.length);
       return ids;
     });
-  }, [grid]);
+  }, [gridReset]);
 
   // abort — pause all in-flight work without resetting displayed artworks
   const abort = useCallback(() => {
-    grid.pause();
-  }, [grid]);
+    gridPause();
+  }, [gridPause]);
 
   const value = {
     artworks:     grid.artworks,
