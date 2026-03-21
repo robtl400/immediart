@@ -13,7 +13,7 @@ export default function ThumbnailCard({ artwork, onClick }) {
     >
       <img
         src={artwork.imageUrl}
-        alt={`${artwork.title} by ${artwork.artistName}`}
+        alt={artwork.artistName ? `${artwork.title} by ${artwork.artistName}` : artwork.title}
         className="thumbnail-image"
         loading="lazy"
       />
