@@ -1,24 +1,49 @@
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useRef } from 'react';
 import { useArtworkModal } from '../../context/ArtworkModalContext';
 import Banner from '../common/Banner';
 import './ArtworkModal.css';
 
 export default function ArtworkModal() {
   const { selectedArtwork, isOpen, closeModal } = useArtworkModal();
+  const modalRef = useRef(null);
 
-  // Handle ESC key to close
+  // Handle ESC key and Tab trapping
   const handleKeyDown = useCallback((e) => {
     if (e.key === 'Escape') {
       closeModal();
+      return;
+    }
+    // Trap Tab focus inside modal
+    if (e.key === 'Tab' && modalRef.current) {
+      const focusable = modalRef.current.querySelectorAll(
+        'button, [href], input, [tabIndex]:not([tabIndex="-1"])'
+      );
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (e.shiftKey) {
+        if (document.activeElement === first) {
+          e.preventDefault();
+          last?.focus();
+        }
+      } else {
+        if (document.activeElement === last) {
+          e.preventDefault();
+          first?.focus();
+        }
+      }
     }
   }, [closeModal]);
 
-  // Add/remove keydown listener
+  // Add/remove keydown listener and manage focus
   useEffect(() => {
     if (isOpen) {
       document.addEventListener('keydown', handleKeyDown);
-      // Prevent body scroll when modal is open
       document.body.style.overflow = 'hidden';
+      // Move focus into modal
+      const firstFocusable = modalRef.current?.querySelector(
+        'button, [href], input, [tabIndex]:not([tabIndex="-1"])'
+      );
+      firstFocusable?.focus();
     }
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
@@ -56,7 +81,14 @@ export default function ArtworkModal() {
   ].filter(item => item.value); // Only show fields with values
 
   return (
-    <div className="artwork-modal-backdrop" onClick={closeModal}>
+    <div
+      className="artwork-modal-backdrop"
+      onClick={closeModal}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Artwork details"
+      ref={modalRef}
+    >
       <div className="artwork-modal-container">
         <Banner isScrolled={true} />
 
