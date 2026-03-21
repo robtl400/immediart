@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import flyingMachineIcon from '../../assets/FlyingMachine2_tinted_gold.png';
 import './DiscoveryFeed.css';
 import { useArtworks } from '../../context/ArtworksContext';
 import { useGridBrowse } from '../../context/GridBrowseContext';
@@ -157,8 +158,9 @@ export default function DiscoveryFeed() {
 
       {!hasMore && artworks.length > 0 && (
         <div className="end-message">
-          <p>You have seen all available artworks!</p>
-          <p>New artworks coming soon...</p>
+          <img src={flyingMachineIcon} alt="" className="end-message-icon" />
+          <p>You&apos;ve explored the whole collection.</p>
+          <p>Come back for more.</p>
         </div>
       )}
     </div>
