@@ -17,8 +17,9 @@ export const RATE_LIMIT_RECOVERY_MS = 1000; // 1 second after errors (no 403 rec
 export const MIN_REQUEST_GAP_MS = 50;    // was 80 — 10ms tested clean; 50ms is a safe conservative floor
 
 // Batch Sizes
-export const FEED_BATCH_SIZE = 4; // Artworks to fetch per load in discovery feed (increased)
-export const GRID_BATCH_SIZE = 6; // Thumbnails to fetch per load in grid view (increased)
+export const FEED_BATCH_SIZE = 4;         // Artworks to fetch per subsequent load in discovery feed
+export const FEED_INITIAL_BATCH_SIZE = 2; // Smaller first batch so first artworks appear sooner
+export const GRID_BATCH_SIZE = 6;         // Thumbnails to fetch per load in grid view (increased)
 
 // Memory Management
 export const MAX_ARTWORKS_IN_MEMORY = 30; // Maximum artworks to keep in discovery feed

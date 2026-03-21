@@ -28,10 +28,11 @@ import { delayOrAbort } from '../utils/delay';
 import { RATE_LIMIT_RECOVERY_MS } from '../utils/constants';
 
 export function usePaginatedFetch({
-  shuffleIDs   = false,
+  shuffleIDs       = false,
   batchSize,
-  maxInMemory  = Infinity,
-  onBatchReady = null,
+  initialBatchSize = null, // smaller first batch so first artworks appear sooner; defaults to batchSize
+  maxInMemory      = Infinity,
+  onBatchReady     = null,
 }) {
   // ── State ────────────────────────────────────────────────────────────────
   const [artworks,    setArtworks]    = useState([]);
@@ -118,6 +119,9 @@ export function usePaginatedFetch({
     // IDs we attempt in this batch — declared here so the catch block can retry
     let idsToTry = [];
 
+    // Use smaller initial batch so first artworks appear sooner
+    const targetCount = isInitial && initialBatchSize != null ? initialBatchSize : batchSize;
+
     try {
       if (isInitial) {
         setLoading(true);
@@ -136,7 +140,7 @@ export function usePaginatedFetch({
       // Slice next batch of IDs
       if (shuffleIDs) {
         let i = currentIndexRef.current;
-        while (idsToTry.length < batchSize * 3 && i < allIDsRef.current.length) {
+        while (idsToTry.length < targetCount * 3 && i < allIDsRef.current.length) {
           const id = allIDsRef.current[i];
           if (!shownIDsRef.current.has(id)) idsToTry.push(id);
           i++;
@@ -144,8 +148,8 @@ export function usePaginatedFetch({
         currentIndexRef.current = i;
       } else {
         const start = currentIndexRef.current;
-        idsToTry = allIDsRef.current.slice(start, start + batchSize * 2);
-        currentIndexRef.current = start + batchSize * 2;
+        idsToTry = allIDsRef.current.slice(start, start + targetCount * 2);
+        currentIndexRef.current = start + targetCount * 2;
       }
 
       if (idsToTry.length === 0) {
@@ -153,7 +157,7 @@ export function usePaginatedFetch({
         return;
       }
 
-      const rawArtworks = await batchFetchArtworks(idsToTry, batchSize, signal);
+      const rawArtworks = await batchFetchArtworks(idsToTry, targetCount, signal);
       if (fetchIdRef.current !== currentFetchId) return;
 
       const newArtworks = rawArtworks.map(transformAPIToDisplay);
@@ -192,7 +196,7 @@ export function usePaginatedFetch({
           return;
         }
 
-        const retryRaw = await batchFetchArtworks(idsToTry, batchSize, signal);
+        const retryRaw = await batchFetchArtworks(idsToTry, targetCount, signal);
         if (fetchIdRef.current !== currentFetchId) return;
 
         const retryArtworks = retryRaw.map(transformAPIToDisplay);
@@ -227,7 +231,7 @@ export function usePaginatedFetch({
         fetchingRef.current = false;
       }
     }
-  }, [shuffleIDs, batchSize, maxInMemory, startPrefetch]);
+  }, [shuffleIDs, batchSize, initialBatchSize, maxInMemory, startPrefetch]);
 
   // ── loadMore ──────────────────────────────────────────────────────────────
 

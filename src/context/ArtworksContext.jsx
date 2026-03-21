@@ -8,15 +8,16 @@ import { createContext, useContext, useEffect, useCallback } from 'react';
 import { fetchAllObjectIDs } from '../services/metAPI';
 import { clearCache } from '../services/artworkCache';
 import { usePaginatedFetch } from '../hooks/usePaginatedFetch';
-import { FEED_BATCH_SIZE, MAX_ARTWORKS_IN_MEMORY, RATE_LIMIT_RECOVERY_MS } from '../utils/constants';
+import { FEED_BATCH_SIZE, FEED_INITIAL_BATCH_SIZE, MAX_ARTWORKS_IN_MEMORY, RATE_LIMIT_RECOVERY_MS } from '../utils/constants';
 
 const ArtworksContext = createContext(null);
 
 export function ArtworksProvider({ children }) {
   const feed = usePaginatedFetch({
-    shuffleIDs:  true,
-    batchSize:   FEED_BATCH_SIZE,
-    maxInMemory: MAX_ARTWORKS_IN_MEMORY,
+    shuffleIDs:       true,
+    batchSize:        FEED_BATCH_SIZE,
+    initialBatchSize: FEED_INITIAL_BATCH_SIZE,
+    maxInMemory:      MAX_ARTWORKS_IN_MEMORY,
   });
 
   // Initialize on mount
