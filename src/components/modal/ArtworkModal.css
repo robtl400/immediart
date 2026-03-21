@@ -38,6 +38,36 @@
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
   overflow: hidden;
   max-height: calc(100vh - 100px);
+  position: relative;
+}
+
+.modal-close-btn {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(0, 0, 0, 0.4);
+  color: var(--color-text);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+  transition: background-color 0.2s ease;
+}
+
+.modal-close-btn:hover {
+  background: rgba(240, 185, 0, 0.3);
+}
+
+.modal-close-btn:focus {
+  outline: 2px solid var(--color-gold);
+  outline-offset: 2px;
 }
 
 /* Scrollable content area - image and text scroll together */

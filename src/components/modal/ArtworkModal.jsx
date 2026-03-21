@@ -60,11 +60,18 @@ export default function ArtworkModal() {
       <div className="artwork-modal-container">
         <Banner isScrolled={true} />
 
-        <div className="artwork-modal-card">
+        <div className="artwork-modal-card" onClick={e => e.stopPropagation()}>
+          <button
+            className="modal-close-btn"
+            onClick={closeModal}
+            aria-label="Close artwork details"
+          >
+            ×
+          </button>
           <div className="artwork-modal-content">
             <div className="artwork-modal-image-container">
               <img
-                src={selectedArtwork.primaryImage || selectedArtwork.imageUrl}
+                src={selectedArtwork.primaryImageFull || selectedArtwork.imageUrl}
                 alt={`${selectedArtwork.title} by ${selectedArtwork.artistName}`}
                 className="artwork-modal-image"
               />
