@@ -173,3 +173,24 @@
   font-size: 14px;
   margin: 0;
 }
+
+.grid-browse .retry-button {
+  background-color: var(--color-gold);
+  color: var(--color-bg);
+  border: none;
+  padding: 12px 24px;
+  border-radius: 8px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.2s, opacity 0.2s;
+  margin-top: 10px;
+}
+
+.grid-browse .retry-button:hover {
+  transform: scale(1.05);
+}
+
+.grid-browse .retry-button:active {
+  transform: scale(0.95);
+}

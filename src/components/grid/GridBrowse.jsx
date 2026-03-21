@@ -87,6 +87,12 @@ export default function GridBrowse({ type }) {
         <div className="error-container">
           <p className="error-message">Unable to load artworks</p>
           <p className="error-detail">{error}</p>
+          <button
+            className="retry-button"
+            onClick={() => initSearch(type, searchTerm)}
+          >
+            Try Again
+          </button>
         </div>
       </div>
     );
