@@ -15,7 +15,7 @@ export default function GridBrowse({ type }) {
   const rawTerm = type === 'artist' ? params.artistName : params.tagName;
   const searchTerm = rawTerm ? decodeURIComponent(rawTerm) : '';
 
-  const { artworks, loading, loadingMore, error, hasMore, initSearch, loadMore, abort } = useGridBrowse();
+  const { artworks, loading, loadingMore, error, hasMore, initSearch, loadMore, abort, totalCount } = useGridBrowse();
   const { openModal } = useArtworkModal();
 
   const gridRef = useRef(null);
@@ -58,6 +58,9 @@ export default function GridBrowse({ type }) {
       <Banner />
       <div className="search-heading">
         <h2 className="search-term">{displayTerm}</h2>
+        {totalCount > 0 && (
+          <p className="search-count">{totalCount} artwork{totalCount !== 1 ? 's' : ''}</p>
+        )}
       </div>
     </>
   );
