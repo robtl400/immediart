@@ -7,11 +7,14 @@
 export const API_BASE_URL = 'https://collectionapi.metmuseum.org/public/collection/v1';
 
 // Parallel Fetching Configuration
-// With abort bugs fixed, we can be more aggressive while staying under 80 req/sec
-export const MAX_CONCURRENT_REQUESTS = 4; // 4 parallel requests per batch
-export const BATCH_COOLDOWN_MS = 250; // 250ms between batches
-export const RATE_LIMIT_RECOVERY_MS = 1000; // 1 second after errors
-export const MIN_REQUEST_GAP_MS = 80; // Minimum gap between any two requests
+// Tuned 2026-03-20 via scripts/testAPILimits.js:
+//   - 100% success at all gap sizes (10–160ms) and batch sizes (2–8)
+//   - No 403s triggered at any tested concurrency level
+//   - Constants set conservatively below the observed limits
+export const MAX_CONCURRENT_REQUESTS = 6; // was 4 — 8 concurrent tested clean; 6 is the conservative floor
+export const BATCH_COOLDOWN_MS = 150;     // was 250 — dynamic concurrency handles bursts; static cooldown is the floor
+export const RATE_LIMIT_RECOVERY_MS = 1000; // 1 second after errors (no 403 recovery data — keep default)
+export const MIN_REQUEST_GAP_MS = 50;    // was 80 — 10ms tested clean; 50ms is a safe conservative floor
 
 // Batch Sizes
 export const FEED_BATCH_SIZE = 4; // Artworks to fetch per load in discovery feed (increased)

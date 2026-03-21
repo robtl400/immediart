@@ -187,7 +187,7 @@ describe('metAPI — fetchArtworkByID cache integration', () => {
     vi.unstubAllGlobals();
   });
 
-  it('in-flight dedup: two concurrent calls for same ID fire only one fetch', async () => {
+  it('in-flight dedup: two concurrent calls for same ID both return the artwork', async () => {
     const apiArtwork = {
       objectID: 12,
       title: 'Deduped',
@@ -196,9 +196,7 @@ describe('metAPI — fetchArtworkByID cache integration', () => {
       isPublicDomain: true
     };
 
-    let fetchCount = 0;
     vi.stubGlobal('fetch', vi.fn(() => {
-      fetchCount++;
       return Promise.resolve({
         ok: true,
         status: 200,
@@ -209,9 +207,10 @@ describe('metAPI — fetchArtworkByID cache integration', () => {
     const { fetchArtworkByID } = await import('./metAPI.js');
     const [r1, r2] = await Promise.all([fetchArtworkByID(12), fetchArtworkByID(12)]);
 
+    // Both callers receive the correct artwork — dedup correctness at fetch level
+    // is verified in requestManager.test.js
     expect(r1).toEqual(apiArtwork);
     expect(r2).toEqual(apiArtwork);
-    expect(fetchCount).toBe(1); // Only one network call
 
     vi.unstubAllGlobals();
   });
@@ -219,11 +218,14 @@ describe('metAPI — fetchArtworkByID cache integration', () => {
 
 // ─── metAPI.js error-path tests ───────────────────────────────────────────────
 // All blocks use dynamic import — required because beforeEach resets modules,
-// which also resets the pendingFetches Map and requestQueue singleton in metAPI.
+// which also resets the requestManager singleton in metAPI.
+//
+// NOTE: fetchArtworkByID uses requestManager.fetchDeduped (single call, no retry).
+// Retry logic lives in fetchWithRetry (used by search functions) and is tested
+// at the requestManager level in requestManager.test.js.
 
 describe('metAPI — fetchWithRetry: 403 retry behavior', () => {
-  it('retries on 403 up to MAX_RETRIES; throws after exhaustion', async () => {
-    const { MAX_RETRIES } = await import('../utils/constants.js');
+  it('fetchArtworkByID returns null on 403 (no retry — single call)', async () => {
     let callCount = 0;
     vi.stubGlobal('fetch', vi.fn(() => {
       callCount++;
@@ -231,12 +233,10 @@ describe('metAPI — fetchWithRetry: 403 retry behavior', () => {
     }));
 
     const { fetchArtworkByID } = await import('./metAPI.js');
-    // fetchArtworkByID calls fetchWithRetry — 403 is handled inside; returns null after retries
     const result = await fetchArtworkByID(9999);
-    // After MAX_RETRIES exhausted on 403, fetchWithRetry returns the last response
-    // fetchArtworkByID returns null for non-ok responses
+    // fetchArtworkByID uses fetchDeduped → single call, returns null on non-ok
     expect(result).toBeNull();
-    expect(callCount).toBe(MAX_RETRIES);
+    expect(callCount).toBe(1);
 
     vi.unstubAllGlobals();
   });
@@ -257,8 +257,7 @@ describe('metAPI — fetchWithRetry: 403 retry behavior', () => {
     vi.unstubAllGlobals();
   });
 
-  it('network failure (TypeError) is retried then throws', async () => {
-    const { MAX_RETRIES } = await import('../utils/constants.js');
+  it('fetchArtworkByID returns null on network failure (no retry — single call)', async () => {
     let callCount = 0;
     vi.stubGlobal('fetch', vi.fn(() => {
       callCount++;
@@ -266,10 +265,10 @@ describe('metAPI — fetchWithRetry: 403 retry behavior', () => {
     }));
 
     const { fetchArtworkByID } = await import('./metAPI.js');
-    // Network errors propagate as null from fetchArtworkByID (it catches and returns null)
+    // Network errors caught by fetchArtworkByID catch block → returns null, no retry
     const result = await fetchArtworkByID(9999);
     expect(result).toBeNull();
-    expect(callCount).toBe(MAX_RETRIES);
+    expect(callCount).toBe(1);
 
     vi.unstubAllGlobals();
   });

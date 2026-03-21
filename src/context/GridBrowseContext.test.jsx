@@ -329,15 +329,16 @@ describe('GridBrowseContext — abort', () => {
     const { result } = renderHook(() => useGridBrowse(), { wrapper });
 
     act(() => { result.current.initSearch('artist', 'Monet'); });
-    // Advance past NAVIGATION_DELAY_MS so we're in-flight
+    // Advance past NAVIGATION_DELAY_MS so we're awaiting searchByArtist
     await act(async () => { await vi.advanceTimersByTimeAsync(200); });
 
-    await act(async () => { result.current.abort(); });
+    // abort() signals cancellation; unblock the mock so the async chain settles
+    act(() => { result.current.abort(); });
+    resolveSearch([]); // unblock so fetchBatch's finally block can run
+    await drain();
 
     expect(result.current.loading).toBe(false);
     expect(result.current.loadingMore).toBe(false);
-
-    resolveSearch([]); // let the dangling promise resolve without errors
   });
 
   it('new initSearch after abort starts cleanly (no stale state)', async () => {
