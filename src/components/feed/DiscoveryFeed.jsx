@@ -21,6 +21,24 @@ export default function DiscoveryFeed() {
   const [likedArtworks, setLikedArtworks] = useState(new Set());
   const [isScrolled, setIsScrolled] = useState(false);
 
+  const HINT_STORAGE_KEY = 'immediart_hint_seen';
+  const [showHint, setShowHint] = useState(() => {
+    try {
+      return !localStorage.getItem(HINT_STORAGE_KEY);
+    } catch {
+      return false;
+    }
+  });
+
+  useEffect(() => {
+    if (!showHint) return;
+    const timer = setTimeout(() => {
+      setShowHint(false);
+      try { localStorage.setItem(HINT_STORAGE_KEY, '1'); } catch { /* ignore */ }
+    }, 3000);
+    return () => clearTimeout(timer);
+  }, [showHint]);
+
   // Pause fetching when navigating away
   useEffect(() => {
     return () => pause();
@@ -100,6 +118,14 @@ export default function DiscoveryFeed() {
   return (
     <div className="discovery-feed" ref={feedRef}>
       <Banner isScrolled={isScrolled} feedRef={feedRef} />
+
+      {showHint && artworks.length > 0 && (
+        <div className="first-visit-hint" role="status" aria-live="polite">
+          <span>Double-tap image for details</span>
+          <span className="hint-separator">·</span>
+          <span>Tap artist or tag to explore</span>
+        </div>
+      )}
 
       {artworks.map((artwork) => (
         <ArtworkCard
