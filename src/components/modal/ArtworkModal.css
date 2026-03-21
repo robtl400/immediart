@@ -93,6 +93,28 @@
   object-fit: contain;
 }
 
+.modal-image-fallback {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+  padding: 40px;
+  gap: 16px;
+}
+
+.modal-image-fallback-icon {
+  width: 64px;
+  height: 64px;
+  opacity: 0.5;
+}
+
+.modal-image-fallback-text {
+  color: var(--color-text-muted);
+  font-size: 14px;
+  margin: 0;
+}
+
 /* Metadata section - dark grey background */
 .artwork-modal-metadata {
   flex-shrink: 0;

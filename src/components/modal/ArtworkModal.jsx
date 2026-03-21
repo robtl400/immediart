@@ -1,11 +1,15 @@
-import { useEffect, useCallback, useRef } from 'react';
+import { useEffect, useCallback, useRef, useState } from 'react';
 import { useArtworkModal } from '../../context/ArtworkModalContext';
 import Banner from '../common/Banner';
+import flyingMachineIcon from '../../assets/FlyingMachine2_tinted_gold.png';
 import './ArtworkModal.css';
 
 export default function ArtworkModal() {
   const { selectedArtwork, isOpen, closeModal } = useArtworkModal();
   const modalRef = useRef(null);
+  const [imageError, setImageError] = useState(false);
+
+  useEffect(() => setImageError(false), [selectedArtwork]);
 
   // Handle ESC key and Tab trapping
   const handleKeyDown = useCallback((e) => {
@@ -102,11 +106,21 @@ export default function ArtworkModal() {
           </button>
           <div className="artwork-modal-content">
             <div className="artwork-modal-image-container">
-              <img
-                src={selectedArtwork.primaryImageFull || selectedArtwork.imageUrl}
-                alt={`${selectedArtwork.title} by ${selectedArtwork.artistName}`}
-                className="artwork-modal-image"
-              />
+              {imageError ? (
+                <div className="modal-image-fallback">
+                  <img src={flyingMachineIcon} alt="" className="modal-image-fallback-icon" />
+                  <p className="modal-image-fallback-text">Image unavailable</p>
+                </div>
+              ) : (
+                <img
+                  src={selectedArtwork.primaryImageFull || selectedArtwork.imageUrl}
+                  alt={selectedArtwork.artistName
+                    ? `${selectedArtwork.title} by ${selectedArtwork.artistName}`
+                    : selectedArtwork.title}
+                  className="artwork-modal-image"
+                  onError={() => setImageError(true)}
+                />
+              )}
             </div>
 
             <div className="artwork-modal-metadata">
