@@ -33,11 +33,41 @@
   display: flex;
   flex-direction: column;
   margin: 16px;
-  background-color: #3B3B3B;
+  background-color: var(--color-modal);
   border-radius: 12px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
   overflow: hidden;
   max-height: calc(100vh - 100px);
+  position: relative;
+}
+
+.modal-close-btn {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(0, 0, 0, 0.4);
+  color: var(--color-text);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+  transition: background-color 0.2s ease;
+}
+
+.modal-close-btn:hover {
+  background: rgba(240, 185, 0, 0.3);
+}
+
+.modal-close-btn:focus {
+  outline: 2px solid var(--color-gold);
+  outline-offset: 2px;
 }
 
 /* Scrollable content area - image and text scroll together */
@@ -54,7 +84,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background-color: #3B3B3B;
+  background-color: var(--color-modal);
 }
 
 .artwork-modal-image {
@@ -63,17 +93,39 @@
   object-fit: contain;
 }
 
+.modal-image-fallback {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+  padding: 40px;
+  gap: 16px;
+}
+
+.modal-image-fallback-icon {
+  width: 64px;
+  height: 64px;
+  opacity: 0.5;
+}
+
+.modal-image-fallback-text {
+  color: var(--color-text-muted);
+  font-size: 14px;
+  margin: 0;
+}
+
 /* Metadata section - dark grey background */
 .artwork-modal-metadata {
   flex-shrink: 0;
   padding: 20px;
-  background-color: #3B3B3B;
+  background-color: var(--color-modal);
 }
 
 .metadata-line {
   display: flex;
   padding: 8px 0;
-  border-bottom: 1px solid #A37D00;
+  border-bottom: 1px solid var(--color-gold-muted);
   font-size: 14px;
   line-height: 1.4;
 }
@@ -84,13 +136,13 @@
 
 .metadata-label {
   font-weight: 600;
-  color: #fff;
+  color: var(--color-gold-muted);
   min-width: 100px;
   flex-shrink: 0;
 }
 
 .metadata-value {
-  color: #e0e0e0;
+  color: var(--color-text);
   flex: 1;
 }
 
@@ -113,11 +165,11 @@
   .metadata-label {
     min-width: unset;
     font-size: 12px;
-    color: #ccc;
+    color: var(--color-gold-muted);
   }
 
   .metadata-value {
     font-size: 14px;
-    color: #fff;
+    color: var(--color-text);
   }
 }

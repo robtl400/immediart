@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import flyingMachineIcon from '../../assets/FlyingMachine2_tinted_gold.png';
 import './DiscoveryFeed.css';
 import { useArtworks } from '../../context/ArtworksContext';
 import { useGridBrowse } from '../../context/GridBrowseContext';
@@ -18,8 +19,35 @@ export default function DiscoveryFeed() {
   const navigate = useNavigate();
 
   const feedRef = useRef(null);
-  const [likedArtworks, setLikedArtworks] = useState(new Set());
+
+  const LIKES_STORAGE_KEY = 'immediart_liked_artworks';
+  const [likedArtworks, setLikedArtworks] = useState(() => {
+    try {
+      const stored = localStorage.getItem(LIKES_STORAGE_KEY);
+      return stored ? new Set(JSON.parse(stored)) : new Set();
+    } catch {
+      return new Set();
+    }
+  });
   const [isScrolled, setIsScrolled] = useState(false);
+
+  const HINT_STORAGE_KEY = 'immediart_hint_seen';
+  const [showHint, setShowHint] = useState(() => {
+    try {
+      return !localStorage.getItem(HINT_STORAGE_KEY);
+    } catch {
+      return false;
+    }
+  });
+
+  useEffect(() => {
+    if (!showHint) return;
+    const timer = setTimeout(() => {
+      setShowHint(false);
+      try { localStorage.setItem(HINT_STORAGE_KEY, '1'); } catch { /* ignore */ }
+    }, 3000);
+    return () => clearTimeout(timer);
+  }, [showHint]);
 
   // Pause fetching when navigating away
   useEffect(() => {
@@ -56,6 +84,9 @@ export default function DiscoveryFeed() {
     setLikedArtworks(prev => {
       const next = new Set(prev);
       next.has(id) ? next.delete(id) : next.add(id);
+      try {
+        localStorage.setItem(LIKES_STORAGE_KEY, JSON.stringify([...next]));
+      } catch { /* ignore quota errors */ }
       return next;
     });
   };
@@ -101,6 +132,14 @@ export default function DiscoveryFeed() {
     <div className="discovery-feed" ref={feedRef}>
       <Banner isScrolled={isScrolled} feedRef={feedRef} />
 
+      {showHint && artworks.length > 0 && (
+        <div className="first-visit-hint" role="status" aria-live="polite">
+          <span>Double-tap image for details</span>
+          <span className="hint-separator">·</span>
+          <span>Tap artist or tag to explore</span>
+        </div>
+      )}
+
       {artworks.map((artwork) => (
         <ArtworkCard
           key={artwork.id}
@@ -119,8 +158,9 @@ export default function DiscoveryFeed() {
 
       {!hasMore && artworks.length > 0 && (
         <div className="end-message">
-          <p>You have seen all available artworks!</p>
-          <p>New artworks coming soon...</p>
+          <img src={flyingMachineIcon} alt="" className="end-message-icon" />
+          <p>You&apos;ve explored the whole collection.</p>
+          <p>Come back for more.</p>
         </div>
       )}
     </div>

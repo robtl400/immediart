@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.0.3] - 2026-03-21
+
+### Added
+- `DESIGN_IMPLEMENTATION.md` — comprehensive design system document covering aesthetic, typography, color palette, layout, spacing, motion, and component implementation plan for the `feat/ui-redesign` pass
+- Regression test for pre-warm ordering in `DiscoveryFeed` — verifies that `initSearch` fires before `navigate` on artist/tag click (preventing a silent 150–300ms cold-start regression)
+- Tests for `usePaginatedFetch` `initialBatchSize` option — verifies first fetch uses `initialBatchSize` while background prefetch and subsequent `loadMore` calls use `batchSize`
+- Tests for `usePaginatedFetch` circuit breaker silent freeze — verifies that an `AbortError` from the circuit breaker swallows silently with no error state, no loading flicker, and artworks preserved
+- Backlog item for `/liked` route (liked collection view) added to `TODOS.md`
+
 ## [0.0.2] - 2026-03-20
 
 ### Added

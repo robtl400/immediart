@@ -4,7 +4,7 @@
   flex-direction: column;
   height: 100vh;
   width: 100%;
-  background-color: #121212;
+  background-color: var(--color-bg);
   overflow-x: hidden;
   overflow-y: auto;
 }
@@ -22,11 +22,11 @@
 /* Search Heading */
 .search-heading {
   padding: 16px 15px 12px;
-  background-color: #121212;
+  background-color: var(--color-bg);
 }
 
 .search-term {
-  color: #F0B900;
+  color: var(--color-gold);
   font-family: 'Allura', cursive;
   font-size: 2.25rem;
   font-weight: 400;
@@ -35,12 +35,20 @@
     letter-spacing: .9px;
 }
 
+.search-count {
+  color: var(--color-text-muted);
+  font-size: 13px;
+  text-align: center;
+  margin: 0;
+  padding-bottom: 8px;
+}
+
 /* Thumbnail Grid */
 .thumbnail-grid {
   display: grid;
   gap: 2px;
   padding: 2px;
-  background-color: #121212;
+  background-color: var(--color-bg);
 }
 
 .thumbnail-grid.columns-2 {
@@ -53,7 +61,7 @@
   overflow: hidden;
   cursor: pointer;
   position: relative;
-  background-color: #1a1a1a;
+  background-color: var(--color-surface);
   transition: opacity 0.2s ease;
 }
 
@@ -66,7 +74,7 @@
 }
 
 .thumbnail-card:focus {
-  outline: 2px solid #F0B900;
+  outline: 2px solid var(--color-gold);
   outline-offset: -2px;
 }
 
@@ -89,22 +97,51 @@
   text-align: center;
 }
 
-.empty-state p {
-  color: #888;
-  font-size: 16px;
+.empty-state-icon {
+  width: 64px;
+  height: 64px;
+  opacity: 0.7;
+  margin-bottom: 16px;
+}
+
+.empty-state-message {
+  color: var(--color-text-muted);
+  font-size: 15px;
+  margin: 0 0 20px 0;
+}
+
+.empty-state-cta {
+  background: none;
+  border: 1px solid var(--color-gold);
+  color: var(--color-gold);
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.empty-state-cta:hover {
+  background-color: var(--color-gold);
+  color: var(--color-bg);
+}
+
+.empty-state-cta:active {
+  opacity: 0.8;
 }
 
 /* End Message */
 .grid-browse .end-message {
   text-align: center;
   padding: 20px;
-  color: #888;
+  color: var(--color-text-muted);
 }
 
 .grid-browse .end-message p {
   margin: 0;
   font-size: 14px;
-  color: #F0B900;
+  color: var(--color-gold);
 }
 
 /* Scroll sentinel */
@@ -125,14 +162,35 @@
 }
 
 .grid-browse .error-message {
-  color: #F0B900;
+  color: var(--color-gold);
   font-size: 18px;
   font-weight: 600;
   margin: 0 0 10px 0;
 }
 
 .grid-browse .error-detail {
-  color: #888;
+  color: var(--color-text-muted);
   font-size: 14px;
   margin: 0;
+}
+
+.grid-browse .retry-button {
+  background-color: var(--color-gold);
+  color: var(--color-bg);
+  border: none;
+  padding: 12px 24px;
+  border-radius: 8px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.2s, opacity 0.2s;
+  margin-top: 10px;
+}
+
+.grid-browse .retry-button:hover {
+  transform: scale(1.05);
+}
+
+.grid-browse .retry-button:active {
+  transform: scale(0.95);
 }

@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
+import flyingMachineIcon from '../../assets/FlyingMachine2_tinted_gold.png';
 import './GridBrowse.css';
 import { useGridBrowse } from '../../context/GridBrowseContext';
 import { useArtworkModal } from '../../context/ArtworkModalContext';
@@ -15,8 +16,9 @@ export default function GridBrowse({ type }) {
   const rawTerm = type === 'artist' ? params.artistName : params.tagName;
   const searchTerm = rawTerm ? decodeURIComponent(rawTerm) : '';
 
-  const { artworks, loading, loadingMore, error, hasMore, initSearch, loadMore, abort } = useGridBrowse();
+  const { artworks, loading, loadingMore, error, hasMore, initSearch, loadMore, abort, totalCount } = useGridBrowse();
   const { openModal } = useArtworkModal();
+  const navigate = useNavigate();
 
   const gridRef = useRef(null);
   const lastSearchRef = useRef('');
@@ -58,6 +60,9 @@ export default function GridBrowse({ type }) {
       <Banner />
       <div className="search-heading">
         <h2 className="search-term">{displayTerm}</h2>
+        {totalCount > 0 && (
+          <p className="search-count">{totalCount} artwork{totalCount !== 1 ? 's' : ''}</p>
+        )}
       </div>
     </>
   );
@@ -82,6 +87,12 @@ export default function GridBrowse({ type }) {
         <div className="error-container">
           <p className="error-message">Unable to load artworks</p>
           <p className="error-detail">{error}</p>
+          <button
+            className="retry-button"
+            onClick={() => initSearch(type, searchTerm)}
+          >
+            Try Again
+          </button>
         </div>
       </div>
     );
@@ -93,7 +104,11 @@ export default function GridBrowse({ type }) {
       <div className="grid-browse" ref={gridRef}>
         <Header />
         <div className="empty-state">
-          <p>No artworks found</p>
+          <img src={flyingMachineIcon} alt="" className="empty-state-icon" />
+          <p className="empty-state-message">No artworks found for this search.</p>
+          <button className="empty-state-cta" onClick={() => navigate('/')}>
+            Explore the collection
+          </button>
         </div>
       </div>
     );

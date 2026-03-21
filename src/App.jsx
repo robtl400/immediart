@@ -6,6 +6,7 @@ import { ArtworkModalProvider } from './context/ArtworkModalContext'
 import DiscoveryFeed from './components/feed/DiscoveryFeed'
 import GridBrowse from './components/grid/GridBrowse'
 import ArtworkModal from './components/modal/ArtworkModal'
+import ArtworkDeepLink from './components/ArtworkDeepLink'
 
 export default function App() {
   return (
@@ -16,6 +17,7 @@ export default function App() {
             <Route path="/" element={<DiscoveryFeed />} />
             <Route path="/artist/:artistName" element={<GridBrowse type="artist" />} />
             <Route path="/tag/:tagName" element={<GridBrowse type="tag" />} />
+            <Route path="/artwork/:artworkId" element={<ArtworkDeepLink />} />
           </Routes>
           <ArtworkModal />
         </ArtworkModalProvider>

@@ -25,7 +25,7 @@
   max-width: 430px;
   position: relative;
   overflow: hidden;
-  background-color: #121212;
+  background-color: var(--color-bg);
 }
 
 .flying-machine-loader {
@@ -71,7 +71,7 @@
 }
 
 .loading-message {
-  color: #888;
+  color: var(--color-text-muted);
   font-size: 14px;
   margin-top: 16px;
 }
@@ -87,7 +87,7 @@
 .inline-loader .dot {
   width: 8px;
   height: 8px;
-  background-color: #A37D00;
+  background-color: var(--color-gold-muted);
   border-radius: 50%;
   animation: bounce 1.4s ease-in-out infinite both;
 }

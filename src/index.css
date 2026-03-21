@@ -4,6 +4,16 @@
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   color-scheme: dark;
+
+  --color-bg:             #121212;
+  --color-surface:        #1a1a1a;
+  --color-modal:          #3B3B3B;
+  --color-gold:           #F0B900;
+  --color-gold-muted:     #A37D00;
+  --color-text:           #ffffff;
+  --color-text-body:      #e0e0e0;
+  --color-text-secondary: #b0b0b0;
+  --color-text-muted:     #888888;
 }
 
 * {
@@ -15,8 +25,8 @@ html, body {
   padding: 0;
   width: 100%;
   min-height: 100vh;
-  background: #121212;
-  color: #ffffff;
+  background: var(--color-bg);
+  color: var(--color-text);
   overflow-x: hidden;
 }
 

@@ -221,6 +221,94 @@ describe('usePaginatedFetch — reset()', () => {
   });
 });
 
+// ─── initialBatchSize ─────────────────────────────────────────────────────────
+
+describe('usePaginatedFetch — initialBatchSize', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.clearAllMocks();
+    fetchIDs.mockResolvedValue(ALL_IDS);
+    batchFetchArtworks.mockResolvedValue(makeBatch(BATCH));
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it('uses initialBatchSize for first fetch and batchSize for background prefetch', async () => {
+    const INITIAL = 2;
+    const { result } = renderHook(() =>
+      usePaginatedFetch({ shuffleIDs: false, batchSize: BATCH, initialBatchSize: INITIAL })
+    );
+    await act(async () => { result.current.reset(fetchIDs); });
+    await drain();
+
+    // First call: batchFetchArtworks(ids, targetCount=2, signal)
+    expect(batchFetchArtworks.mock.calls[0][1]).toBe(INITIAL);
+    // Second call (background prefetch): uses full batchSize
+    expect(batchFetchArtworks.mock.calls[1][1]).toBe(BATCH);
+  });
+
+  it('subsequent loadMore uses batchSize not initialBatchSize', async () => {
+    const INITIAL = 2;
+    // Reject prefetch so loadMore falls through to fetchBatch(false)
+    batchFetchArtworks
+      .mockResolvedValueOnce(makeBatch(BATCH))  // initial fetch
+      .mockRejectedValueOnce(new Error('prefetch skip')) // prefetch fails silently
+      .mockResolvedValue(makeBatch(BATCH));      // loadMore batch
+
+    const { result } = renderHook(() =>
+      usePaginatedFetch({ shuffleIDs: false, batchSize: BATCH, initialBatchSize: INITIAL })
+    );
+    await act(async () => { result.current.reset(fetchIDs); });
+    await drain();
+
+    await act(async () => { result.current.loadMore(); });
+    await drain();
+
+    // loadMore call used batchSize, not initialBatchSize
+    const loadMoreCall = batchFetchArtworks.mock.calls[2]; // [0]=initial, [1]=prefetch, [2]=loadMore
+    expect(loadMoreCall[1]).toBe(BATCH);
+  });
+});
+
+// ─── circuit breaker silent freeze ───────────────────────────────────────────
+
+describe('usePaginatedFetch — circuit breaker silent freeze', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.clearAllMocks();
+    fetchIDs.mockResolvedValue(ALL_IDS);
+  });
+  afterEach(() => vi.useRealTimers());
+
+  // Contract: when the circuit breaker is OPEN, batchFetchArtworks throws an AbortError.
+  // The hook swallows it silently — no error state, no loading flicker, artworks preserved.
+  // This is intentional: the breaker auto-recovers in 5s via HALF_OPEN probe.
+  // Showing an error for a transient 5s freeze would be worse UX than a silent stall.
+  it('circuit breaker open: feed freezes silently — no error shown, artworks and hasMore preserved', async () => {
+    // Initial batch loads fine; prefetch and all subsequent calls simulate breaker OPEN
+    batchFetchArtworks
+      .mockResolvedValueOnce(makeBatch(BATCH))  // initial batch succeeds
+      .mockRejectedValue(new DOMException('Circuit breaker open — request rejected', 'AbortError'));
+
+    const { result } = renderHook(() =>
+      usePaginatedFetch({ shuffleIDs: false, batchSize: BATCH })
+    );
+    await act(async () => { result.current.reset(fetchIDs); });
+    await drain(); // initial load ok; prefetch attempt catches AbortError silently
+
+    const artworksCount = result.current.artworks.length;
+    const hasMoreBefore = result.current.hasMore;
+
+    // loadMore: prefetch failed silently → falls through to fetchBatch(false) → AbortError
+    await act(async () => { result.current.loadMore(); });
+    await drain();
+
+    expect(result.current.error).toBeNull();                        // no error shown to user
+    expect(result.current.artworks.length).toBe(artworksCount);    // existing artworks preserved
+    expect(result.current.loadingMore).toBe(false);                 // loading state cleaned up
+    expect(result.current.hasMore).toBe(hasMoreBefore);            // hasMore unchanged
+  });
+});
+
 // ─── error auto-retry ─────────────────────────────────────────────────────────
 
 describe('usePaginatedFetch — error auto-retry', () => {
@@ -272,6 +360,7 @@ describe('usePaginatedFetch — error auto-retry', () => {
     await act(async () => { result.current.reset(fetchIDs); });
     await drain();
 
+    expect(result.current.error).toBe("Couldn't load more art. Tap to retry.");
     expect(result.current.error).not.toContain('Internal API error');
   });
 });
