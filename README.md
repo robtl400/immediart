@@ -64,7 +64,7 @@ This app uses **The Metropolitan Museum of Art Collection API**.
 
 **Documentation:** [metmuseum.github.io](https://metmuseum.github.io/)
 
-**Rate Limit:** 80 requests/second (the app implements parallel fetching with cooldowns to stay within limits)
+**Rate Limit:** 80 requests/second (the app implements a `RequestManager` service with HTTP throttling, request deduplication, dynamic concurrency scaling, and a circuit breaker to stay within limits)
 
 ## Tech Stack
 
@@ -84,4 +84,8 @@ npm run test:watch  # Watch mode
 Tests cover:
 - **IndexedDB cache layer** (`artworkCache.js`): TTL expiry, cache hit/miss, in-flight deduplication, key namespacing, storage error resilience
 - **Met API integration** (`metAPI.js`): cache integration, 403 retry exhaustion, AbortError propagation, network failure retry, batch 404 filtering, abort mid-batch
-- **Context layer** (`ArtworksContext`, `GridBrowseContext`): `loadMore` guard logic, prefetch merge, delay-skip on cache hit, MAX trim, abort behavior
+- **Paginated fetch hook** (`usePaginatedFetch.js`): batch loading, prefetch, abort, guard logic, delay-skip on cache hit, MAX trim — shared engine used by both contexts
+- **Request manager** (`requestManager.js`): HTTP throttling, deduplication, dynamic concurrency, circuit breaker state machine (CLOSED → OPEN → HALF_OPEN)
+- **Context layer** (`ArtworksContext`, `GridBrowseContext`): thin wrapper behaviour, correct delegation to `usePaginatedFetch`
+- **Delay utilities** (`delay.js`): `delay`, `addJitter`, `delayOrAbort` helpers
+- **ArtworkCard** (`ArtworkCard.jsx`): purely presentational rendering, `onArtistClick`/`onTagClick` prop wiring
