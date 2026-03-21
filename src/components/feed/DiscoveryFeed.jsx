@@ -18,7 +18,16 @@ export default function DiscoveryFeed() {
   const navigate = useNavigate();
 
   const feedRef = useRef(null);
-  const [likedArtworks, setLikedArtworks] = useState(new Set());
+
+  const LIKES_STORAGE_KEY = 'immediart_liked_artworks';
+  const [likedArtworks, setLikedArtworks] = useState(() => {
+    try {
+      const stored = localStorage.getItem(LIKES_STORAGE_KEY);
+      return stored ? new Set(JSON.parse(stored)) : new Set();
+    } catch {
+      return new Set();
+    }
+  });
   const [isScrolled, setIsScrolled] = useState(false);
 
   const HINT_STORAGE_KEY = 'immediart_hint_seen';
@@ -74,6 +83,9 @@ export default function DiscoveryFeed() {
     setLikedArtworks(prev => {
       const next = new Set(prev);
       next.has(id) ? next.delete(id) : next.add(id);
+      try {
+        localStorage.setItem(LIKES_STORAGE_KEY, JSON.stringify([...next]));
+      } catch { /* ignore quota errors */ }
       return next;
     });
   };
