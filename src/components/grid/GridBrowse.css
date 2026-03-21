@@ -4,7 +4,7 @@
   flex-direction: column;
   height: 100vh;
   width: 100%;
-  background-color: #121212;
+  background-color: var(--color-bg);
   overflow-x: hidden;
   overflow-y: auto;
 }
@@ -22,11 +22,11 @@
 /* Search Heading */
 .search-heading {
   padding: 16px 15px 12px;
-  background-color: #121212;
+  background-color: var(--color-bg);
 }
 
 .search-term {
-  color: #F0B900;
+  color: var(--color-gold);
   font-family: 'Allura', cursive;
   font-size: 2.25rem;
   font-weight: 400;
@@ -40,7 +40,7 @@
   display: grid;
   gap: 2px;
   padding: 2px;
-  background-color: #121212;
+  background-color: var(--color-bg);
 }
 
 .thumbnail-grid.columns-2 {
@@ -53,7 +53,7 @@
   overflow: hidden;
   cursor: pointer;
   position: relative;
-  background-color: #1a1a1a;
+  background-color: var(--color-surface);
   transition: opacity 0.2s ease;
 }
 
@@ -66,7 +66,7 @@
 }
 
 .thumbnail-card:focus {
-  outline: 2px solid #F0B900;
+  outline: 2px solid var(--color-gold);
   outline-offset: -2px;
 }
 
@@ -90,7 +90,7 @@
 }
 
 .empty-state p {
-  color: #888;
+  color: var(--color-text-muted);
   font-size: 16px;
 }
 
@@ -98,13 +98,13 @@
 .grid-browse .end-message {
   text-align: center;
   padding: 20px;
-  color: #888;
+  color: var(--color-text-muted);
 }
 
 .grid-browse .end-message p {
   margin: 0;
   font-size: 14px;
-  color: #F0B900;
+  color: var(--color-gold);
 }
 
 /* Scroll sentinel */
@@ -125,14 +125,14 @@
 }
 
 .grid-browse .error-message {
-  color: #F0B900;
+  color: var(--color-gold);
   font-size: 18px;
   font-weight: 600;
   margin: 0 0 10px 0;
 }
 
 .grid-browse .error-detail {
-  color: #888;
+  color: var(--color-text-muted);
   font-size: 14px;
   margin: 0;
 }

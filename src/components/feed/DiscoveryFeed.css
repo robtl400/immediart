@@ -4,7 +4,7 @@
   flex-direction: column;
   height: 100vh;
   width: 100%;
-  background-color: #121212;
+  background-color: var(--color-bg);
   overflow-x: hidden;
   overflow-y: auto;
   scroll-snap-type: y mandatory;
@@ -25,7 +25,7 @@
 .banner {
   width: 100%;
   padding: 15px 0;
-  background-color: #121212;
+  background-color: var(--color-bg);
   flex-shrink: 0;
   position: sticky;
   top: 0;
@@ -45,7 +45,7 @@
   background: linear-gradient(
     to bottom,
     rgba(163, 125, 0, 0.6) 0%,
-    #F0B900 50%,
+    var(--color-gold) 50%,
     rgba(163, 125, 0, 0.3) 100%
   );
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
@@ -60,7 +60,7 @@
 
 .banner-title {
   font-family: 'Allura', cursive;
-  color: #F0B900;
+  color: var(--color-gold);
   font-size: 2.5rem;
   text-align: center;
   margin: 0;
@@ -101,7 +101,7 @@
 /* Image Container */
 .image-container {
   width: 100%;
-  background-color: #1a1a1a;
+  background-color: var(--color-surface);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -130,7 +130,7 @@
   left: 0;
   width: 100%;
   height: 100%;
-  background-color: #1a1a1a;
+  background-color: var(--color-surface);
   overflow: hidden;
 }
 
@@ -175,7 +175,7 @@
   justify-content: center;
   gap: 15px;
   padding: 12px 15px;
-  background-color: #121212;
+  background-color: var(--color-bg);
   flex-shrink: 0;
 }
 
@@ -203,7 +203,7 @@
 
 /* Like Button */
 .like-btn .icon {
-  color: #F0B900;
+  color: var(--color-gold);
   font-size: 29px;
   line-height: 1;
   position: relative;
@@ -211,7 +211,7 @@
 }
 
 .like-btn.liked .icon {
-  color: #F0B900;
+  color: var(--color-gold);
   animation: heartPop 0.3s ease;
 }
 
@@ -228,18 +228,18 @@
 }
 
 .like-btn .btn-label {
-  color: #F0B900;
+  color: var(--color-gold);
   font-size: 14px;
   font-weight: 500;
 }
 
 .like-btn.liked .btn-label {
-  color: #F0B900;
+  color: var(--color-gold);
 }
 
 /* Share Button */
 .share-btn {
-  color: #F0B900;
+  color: var(--color-gold);
 }
 
 .share-btn:hover {
@@ -259,19 +259,19 @@
 /* Text Information Box */
 .text-info {
   padding: 8px 15px 12px;
-  background-color: #121212;
+  background-color: var(--color-bg);
   flex-shrink: 0;
 }
 
 .artwork-description {
-  color: #e0e0e0;
+  color: var(--color-text-body);
   font-size: 14px;
   line-height: 1.6;
   margin: 0 0 6px 0;
 }
 
 .artist-name {
-  color: #ffffff;
+  color: var(--color-text);
   font-weight: 700;
   font-size: 14px;
 }
@@ -288,7 +288,7 @@
 }
 
 .artwork-date {
-  color: #A37D00;
+  color: var(--color-gold-muted);
   font-size: 13px;
   margin: 0 0 0 0;
 }
@@ -300,7 +300,7 @@
 }
 
 .hashtag {
-  color: #F0B900;
+  color: var(--color-gold);
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
@@ -318,7 +318,7 @@
 /* Comment Section */
 .comment-section {
   padding: 4px 15px 16px;
-  background-color: #121212;
+  background-color: var(--color-bg);
   flex-shrink: 0;
 }
 
@@ -333,12 +333,12 @@
 }
 
 .comment-username {
-  color: #ffffff;
+  color: var(--color-text);
   font-weight: 700;
 }
 
 .comment-text {
-  color: #b0b0b0;
+  color: var(--color-text-secondary);
   font-weight: 400;
 }
 
@@ -416,21 +416,21 @@
 }
 
 .error-message {
-  color: #F0B900;
+  color: var(--color-gold);
   font-size: 18px;
   font-weight: 600;
   margin: 0 0 10px 0;
 }
 
 .error-detail {
-  color: #888;
+  color: var(--color-text-muted);
   font-size: 14px;
   margin: 0 0 20px 0;
 }
 
 .retry-button {
-  background-color: #F0B900;
-  color: #121212;
+  background-color: var(--color-gold);
+  color: var(--color-bg);
   border: none;
   padding: 12px 24px;
   border-radius: 8px;
@@ -452,7 +452,7 @@
 .end-message {
   text-align: center;
   padding: 30px 20px;
-  color: #888;
+  color: var(--color-text-muted);
 }
 
 .end-message p {
@@ -461,7 +461,7 @@
 }
 
 .end-message p:first-child {
-  color: #F0B900;
+  color: var(--color-gold);
   font-weight: 500;
 }
 
