@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
+import flyingMachineIcon from '../../assets/FlyingMachine2_tinted_gold.png';
 import './GridBrowse.css';
 import { useGridBrowse } from '../../context/GridBrowseContext';
 import { useArtworkModal } from '../../context/ArtworkModalContext';
@@ -17,6 +18,7 @@ export default function GridBrowse({ type }) {
 
   const { artworks, loading, loadingMore, error, hasMore, initSearch, loadMore, abort, totalCount } = useGridBrowse();
   const { openModal } = useArtworkModal();
+  const navigate = useNavigate();
 
   const gridRef = useRef(null);
   const lastSearchRef = useRef('');
@@ -96,7 +98,11 @@ export default function GridBrowse({ type }) {
       <div className="grid-browse" ref={gridRef}>
         <Header />
         <div className="empty-state">
-          <p>No artworks found</p>
+          <img src={flyingMachineIcon} alt="" className="empty-state-icon" />
+          <p className="empty-state-message">No artworks found for this search.</p>
+          <button className="empty-state-cta" onClick={() => navigate('/')}>
+            Explore the collection
+          </button>
         </div>
       </div>
     );
