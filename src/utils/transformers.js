@@ -44,7 +44,7 @@ export function transformAPIToDisplay(apiArtwork) {
     // Core fields
     id: apiArtwork.objectID,
     imageUrl: apiArtwork.primaryImageSmall || apiArtwork.primaryImage,
-    artistName: apiArtwork.artistDisplayName,
+    artistName: apiArtwork.artistDisplayName || '',
     username: formatArtistUsername(apiArtwork.artistDisplayName),
     title: apiArtwork.title,
     description: buildDescription(apiArtwork),

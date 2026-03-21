@@ -4,11 +4,8 @@
 
 import {
   API_BASE_URL,
-  MAX_CONCURRENT_REQUESTS,
-  BATCH_COOLDOWN_MS,
   MAX_RETRIES,
   RATE_LIMIT_DELAYS,
-  MIN_REQUEST_GAP_MS
 } from '../utils/constants';
 import {
   getCachedIDs,
@@ -16,50 +13,16 @@ import {
   getCachedArtwork,
   setCachedArtwork
 } from './artworkCache';
+import { addJitter, delayOrAbort } from '../utils/delay';
+import { requestManager } from './requestManager';
 
-// Utilities
-const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
-const addJitter = (ms) => ms + Math.floor(Math.random() * ms * 0.3);
-
-// Delay that cancels immediately if the AbortSignal fires
-function delayOrAbort(ms, signal) {
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(resolve, ms);
-    if (signal) {
-      signal.addEventListener('abort', () => {
-        clearTimeout(timer);
-        reject(new DOMException('Aborted', 'AbortError'));
-      }, { once: true });
-    }
-  });
-}
-
-// Global rate limiter - ensures minimum gap between ALL requests across all contexts
-let lastRequestTime = 0;
-let requestQueue = Promise.resolve();
-
-async function throttledFetch(url, signal) {
-  // Queue this request to ensure sequential execution of throttle logic
-  const myRequest = requestQueue.then(async () => {
-    const now = Date.now();
-    const timeSinceLastRequest = now - lastRequestTime;
-    if (timeSinceLastRequest < MIN_REQUEST_GAP_MS) {
-      await delay(MIN_REQUEST_GAP_MS - timeSinceLastRequest);
-    }
-    lastRequestTime = Date.now();
-    return fetch(url, { signal });
-  });
-  requestQueue = myRequest.catch(() => {}); // Don't let errors break the chain
-  return myRequest;
-}
-
-// Fetch with retry and rate limit handling
+// Fetch with retry and rate limit handling — delegates throttle to requestManager
 async function fetchWithRetry(url, signal = null) {
   for (let i = 0; i < MAX_RETRIES; i++) {
     if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
 
     try {
-      const response = await throttledFetch(url, signal);
+      const response = await requestManager.fetch(url, signal);
       if (response.status === 403 && i < MAX_RETRIES - 1) {
         await delayOrAbort(addJitter(RATE_LIMIT_DELAYS[i] || RATE_LIMIT_DELAYS.at(-1)), signal);
         continue;
@@ -68,7 +31,6 @@ async function fetchWithRetry(url, signal = null) {
     } catch (error) {
       if (error.name === 'AbortError') throw error;
       if (i === MAX_RETRIES - 1) throw error;
-      // Network errors (including CORS-blocked 403s) use rate limit delays
       await delayOrAbort(addJitter(RATE_LIMIT_DELAYS[i] || RATE_LIMIT_DELAYS.at(-1)), signal);
     }
   }
@@ -84,24 +46,19 @@ export function shuffleArray(array) {
   return shuffled;
 }
 
-// Search API - unified search function with rate limit handling
+// Search API
 export async function search(query, { artistMode = false, signal = null } = {}) {
   const params = artistMode ? 'hasImages=true&artistOrCulture=true' : 'hasImages=true';
   const url = `${API_BASE_URL}/search?${params}&q=${encodeURIComponent(query)}`;
 
-  // Single attempt - rely on batch-level rate limit handling
-  // Retries at this level cause cascading failures
   if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
 
   try {
     const response = await fetchWithRetry(url, signal);
-
     if (response.ok) {
       const data = await response.json();
       return data.objectIDs || [];
     }
-
-    // 403 at search level is a hard failure - don't retry
     throw new Error(`Search failed: ${response.status}`);
   } catch (error) {
     if (error.name === 'AbortError') throw error;
@@ -136,54 +93,37 @@ export async function searchByTag(term, signal) {
   return ids;
 }
 
-// Artwork validation
+// Artwork validation — requires image + title only (artistDisplayName and isPublicDomain
+// are optional; display layer handles missing values gracefully via transformers.js)
 export function validateArtwork(artwork) {
   return Boolean(
     artwork?.primaryImage?.trim() &&
-    artwork?.title?.trim() &&
-    artwork?.artistDisplayName?.trim() &&
-    artwork?.isPublicDomain
+    artwork?.title?.trim()
   );
 }
 
-// In-flight dedup: if the same objectID is already being fetched, return the same Promise
-const pendingFetches = new Map(); // objectID → Promise
-
-// Fetch single artwork (with cache + in-flight dedup)
+// Fetch single artwork (with cache + in-flight dedup via requestManager)
 export async function fetchArtworkByID(objectID, signal = null) {
   // 1. Cache check
   const cached = await getCachedArtwork(objectID);
   if (cached) return cached;
 
-  // 2. In-flight dedup: return existing Promise if this ID is already being fetched
-  if (pendingFetches.has(objectID)) {
-    return pendingFetches.get(objectID);
+  // 2. In-flight dedup + throttled fetch (via requestManager.fetchDeduped)
+  const url = `${API_BASE_URL}/objects/${objectID}`;
+  try {
+    const response = await requestManager.fetchDeduped(url, signal);
+    if (!response.ok) return null;
+    const artwork = await response.json();
+    const result = validateArtwork(artwork) ? artwork : null;
+    if (result) await setCachedArtwork(objectID, result);
+    return result;
+  } catch (error) {
+    if (error.name === 'AbortError') throw error;
+    return null;
   }
-
-  // 3. Start new fetch
-  const promise = (async () => {
-    try {
-      const response = await fetchWithRetry(`${API_BASE_URL}/objects/${objectID}`, signal);
-      if (!response.ok) return null;
-      const artwork = await response.json();
-      const result = validateArtwork(artwork) ? artwork : null;
-      if (result) await setCachedArtwork(objectID, result);
-      return result;
-    } catch (error) {
-      if (error.name === 'AbortError') throw error;
-      return null;
-    } finally {
-      pendingFetches.delete(objectID);
-    }
-  })();
-
-  pendingFetches.set(objectID, promise);
-  // Clear entry if signal aborts — allows the next caller to start a fresh fetch
-  signal?.addEventListener('abort', () => pendingFetches.delete(objectID), { once: true });
-  return promise;
 }
 
-// Batch fetch with parallel requests
+// Batch fetch with parallel requests — uses requestManager.maxConcurrent for dynamic sizing
 export async function batchFetchArtworks(objectIDs, targetCount = 4, signal = null) {
   const artworks = [];
   let idIndex = 0;
@@ -191,10 +131,10 @@ export async function batchFetchArtworks(objectIDs, targetCount = 4, signal = nu
   while (artworks.length < targetCount && idIndex < objectIDs.length) {
     if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
 
-    // Batch size: 2x what we need, capped at max concurrent
+    // Batch size: 2x what we need, capped at current dynamic concurrency limit
     const remaining = targetCount - artworks.length;
     const batchSize = Math.min(
-      MAX_CONCURRENT_REQUESTS,
+      requestManager.maxConcurrent,
       Math.max(remaining * 2, 4),
       objectIDs.length - idIndex
     );
@@ -202,23 +142,20 @@ export async function batchFetchArtworks(objectIDs, targetCount = 4, signal = nu
     const batchIDs = objectIDs.slice(idIndex, idIndex + batchSize);
     idIndex += batchSize;
 
-    // Parallel fetch - properly propagate AbortError
+    // Parallel fetch — propagate AbortError, swallow everything else
     const results = await Promise.all(
       batchIDs.map(id => fetchArtworkByID(id, signal).catch(err => {
         if (err.name === 'AbortError') throw err;
         return null;
       }))
     );
-    // If we get here after abort, check signal again
     if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
 
-    // Add valid artworks (null = failed validation or fetch error)
-    const valid = results.filter(Boolean);
-    artworks.push(...valid);
+    artworks.push(...results.filter(Boolean));
 
-    // Cooldown between batches — abort-aware
+    // Cooldown between batches — abort-aware, uses dynamic batchCooldownMs
     if (artworks.length < targetCount && idIndex < objectIDs.length) {
-      await delayOrAbort(BATCH_COOLDOWN_MS, signal);
+      await delayOrAbort(requestManager.batchCooldownMs, signal);
     }
   }
 

@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import './DiscoveryFeed.css';
 import { useArtworks } from '../../context/ArtworksContext';
+import { useGridBrowse } from '../../context/GridBrowseContext';
 import { useArtworkModal } from '../../context/ArtworkModalContext';
 import LoadingSpinner, { InlineLoader } from '../common/LoadingSpinner';
 import SkeletonCard from '../common/SkeletonCard';
@@ -11,7 +13,9 @@ import { FEED_ROOT_MARGIN, BANNER_SCROLL_THRESHOLD } from '../../utils/constants
 
 export default function DiscoveryFeed() {
   const { artworks, loading, loadingMore, error, hasMore, loadMoreArtworks, retry, pause } = useArtworks();
+  const { initSearch } = useGridBrowse();
   const { openModal } = useArtworkModal();
+  const navigate = useNavigate();
 
   const feedRef = useRef(null);
   const [likedArtworks, setLikedArtworks] = useState(new Set());
@@ -56,6 +60,19 @@ export default function DiscoveryFeed() {
     });
   };
 
+  // Pre-warm: start loading grid data before the route change completes
+  const handleArtistClick = useCallback((artistName) => {
+    pause();
+    initSearch('artist', artistName);
+    navigate(`/artist/${encodeURIComponent(artistName)}`);
+  }, [pause, initSearch, navigate]);
+
+  const handleTagClick = useCallback((tag) => {
+    pause();
+    initSearch('tag', tag);
+    navigate(`/tag/${encodeURIComponent(tag)}`);
+  }, [pause, initSearch, navigate]);
+
   // Loading state
   if (loading) {
     return (
@@ -91,6 +108,8 @@ export default function DiscoveryFeed() {
           isLiked={likedArtworks.has(artwork.id)}
           onLike={() => handleLike(artwork.id)}
           onImageDoubleClick={() => openModal(artwork)}
+          onArtistClick={handleArtistClick}
+          onTagClick={handleTagClick}
         />
       ))}
 

@@ -83,30 +83,20 @@ describe('ArtworksContext — initial load', () => {
     expect(result.current.error).toBeNull();
   });
 
-  it('cache miss: 300ms delay fires before batchFetchArtworks', async () => {
-    // Override: cache miss so the 300ms delay path runs
+  it('cache miss: batchFetchArtworks called immediately (300ms post-search pause removed)', async () => {
+    // Phase 2: the 300ms post-search pause was intentionally removed.
+    // On cache miss, fetchAllObjectIDs fetches from API and batchFetchArtworks
+    // fires immediately — no artificial delay.
     getCachedIDs.mockResolvedValue(null);
     fetchAllObjectIDs.mockResolvedValue(ALL_IDS);
+    batchFetchArtworks.mockResolvedValue(makeBatch(FEED_BATCH_SIZE));
 
-    let resolveBatch;
-    batchFetchArtworks.mockReturnValue(
-      new Promise((res) => { resolveBatch = res; })
-    );
+    const { result } = renderHook(() => useArtworks(), { wrapper });
+    await drain();
 
-    renderHook(() => useArtworks(), { wrapper });
-
-    // Drain microtasks so fetchAllObjectIDs resolves, but don't advance timers yet
-    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
-
-    // batchFetchArtworks should NOT be called yet — waiting on 300ms delay
-    expect(batchFetchArtworks).not.toHaveBeenCalled();
-
-    // Advance timers past the 300ms delay
-    resolveBatch(makeBatch(FEED_BATCH_SIZE));
-    await act(async () => { await vi.runAllTimersAsync(); });
-
-    // Now it should have been called
     expect(batchFetchArtworks).toHaveBeenCalled();
+    expect(result.current.loading).toBe(false);
+    expect(result.current.artworks.length).toBeGreaterThan(0);
   });
 
   it('cache hit: batchFetchArtworks called immediately (no delay)', async () => {
@@ -128,7 +118,8 @@ describe('ArtworksContext — initial load', () => {
     await drain();
 
     expect(result.current.loading).toBe(false);
-    expect(result.current.error).toBe('network failure');
+    // Phase 4: raw error messages are never surfaced; user sees friendly text after auto-retry
+    expect(result.current.error).toBe("Couldn't load more art. Tap to retry.");
     expect(result.current.artworks).toHaveLength(0);
   });
 });
@@ -147,7 +138,8 @@ describe('ArtworksContext — loadMoreArtworks guard logic', () => {
 
   it('does nothing when hasMore is false', async () => {
     // Empty ID list → hasMore goes false after initial load
-    getCachedIDs.mockResolvedValue([]);
+    // fetchAllObjectIDs is the mock; getCachedIDs is mocked inside it but metAPI is mocked
+    fetchAllObjectIDs.mockResolvedValue([]);
     batchFetchArtworks.mockResolvedValue([]);
 
     const { result } = renderHook(() => useArtworks(), { wrapper });
@@ -219,6 +211,7 @@ describe('ArtworksContext — prefetch merge', () => {
     vi.useFakeTimers();
     vi.clearAllMocks();
     getCachedIDs.mockResolvedValue(ALL_IDS);
+    fetchAllObjectIDs.mockResolvedValue(ALL_IDS);
   });
 
   afterEach(() => vi.useRealTimers());
@@ -261,7 +254,7 @@ describe('ArtworksContext — prefetch merge', () => {
   it('hasMore updates correctly after prefetch merge based on nextIndex', async () => {
     // Small ID list: FEED_BATCH_SIZE * 2 total IDs
     const smallIDs = Array.from({ length: FEED_BATCH_SIZE * 2 }, (_, i) => i + 1);
-    getCachedIDs.mockResolvedValue(smallIDs);
+    fetchAllObjectIDs.mockResolvedValue(smallIDs);
 
     batchFetchArtworks
       .mockResolvedValueOnce(makeBatch(FEED_BATCH_SIZE, 1))
@@ -284,17 +277,19 @@ describe('ArtworksContext — prefetch merge', () => {
       .mockResolvedValueOnce(makeBatch(FEED_BATCH_SIZE, 200)); // prefetch #2 (after merge)
 
     const { result } = renderHook(() => useArtworks(), { wrapper });
+    // drain + flush enough microtask cycles for initial + prefetch #1 to settle
     await drain();
-    // Allow prefetch #1 to settle
-    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+    await act(async () => {
+      for (let i = 0; i < 8; i++) await Promise.resolve();
+    });
 
-    expect(batchFetchArtworks).toHaveBeenCalledTimes(2); // initial + prefetch #1
-
+    // After merge, prefetch #2 should be triggered
     await act(async () => { result.current.loadMoreArtworks(); });
-    // Allow prefetch #2 to start
-    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+    await act(async () => {
+      for (let i = 0; i < 8; i++) await Promise.resolve();
+    });
 
-    // prefetch #2 triggered after merge
+    // All three calls: initial + prefetch #1 + prefetch #2
     expect(batchFetchArtworks).toHaveBeenCalledTimes(3);
   });
 });
@@ -306,6 +301,7 @@ describe('ArtworksContext — MAX_ARTWORKS_IN_MEMORY trim', () => {
     vi.useFakeTimers();
     vi.clearAllMocks();
     getCachedIDs.mockResolvedValue(ALL_IDS);
+    fetchAllObjectIDs.mockResolvedValue(ALL_IDS);
   });
 
   afterEach(() => vi.useRealTimers());

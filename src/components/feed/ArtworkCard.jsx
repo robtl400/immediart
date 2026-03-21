@@ -1,14 +1,15 @@
 import { useState, Fragment } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useArtworks } from '../../context/ArtworksContext';
 import flyingMachineIcon from '../../assets/FlyingMachine2_tinted_gold.png';
 
 /**
  * ArtworkCard Component
+ *
+ * Purely presentational — navigation side effects are lifted to DiscoveryFeed
+ * via onArtistClick and onTagClick props.
  */
-export default function ArtworkCard({ artwork, isLiked, onLike, onImageDoubleClick }) {
+export default function ArtworkCard({ artwork, isLiked, onLike, onImageDoubleClick, onArtistClick, onTagClick }) {
   const navigate = useNavigate();
-  const { pause } = useArtworks();
   const [imageLoaded, setImageLoaded] = useState(false);
   const [isLandscape, setIsLandscape] = useState(true);
 
@@ -32,14 +33,24 @@ export default function ArtworkCard({ artwork, isLiked, onLike, onImageDoubleCli
   };
 
   const handleArtistClick = () => {
-    pause(); // Abort feed requests before navigating
-    navigate(`/artist/${encodeURIComponent(artwork.artistName)}`);
+    // Guard: anonymous works have no artistName — skip navigation
+    if (!artwork.artistName) return;
+    if (onArtistClick) {
+      onArtistClick(artwork.artistName);
+    } else {
+      navigate(`/artist/${encodeURIComponent(artwork.artistName)}`);
+    }
   };
 
   const handleHashtagClick = (tag) => {
-    pause(); // Abort feed requests before navigating
-    navigate(`/tag/${encodeURIComponent(tag)}`);
+    if (onTagClick) {
+      onTagClick(tag);
+    } else {
+      navigate(`/tag/${encodeURIComponent(tag)}`);
+    }
   };
+
+  const hasArtist = Boolean(artwork.artistName);
 
   return (
     <article className="artwork-card">
@@ -47,7 +58,7 @@ export default function ArtworkCard({ artwork, isLiked, onLike, onImageDoubleCli
       <div className={`image-container ${isLandscape ? 'landscape' : 'portrait'}`}>
         <img
           src={artwork.imageUrl}
-          alt={`${artwork.title} by ${artwork.artistName}`}
+          alt={`${artwork.title}${hasArtist ? ` by ${artwork.artistName}` : ''}`}
           className="artwork-image"
           onLoad={handleImageLoad}
           onDoubleClick={onImageDoubleClick}
@@ -76,15 +87,19 @@ export default function ArtworkCard({ artwork, isLiked, onLike, onImageDoubleCli
       {/* Text Information */}
       <div className="text-info">
         <p className="artwork-description">
-          <span
-            className="artist-name clickable"
-            onClick={handleArtistClick}
-            role="button"
-            tabIndex={0}
-            onKeyDown={(e) => e.key === 'Enter' && handleArtistClick()}
-          >
-            {artwork.username}
-          </span>{' '}
+          {hasArtist ? (
+            <span
+              className="artist-name clickable"
+              onClick={handleArtistClick}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => e.key === 'Enter' && handleArtistClick()}
+            >
+              {artwork.username}
+            </span>
+          ) : (
+            <span className="artist-name">{artwork.username}</span>
+          )}{' '}
           {artwork.description}.
           {artwork.tags.map((tag, index) => (
             <Fragment key={index}>

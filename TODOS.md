@@ -1,17 +1,17 @@
 # TODOS
 
-## Extract shared pagination hook
-**What:** Create a `usePaginatedFetch` hook that both `ArtworksContext` and `GridBrowseContext` share.
-**Why:** ~80-100 lines of near-identical batch/pagination logic duplicated across both contexts. Any bug must be fixed in two places.
-**Pros:** Single source of truth, easier to test, DRY.
-**Cons:** The two contexts diverge (preloading, search cooldowns, reset logic) — abstraction needs configurable options that add complexity.
-**Context:** Refactor, not a bug fix. Duplicated code works correctly. **Priority elevated after performance PR (2026-03-20):** the PR added cache reads/writes, prefetch logic, and a second AbortController to BOTH contexts — the shared code is now ~85% identical. Highest-value targets for extraction: allIDsRef, currentIndexRef, fetchingRef, abortControllerRef, generational ID ref, prefetchControllerRef, batch-slice-and-fetch pattern, cache integration.
-**Depends on:** ~~Performance caching + prefetch PR~~ DONE. Context test coverage merged (2026-03-20) — safety net now in place. Ready to extract.
+## ~~Extract shared pagination hook~~ DONE (2026-03-20)
+`usePaginatedFetch` extracted. Both `ArtworksContext` and `GridBrowseContext` are now thin wrappers. Tests passing.
 
 ---
 
 ## ~~Add context-level test coverage~~ DONE (2026-03-20)
 28 tests added across `ArtworksContext.test.jsx`, `GridBrowseContext.test.jsx`, and expanded `artworkCache.test.js`. Covers: guard logic, prefetch merge, delay-skip on cache hit, MAX trim, abort behavior, metAPI 403 retry/AbortError/network error paths. Also fixed `GridBrowseContext.loadMore` missing `loadingMore` guard (brought in line with `ArtworksContext`).
+
+---
+
+## ~~ISSUE-001: Infinite re-render loop on artist/tag navigation~~ FIXED (2026-03-20)
+Fixed by /qa on feat/architecture-revamp. Root cause: `initSearch` depended on `[grid]` (new object every render). Fix: depend on `grid.reset` / `grid.pause`. Regression test added.
 
 ---
 
