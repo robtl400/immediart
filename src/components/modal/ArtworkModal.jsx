@@ -8,8 +8,9 @@ export default function ArtworkModal() {
   const { selectedArtwork, isOpen, closeModal } = useArtworkModal();
   const modalRef = useRef(null);
   const [imageError, setImageError] = useState(false);
+  const [imageLoaded, setImageLoaded] = useState(false);
 
-  useEffect(() => setImageError(false), [selectedArtwork]);
+  useEffect(() => { setImageError(false); setImageLoaded(false); }, [selectedArtwork]);
 
   // Handle ESC key and Tab trapping
   const handleKeyDown = useCallback((e) => {
@@ -112,14 +113,19 @@ export default function ArtworkModal() {
                   <p className="modal-image-fallback-text">Image unavailable</p>
                 </div>
               ) : (
-                <img
-                  src={selectedArtwork.primaryImageFull || selectedArtwork.imageUrl}
-                  alt={selectedArtwork.artistName
-                    ? `${selectedArtwork.title} by ${selectedArtwork.artistName}`
-                    : selectedArtwork.title}
-                  className="artwork-modal-image"
-                  onError={() => setImageError(true)}
-                />
+                <>
+                  {!imageLoaded && <div className="modal-image-skeleton" />}
+                  <img
+                    src={selectedArtwork.primaryImageFull || selectedArtwork.imageUrl}
+                    alt={selectedArtwork.artistName
+                      ? `${selectedArtwork.title} by ${selectedArtwork.artistName}`
+                      : selectedArtwork.title}
+                    className="artwork-modal-image"
+                    style={imageLoaded ? {} : { display: 'none' }}
+                    onLoad={() => setImageLoaded(true)}
+                    onError={() => setImageError(true)}
+                  />
+                </>
               )}
             </div>
 

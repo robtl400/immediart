@@ -93,6 +93,20 @@
   object-fit: contain;
 }
 
+/* Loading skeleton shown while image fetches */
+.modal-image-skeleton {
+  width: 100%;
+  min-height: 240px;
+  background: linear-gradient(90deg, var(--color-surface) 25%, #2a2a2a 50%, var(--color-surface) 75%);
+  background-size: 200% 100%;
+  animation: modal-skeleton-shimmer 1.5s infinite;
+}
+
+@keyframes modal-skeleton-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
 .modal-image-fallback {
   display: flex;
   flex-direction: column;
