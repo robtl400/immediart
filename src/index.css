@@ -59,3 +59,34 @@ button {
     -webkit-tap-highlight-color: transparent;
   }
 }
+
+/* NotFound page */
+.not-found-page {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100%;
+  background-color: var(--color-bg);
+}
+
+@media (min-width: 481px) {
+  .not-found-page {
+    max-width: 430px;
+    margin: 0 auto;
+    border-radius: 40px;
+    box-shadow: 0 0 60px rgba(0, 0, 0, 0.5);
+  }
+}
+
+.not-found-content {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+}
+
+.not-found-text {
+  color: var(--color-text-muted);
+  font-size: 15px;
+  margin: 0;
+}
