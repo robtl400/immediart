@@ -12,6 +12,7 @@ export default function ArtworkCard({ artwork, isLiked, onLike, onImageDoubleCli
   const navigate = useNavigate();
   const [imageLoaded, setImageLoaded] = useState(false);
   const [isLandscape, setIsLandscape] = useState(true);
+  const [shareCopied, setShareCopied] = useState(false);
 
   const handleImageLoad = (e) => {
     const img = e.target;
@@ -25,10 +26,16 @@ export default function ArtworkCard({ artwork, isLiked, onLike, onImageDoubleCli
       try {
         await navigator.share({ title: artwork.title, text: `${artwork.title} by ${artwork.artistName}`, url });
       } catch (err) {
-        if (err.name !== 'AbortError') navigator.clipboard?.writeText(url);
+        if (err.name !== 'AbortError') {
+          await navigator.clipboard?.writeText(url);
+          setShareCopied(true);
+          setTimeout(() => setShareCopied(false), 2000);
+        }
       }
     } else {
       await navigator.clipboard?.writeText(url);
+      setShareCopied(true);
+      setTimeout(() => setShareCopied(false), 2000);
     }
   };
 
@@ -80,7 +87,7 @@ export default function ArtworkCard({ artwork, isLiked, onLike, onImageDoubleCli
 
         <button className="action-btn share-btn" onClick={handleShare} aria-label="Share">
           <img src={flyingMachineIcon} alt="Share" className="icon share-icon" />
-          <span className="btn-label">Share</span>
+          <span className="btn-label">{shareCopied ? 'Copied!' : 'Share'}</span>
         </button>
       </div>
 
