@@ -1,3 +1,11 @@
+/* Shared sweep animation — used by image placeholders (feed + modal) */
+@keyframes imageSweep {
+  0%     { bottom: -100px; left: -100px; opacity: 1; }
+  66.67% { bottom: calc(100% + 100px); left: calc(100% + 100px); opacity: 1; }
+  66.7%  { opacity: 0; }
+  100%   { bottom: -100px; left: -100px; opacity: 0; }
+}
+
 /* Loading Spinner Styles */
 
 .loading-spinner-container {

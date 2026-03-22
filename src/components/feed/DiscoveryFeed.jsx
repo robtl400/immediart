@@ -6,7 +6,6 @@ import { useArtworks } from '../../context/ArtworksContext';
 import { useGridBrowse } from '../../context/GridBrowseContext';
 import { useArtworkModal } from '../../context/ArtworkModalContext';
 import LoadingSpinner, { InlineLoader } from '../common/LoadingSpinner';
-import SkeletonCard from '../common/SkeletonCard';
 import Banner from '../common/Banner';
 import ArtworkCard from './ArtworkCard';
 import useInfiniteScroll from '../../hooks/useInfiniteScroll';
@@ -109,7 +108,7 @@ export default function DiscoveryFeed() {
     return (
       <div className="discovery-feed" ref={feedRef}>
         <Banner feedRef={feedRef} />
-        {[0, 1, 2].map(i => <SkeletonCard key={i} variant="feed" />)}
+        <LoadingSpinner />
       </div>
     );
   }

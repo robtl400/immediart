@@ -4,6 +4,7 @@ import { fetchArtworkByID } from '../services/metAPI';
 import { transformAPIToDisplay } from '../utils/transformers';
 import { useArtworkModal } from '../context/ArtworkModalContext';
 import flyingMachineIcon from '../assets/FlyingMachine2_tinted_gold.png';
+import LoadingSpinner from './common/LoadingSpinner';
 
 export default function ArtworkDeepLink() {
   const { artworkId } = useParams();
@@ -61,16 +62,10 @@ export default function ArtworkDeepLink() {
   // Loading state — flying machine sweep
   return (
     <div style={{
-      display: 'flex', flexDirection: 'column', alignItems: 'center',
-      justifyContent: 'center', minHeight: '100vh', gap: '16px',
+      display: 'flex', flexDirection: 'column', minHeight: '100vh',
       background: '#121212'
     }}>
-      <img
-        src={flyingMachineIcon}
-        alt="Loading artwork"
-        style={{ width: 80, height: 80, opacity: 0.7, animation: 'none' }}
-      />
-      <p style={{ color: '#888', fontSize: 14 }}>Loading artwork...</p>
+      <LoadingSpinner />
     </div>
   );
 }

@@ -132,14 +132,7 @@
   width: 70px;
   height: 70px;
   position: absolute;
-  animation: modalSweep 3s ease-in-out infinite;
-}
-
-@keyframes modalSweep {
-  0%    { bottom: -80px; left: -80px; opacity: 1; }
-  66.6% { bottom: calc(100% + 80px); left: calc(100% + 80px); opacity: 1; }
-  66.7% { opacity: 0; }
-  100%  { bottom: -80px; left: -80px; opacity: 0; }
+  animation: imageSweep 3s ease-in-out infinite;
 }
 
 .modal-image-fallback {
