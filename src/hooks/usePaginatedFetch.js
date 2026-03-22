@@ -177,7 +177,10 @@ export function usePaginatedFetch({
         catch (e) { console.warn('[ImmediArt] onBatchReady error:', e.message); }
       }
 
-      if (isInitial) startPrefetch(currentIndexRef.current);
+      // Always start (or restart) the prefetch so a stale in-flight prefetch
+      // can't write duplicate IDs into prefetchRef after fetchBatch(false) has
+      // already added those same IDs to shownIDsRef and the artworks list.
+      startPrefetch(currentIndexRef.current);
 
     } catch (err) {
       if (err.name === 'AbortError') return;
@@ -216,7 +219,7 @@ export function usePaginatedFetch({
           catch (e) { console.warn('[ImmediArt] onBatchReady error:', e.message); }
         }
 
-        if (isInitial) startPrefetch(currentIndexRef.current);
+        startPrefetch(currentIndexRef.current);
 
       } catch (retryErr) {
         if (retryErr.name !== 'AbortError' && fetchIdRef.current === currentFetchId) {

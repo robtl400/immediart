@@ -269,6 +269,74 @@ describe('usePaginatedFetch — initialBatchSize', () => {
   });
 });
 
+// ─── duplicate key regression ─────────────────────────────────────────────────
+
+describe('usePaginatedFetch — duplicate key regression', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.clearAllMocks();
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it('fetchBatch(false) aborts stale prefetch so its result cannot be merged as duplicates', async () => {
+    // Regression: ISSUE-004 — duplicate React key 436536
+    // Found by /qa on 2026-03-21
+    // Report: .gstack/qa-reports/qa-report-localhost-5173-2026-03-21.md
+    //
+    // Race: prefetch in-flight while loadMore triggers fetchBatch(false).
+    // Both read shownIDsRef at the same moment → overlap. Prefetch then completes
+    // and writes stale data to prefetchRef. Next loadMore merges it = duplicate IDs.
+    // Fix: fetchBatch always calls startPrefetch, aborting any in-flight prefetch
+    // and clearing prefetchRef.current before the stale promise can resolve.
+
+    const ALL_IDS_SHORT = Array.from({ length: 40 }, (_, i) => i + 1);
+    fetchIDs.mockResolvedValue(ALL_IDS_SHORT);
+
+    // Deferred promise simulates a slow in-flight prefetch
+    let resolveStalePrefetch;
+    const stalePrefetchPromise = new Promise(resolve => { resolveStalePrefetch = resolve; });
+
+    batchFetchArtworks
+      .mockResolvedValueOnce(makeBatch(BATCH, 1))     // initial fetch → IDs 1-4
+      .mockReturnValueOnce(stalePrefetchPromise)       // startPrefetch A → stalls
+      .mockResolvedValueOnce(makeBatch(BATCH, 5))      // fetchBatch(false) → IDs 5-8
+      .mockResolvedValue(makeBatch(BATCH, 9));          // fresh prefetch B → IDs 9-12
+
+    const { result } = renderHook(() =>
+      usePaginatedFetch({ shuffleIDs: true, batchSize: BATCH })
+    );
+
+    // Initial load — stale prefetch A starts but doesn't resolve yet
+    await act(async () => { result.current.reset(fetchIDs); });
+    await drain();
+    expect(result.current.artworks).toHaveLength(BATCH);
+
+    // loadMore: prefetch not ready → fetchBatch(false) runs.
+    // The fix ensures fetchBatch(false) calls startPrefetch, which aborts prefetch A.
+    await act(async () => { result.current.loadMore(); });
+    await drain();
+    expect(result.current.artworks).toHaveLength(BATCH * 2);
+
+    const countAfterFetchBatch = result.current.artworks.length;
+
+    // Now the stale prefetch A resolves with IDs that overlap what fetchBatch(false) loaded.
+    // With fix: its AbortController was already signalled → prefetchRef.current stays null.
+    // Without fix: prefetchRef.current is set to stale data; next loadMore merges duplicates.
+    await act(async () => {
+      resolveStalePrefetch(makeBatch(BATCH, 5)); // same IDs 5-8 already in state
+      await vi.runAllTimersAsync();
+    });
+
+    // Artworks must NOT grow from the stale prefetch resolving
+    expect(result.current.artworks.length).toBe(countAfterFetchBatch);
+
+    // And no duplicate IDs in whatever is currently in state
+    const ids = result.current.artworks.map(a => a.id);
+    const uniqueIds = new Set(ids);
+    expect(ids.length).toBe(uniqueIds.size);
+  });
+});
+
 // ─── circuit breaker silent freeze ───────────────────────────────────────────
 
 describe('usePaginatedFetch — circuit breaker silent freeze', () => {
