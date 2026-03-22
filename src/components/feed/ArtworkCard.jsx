@@ -27,13 +27,17 @@ export default function ArtworkCard({ artwork, isLiked, onLike, onImageDoubleCli
         await navigator.share({ title: artwork.title, text: `${artwork.title} by ${artwork.artistName}`, url });
       } catch (err) {
         if (err.name !== 'AbortError') {
-          await navigator.clipboard?.writeText(url);
+          try {
+            await navigator.clipboard?.writeText(url);
+          } catch (_) { /* clipboard unavailable */ }
           setShareCopied(true);
           setTimeout(() => setShareCopied(false), 2000);
         }
       }
     } else {
-      await navigator.clipboard?.writeText(url);
+      try {
+        await navigator.clipboard?.writeText(url);
+      } catch (_) { /* clipboard unavailable */ }
       setShareCopied(true);
       setTimeout(() => setShareCopied(false), 2000);
     }
