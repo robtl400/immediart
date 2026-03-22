@@ -60,9 +60,6 @@ export default function GridBrowse({ type }) {
       <Banner />
       <div className="search-heading">
         <h2 className="search-term">{displayTerm}</h2>
-        {totalCount > 0 && (
-          <p className="search-count">{totalCount} artwork{totalCount !== 1 ? 's' : ''}</p>
-        )}
       </div>
     </>
   );
