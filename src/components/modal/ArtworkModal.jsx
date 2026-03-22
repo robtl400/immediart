@@ -113,19 +113,20 @@ export default function ArtworkModal() {
                   <p className="modal-image-fallback-text">Image unavailable</p>
                 </div>
               ) : (
-                <>
-                  {!imageLoaded && <div className="modal-image-skeleton" />}
+                <div className={`modal-image-loading-wrapper${imageLoaded ? ' loaded' : ''}`}>
+                  <div className="modal-image-spinner" aria-hidden="true">
+                    <img src={flyingMachineIcon} alt="" className="modal-fly-icon" />
+                  </div>
                   <img
                     src={selectedArtwork.primaryImageFull || selectedArtwork.imageUrl}
                     alt={selectedArtwork.artistName
                       ? `${selectedArtwork.title} by ${selectedArtwork.artistName}`
                       : selectedArtwork.title}
                     className="artwork-modal-image"
-                    style={imageLoaded ? {} : { display: 'none' }}
                     onLoad={() => setImageLoaded(true)}
                     onError={() => setImageError(true)}
                   />
-                </>
+                </div>
               )}
             </div>
 

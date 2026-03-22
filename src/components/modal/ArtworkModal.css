@@ -91,20 +91,55 @@
   max-width: 100%;
   max-height: 70vh;
   object-fit: contain;
+  opacity: 0;
+  transition: opacity 0.35s ease;
+  position: relative;
+  z-index: 0;
 }
 
-/* Loading skeleton shown while image fetches */
-.modal-image-skeleton {
-  width: 100%;
+.modal-image-loading-wrapper.loaded .artwork-modal-image {
+  opacity: 1;
+}
+
+/* Image loading wrapper — crossfade between spinner and image */
+.modal-image-loading-wrapper {
+  position: relative;
   min-height: 240px;
-  background: linear-gradient(90deg, var(--color-surface) 25%, #2a2a2a 50%, var(--color-surface) 75%);
-  background-size: 200% 100%;
-  animation: modal-skeleton-shimmer 1.5s infinite;
+  overflow: hidden;
 }
 
-@keyframes modal-skeleton-shimmer {
-  0% { background-position: 200% 0; }
-  100% { background-position: -200% 0; }
+/* Flying machine spinner — covers the image area while loading */
+.modal-image-spinner {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-surface);
+  overflow: hidden;
+  opacity: 1;
+  transition: opacity 0.35s ease;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.modal-image-loading-wrapper.loaded .modal-image-spinner {
+  opacity: 0;
+}
+
+/* Flying machine sweep — contained within the image area */
+.modal-fly-icon {
+  width: 70px;
+  height: 70px;
+  position: absolute;
+  animation: modalSweep 3s ease-in-out infinite;
+}
+
+@keyframes modalSweep {
+  0%    { bottom: -80px; left: -80px; opacity: 1; }
+  66.6% { bottom: calc(100% + 80px); left: calc(100% + 80px); opacity: 1; }
+  66.7% { opacity: 0; }
+  100%  { bottom: -80px; left: -80px; opacity: 0; }
 }
 
 .modal-image-fallback {

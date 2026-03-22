@@ -32,33 +32,40 @@
   width: 110px;
   height: 110px;
   position: absolute;
-  animation: sweepAcross 2s ease-in-out infinite;
+  animation: sweepAcross 15s linear infinite;
 }
 
-/* 2s sweep (66.67%), 1s pause (33.33%) */
+/* 5 passes × 3s (2s sweep 66.67% + 1s pause 33.33%) = 15s */
 @keyframes sweepAcross {
-  0% {
-    /* Start bottom-left, off-screen */
-    bottom: 150px;
-    left: -150px;
-    opacity: 1;
-  }
-  99.98% {
-    /* End top-right, off-screen (2 seconds) */
-    bottom: calc(100% + 100px);
-    left: calc(100% + 100px);
-    opacity: 1;
-  }
-  99.99% {
-    /* Hide immediately */
-    opacity: 0;
-  }
-  100% {
-    /* Stay hidden for 1 second, reset position */
-    bottom: 150px;
-    left: -150px;
-    opacity: 0;
-  }
+  /* Pass 1 — low */
+  0%     { bottom: 60px;  left: -150px; opacity: 1; animation-timing-function: ease-in-out; }
+  13.33% { bottom: calc(100% + 100px); left: calc(100% + 100px); opacity: 1; }
+  13.34% { opacity: 0; }
+  20%    { bottom: 210px; left: -150px; opacity: 0; }
+
+  /* Pass 2 — medium-high */
+  20.01% { bottom: 210px; left: -150px; opacity: 1; animation-timing-function: ease-in-out; }
+  33.33% { bottom: calc(100% + 100px); left: calc(100% + 100px); opacity: 1; }
+  33.34% { opacity: 0; }
+  40%    { bottom: 20px;  left: -150px; opacity: 0; }
+
+  /* Pass 3 — very low (skimming) */
+  40.01% { bottom: 20px;  left: -150px; opacity: 1; animation-timing-function: ease-in-out; }
+  53.33% { bottom: calc(100% + 100px); left: calc(100% + 100px); opacity: 1; }
+  53.34% { opacity: 0; }
+  60%    { bottom: 290px; left: -150px; opacity: 0; }
+
+  /* Pass 4 — high */
+  60.01% { bottom: 290px; left: -150px; opacity: 1; animation-timing-function: ease-in-out; }
+  73.33% { bottom: calc(100% + 100px); left: calc(100% + 100px); opacity: 1; }
+  73.34% { opacity: 0; }
+  80%    { bottom: 130px; left: -150px; opacity: 0; }
+
+  /* Pass 5 — medium */
+  80.01% { bottom: 130px; left: -150px; opacity: 1; animation-timing-function: ease-in-out; }
+  93.33% { bottom: calc(100% + 100px); left: calc(100% + 100px); opacity: 1; }
+  93.34% { opacity: 0; }
+  100%   { bottom: 60px;  left: -150px; opacity: 0; }
 }
 
 .loading-spinner-container.small .sweep-container {
