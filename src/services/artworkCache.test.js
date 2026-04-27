@@ -165,7 +165,8 @@ describe('metAPI — fetchArtworkByID cache integration', () => {
       title: 'Fresh Artwork',
       artistDisplayName: 'Painter',
       primaryImage: 'https://example.com/art.jpg',
-      isPublicDomain: true
+      isPublicDomain: true,
+      objectName: 'Painting',
     };
 
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
@@ -193,7 +194,8 @@ describe('metAPI — fetchArtworkByID cache integration', () => {
       title: 'Deduped',
       artistDisplayName: 'Painter',
       primaryImage: 'https://example.com/dedup.jpg',
-      isPublicDomain: true
+      isPublicDomain: true,
+      objectName: 'Painting',
     };
 
     vi.stubGlobal('fetch', vi.fn(() => {
@@ -282,6 +284,7 @@ describe('metAPI — batchFetchArtworks error paths', () => {
       artistDisplayName: 'Artist',
       primaryImage: 'https://example.com/1.jpg',
       isPublicDomain: true,
+      objectName: 'Painting',
     };
     let callCount = 0;
     vi.stubGlobal('fetch', vi.fn(() => {
@@ -322,7 +325,7 @@ describe('metAPI — batchFetchArtworks error paths', () => {
 describe('metAPI — search wrapper cache integration', () => {
   it('fetchAllObjectIDs: cache hit skips API call', async () => {
     const { setCachedIDs } = await import('./artworkCache.js');
-    await setCachedIDs('ids:feed:paintings', [1, 2, 3]);
+    await setCachedIDs('ids:feed:paintings-v2', [1, 2, 3]);
 
     const fetchSpy = vi.fn();
     vi.stubGlobal('fetch', fetchSpy);

@@ -47,9 +47,11 @@ export function shuffleArray(array) {
 }
 
 // Search API
-export async function search(query, { artistMode = false, signal = null } = {}) {
-  const params = artistMode ? 'hasImages=true&artistOrCulture=true' : 'hasImages=true';
-  const url = `${API_BASE_URL}/search?${params}&q=${encodeURIComponent(query)}`;
+export async function search(query, { artistMode = false, medium = null, signal = null } = {}) {
+  const params = new URLSearchParams({ hasImages: 'true', q: query });
+  if (artistMode) params.set('artistOrCulture', 'true');
+  if (medium) params.set('medium', medium);
+  const url = `${API_BASE_URL}/search?${params}`;
 
   if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
 
@@ -68,10 +70,14 @@ export async function search(query, { artistMode = false, signal = null } = {}) 
 
 // Convenience wrappers — cache result in IndexedDB with named keys
 export async function fetchAllObjectIDs(signal) {
-  const cached = await getCachedIDs('ids:feed:paintings');
+  const cached = await getCachedIDs('ids:feed:paintings-v2');
   if (cached) return cached;
-  const ids = await search('paintings', { signal });
-  await setCachedIDs('ids:feed:paintings', ids);
+  const ids = await search('painting', { medium: 'Paintings', signal });
+  if (ids.length === 0) {
+    console.warn('[metAPI] fetchAllObjectIDs returned 0 IDs — skipping cache');
+    return ids;
+  }
+  await setCachedIDs('ids:feed:paintings-v2', ids);
   return ids;
 }
 
@@ -93,12 +99,25 @@ export async function searchByTag(term, signal) {
   return ids;
 }
 
-// Artwork validation — requires image + title only (artistDisplayName and isPublicDomain
-// are optional; display layer handles missing values gracefully via transformers.js)
+// Allowed object types — expanded from 'painting' only based on live API sampling.
+// 'hanging scroll' may be revisited after user testing if the feed skews too Asian-art-heavy.
+const OBJECT_TYPES = [
+  'painting',
+  'hanging scroll',
+  'watercolor',
+  'fresco',
+  'mural',
+  'portrait',
+  'thangka',
+  'kakemono',
+];
+
 export function validateArtwork(artwork) {
+  const name = artwork?.objectName?.toLowerCase() ?? '';
   return Boolean(
     artwork?.primaryImage?.trim() &&
-    artwork?.title?.trim()
+    artwork?.title?.trim() &&
+    OBJECT_TYPES.some(type => name.startsWith(type))
   );
 }
 
