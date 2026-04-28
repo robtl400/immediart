@@ -28,22 +28,6 @@ describe('validateArtwork — painting filter (Phase 3)', () => {
   });
 
   // Expanded types — confirmed present in live MET API pool
-  it('returns true for Hanging scroll', () => {
-    expect(validateArtwork({
-      primaryImage: 'https://example.com/img.jpg',
-      title: 'Mountain Landscape',
-      objectName: 'Hanging scroll',
-    })).toBe(true);
-  });
-
-  it('returns true for "Hanging scrolls" (plural variant)', () => {
-    expect(validateArtwork({
-      primaryImage: 'https://example.com/img.jpg',
-      title: 'Four Seasons',
-      objectName: 'Hanging scrolls',
-    })).toBe(true);
-  });
-
   it('returns true for Watercolor', () => {
     expect(validateArtwork({
       primaryImage: 'https://example.com/img.jpg',

@@ -100,10 +100,8 @@ export async function searchByTag(term, signal) {
 }
 
 // Allowed object types — expanded from 'painting' only based on live API sampling.
-// 'hanging scroll' may be revisited after user testing if the feed skews too Asian-art-heavy.
 const OBJECT_TYPES = [
   'painting',
-  'hanging scroll',
   'watercolor',
   'fresco',
   'mural',
