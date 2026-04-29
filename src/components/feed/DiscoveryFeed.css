@@ -260,7 +260,7 @@
 
 .artwork-description {
   color: var(--color-text-body);
-  font-size: 14px;
+  font-size: 15px;
   line-height: 1.6;
   margin: 0 0 6px 0;
 }
@@ -268,7 +268,7 @@
 .artist-name {
   color: var(--color-text);
   font-weight: 700;
-  font-size: 14px;
+  font-size: 15px;
 }
 
 .artist-name.clickable {
@@ -283,8 +283,8 @@
 
 .artwork-date {
   color: var(--color-gold-muted);
-  font-size: 13px;
-  margin: 0 0 0 0;
+  font-size: 14px;
+  margin: 0;
 }
 
 /* Hashtags */
@@ -295,7 +295,7 @@
 
 .hashtag {
   color: var(--color-gold);
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 600;
   cursor: pointer;
   transition: opacity 0.2s ease;
@@ -317,7 +317,7 @@
 
 .comment {
   margin-bottom: 6px;
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.5;
 }
 
