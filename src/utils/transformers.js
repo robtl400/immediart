@@ -7,8 +7,14 @@ import { shuffleArray } from '../services/metAPI';
 // Format artist name as username: "Vincent van Gogh" → "@vincent_van_gogh"
 export function formatArtistUsername(artistName) {
   if (!artistName) return '@Unknown_Artist';
-  const formatted = artistName.toLowerCase().replace(/\s+/g, '_').replace('-', '_').replace(/\s*\(.*?\)\s*/g, '');
-  return `@${formatted}`;
+  const formatted = artistName
+    .replace(/\s*\(.*?\)\s*/g, '')
+    .trim()
+    .toLowerCase()
+    .replace(/[-\s]+/g, '_')
+    .replace(/_+$/, '')
+    .replace(/^_+/, '');
+  return formatted ? `@${formatted}` : '@Unknown_Artist';
 }
 
 // Extract random tags from API tags array
@@ -32,8 +38,10 @@ export function buildComments(artwork) {
   if (!artwork.department) return [];
 
   const text = artwork.GalleryNumber
-    ? `From the ${artwork.department} department and currently on display in Gallery ${artwork.GalleryNumber} - come visit us!`
-    : `From the ${artwork.department} department! ${artwork.creditLine} ${artwork.rightsAndReproduction}`;
+    ? `From the ${artwork.department} department — Gallery ${artwork.GalleryNumber}`
+    : artwork.creditLine
+      ? `From the ${artwork.department} department — ${artwork.creditLine.trim()}.`
+      : `From the ${artwork.department} department.`;
 
   return [{ username: '@TheMetMuseum', text }];
 }
