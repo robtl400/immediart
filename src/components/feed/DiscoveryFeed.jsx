@@ -10,6 +10,8 @@ import Banner from '../common/Banner';
 import ArtworkCard from './ArtworkCard';
 import useInfiniteScroll from '../../hooks/useInfiniteScroll';
 import { FEED_ROOT_MARGIN, BANNER_SCROLL_THRESHOLD } from '../../utils/constants';
+import { searchByArtist, searchByTag } from '../../services/metAPI';
+import { debounce } from '../../utils/delay';
 
 export default function DiscoveryFeed() {
   const { artworks, loading, loadingMore, error, hasMore, loadMoreArtworks, retry, pause } = useArtworks();
@@ -103,6 +105,10 @@ export default function DiscoveryFeed() {
     navigate(`/tag/${encodeURIComponent(tag)}`);
   }, [pause, initSearch, navigate]);
 
+  // Hover prefetch — warm IndexedDB cache before user clicks artist/tag chip
+  const artistHoverRef = useRef(debounce((name) => searchByArtist(name).catch(() => {}), 150));
+  const tagHoverRef = useRef(debounce((tag) => searchByTag(tag).catch(() => {}), 150));
+
   // Loading state
   if (loading) {
     return (
@@ -148,6 +154,8 @@ export default function DiscoveryFeed() {
           onImageDoubleClick={() => openModal(artwork)}
           onArtistClick={handleArtistClick}
           onTagClick={handleTagClick}
+          onArtistHover={artistHoverRef.current}
+          onTagHover={tagHoverRef.current}
         />
       ))}
 

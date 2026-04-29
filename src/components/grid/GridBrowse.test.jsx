@@ -29,6 +29,13 @@ vi.mock('../../context/ArtworkModalContext', () => ({
   useArtworkModal: () => ({ openModal: vi.fn() }),
 }));
 
+const makeMockArtwork = (id) => ({
+  id,
+  title: `Artwork ${id}`,
+  artistName: 'Test Artist',
+  imageUrl: 'https://example.com/img.jpg',
+});
+
 const makeContext = (overrides = {}) => ({
   artworks: [],
   loading: false,
@@ -53,22 +60,24 @@ import { useGridBrowse } from '../../context/GridBrowseContext';
 describe('GridBrowse — result count', () => {
   beforeEach(() => mockNavigate.mockClear());
 
-  it('renders result count when totalCount > 0', () => {
-    useGridBrowse.mockReturnValue(makeContext({ totalCount: 42 }));
+  it('renders result count when all artworks are loaded', () => {
+    const artworks = Array.from({ length: 42 }, (_, i) => makeMockArtwork(i));
+    useGridBrowse.mockReturnValue(makeContext({ artworks, hasMore: false }));
     render(<GridBrowse type="artist" />);
-    expect(screen.getByText('42 artworks')).toBeTruthy();
+    expect(screen.getByText('42 artworks found')).toBeTruthy();
   });
 
-  it('does not render result count when totalCount is 0', () => {
-    useGridBrowse.mockReturnValue(makeContext({ totalCount: 0 }));
+  it('does not render result count when artworks list is empty', () => {
+    useGridBrowse.mockReturnValue(makeContext({ artworks: [], hasMore: false }));
     const { container } = render(<GridBrowse type="artist" />);
-    expect(container.querySelector('.search-count')).toBeNull();
+    expect(container.querySelector('.end-message')).toBeNull();
   });
 
-  it('uses singular "artwork" when totalCount is 1', () => {
-    useGridBrowse.mockReturnValue(makeContext({ totalCount: 1 }));
+  it('uses singular "artwork" when exactly one artwork is loaded', () => {
+    const artworks = [makeMockArtwork(1)];
+    useGridBrowse.mockReturnValue(makeContext({ artworks, hasMore: false }));
     render(<GridBrowse type="artist" />);
-    expect(screen.getByText('1 artwork')).toBeTruthy();
+    expect(screen.getByText('1 artwork found')).toBeTruthy();
   });
 });
 

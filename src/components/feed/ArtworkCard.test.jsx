@@ -77,6 +77,38 @@ describe('ArtworkCard — tag click', () => {
   });
 });
 
+describe('ArtworkCard — hover prefetch props', () => {
+  it('calls onArtistHover on mouseenter when artist exists', () => {
+    const onArtistHover = vi.fn();
+    render(<ArtworkCard artwork={makeArtwork()} isLiked={false} onLike={vi.fn()} onImageDoubleClick={vi.fn()} onArtistHover={onArtistHover} />);
+    fireEvent.mouseEnter(screen.getByRole('button', { name: /vangogh/i }));
+    expect(onArtistHover).toHaveBeenCalledWith('Van Gogh');
+  });
+
+  it('calls onTagHover on mouseenter', () => {
+    const onTagHover = vi.fn();
+    render(<ArtworkCard artwork={makeArtwork()} isLiked={false} onLike={vi.fn()} onImageDoubleClick={vi.fn()} onTagHover={onTagHover} />);
+    fireEvent.mouseEnter(screen.getByRole('button', { name: /#impressionism/i }));
+    expect(onTagHover).toHaveBeenCalledWith('impressionism');
+  });
+
+  it('does not call onArtistHover for anonymous artwork (no artistName)', () => {
+    const onArtistHover = vi.fn();
+    render(<ArtworkCard artwork={makeArtwork({ artistName: '', username: 'anonymous' })} isLiked={false} onLike={vi.fn()} onImageDoubleClick={vi.fn()} onArtistHover={onArtistHover} />);
+    // No artist button rendered for anonymous works — onArtistHover can never fire
+    expect(screen.queryByRole('button', { name: /anonymous/i })).toBeNull();
+    expect(onArtistHover).not.toHaveBeenCalled();
+  });
+
+  it('onArtistClick still fires on click when onArtistHover also wired — regression guard', () => {
+    const onArtistClick = vi.fn();
+    const onArtistHover = vi.fn();
+    render(<ArtworkCard artwork={makeArtwork()} isLiked={false} onLike={vi.fn()} onImageDoubleClick={vi.fn()} onArtistClick={onArtistClick} onArtistHover={onArtistHover} />);
+    fireEvent.click(screen.getByRole('button', { name: /vangogh/i }));
+    expect(onArtistClick).toHaveBeenCalledWith('Van Gogh');
+  });
+});
+
 describe('ArtworkCard — like state', () => {
   it('renders Like aria-label when not liked', () => {
     render(<ArtworkCard artwork={makeArtwork()} isLiked={false} onLike={vi.fn()} onImageDoubleClick={vi.fn()} />);

@@ -13,7 +13,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { GridBrowseProvider, useGridBrowse } from './GridBrowseContext';
-import { GRID_BATCH_SIZE } from '../utils/constants';
+import { GRID_BATCH_SIZE, GRID_INITIAL_BATCH_SIZE } from '../utils/constants';
 
 vi.mock('../services/metAPI', () => ({
   searchByArtist: vi.fn(),
@@ -361,5 +361,31 @@ describe('GridBrowseContext — abort', () => {
     expect(result.current.loading).toBe(false);
     expect(result.current.artworks.length).toBeGreaterThan(0);
     expect(result.current.error).toBeNull();
+  });
+});
+
+// ─── initialBatchSize wiring ──────────────────────────────────────────────────
+
+describe('GridBrowseContext — initialBatchSize', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.clearAllMocks();
+    getCachedIDs.mockResolvedValue(ALL_IDS);
+    searchByArtist.mockResolvedValue(ALL_IDS);
+    batchFetchArtworks.mockResolvedValue(makeBatch(GRID_BATCH_SIZE));
+  });
+
+  afterEach(() => vi.useRealTimers());
+
+  it('first batch uses GRID_INITIAL_BATCH_SIZE not GRID_BATCH_SIZE', async () => {
+    const { result } = renderHook(() => useGridBrowse(), { wrapper });
+
+    act(() => { result.current.initSearch('artist', 'Rembrandt'); });
+    await drain();
+
+    // Second arg to batchFetchArtworks is targetCount
+    const firstCallTargetCount = batchFetchArtworks.mock.calls[0][1];
+    expect(firstCallTargetCount).toBe(GRID_INITIAL_BATCH_SIZE);
+    expect(firstCallTargetCount).not.toBe(GRID_BATCH_SIZE);
   });
 });

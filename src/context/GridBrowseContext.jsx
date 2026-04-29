@@ -16,6 +16,7 @@ import { usePaginatedFetch } from '../hooks/usePaginatedFetch';
 import { delayOrAbort } from '../utils/delay';
 import {
   GRID_BATCH_SIZE,
+  GRID_INITIAL_BATCH_SIZE,
   SEARCH_COOLDOWN_MS,
   NAVIGATION_DELAY_MS,
 } from '../utils/constants';
@@ -31,6 +32,7 @@ export function GridBrowseProvider({ children }) {
   const grid = usePaginatedFetch({
     shuffleIDs: false,
     batchSize: GRID_BATCH_SIZE,
+    initialBatchSize: GRID_INITIAL_BATCH_SIZE,
     maxInMemory: Infinity,
     onBatchReady: (artworks, signal) => preloadArtworkImages(artworks, signal),
   });

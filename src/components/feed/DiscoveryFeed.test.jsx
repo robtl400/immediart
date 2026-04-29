@@ -34,7 +34,13 @@ vi.mock('../../context/ArtworksContext', () => ({
   useArtworks: vi.fn(),
 }));
 
+vi.mock('../../services/metAPI', () => ({
+  searchByArtist: vi.fn().mockResolvedValue([]),
+  searchByTag: vi.fn().mockResolvedValue([]),
+}));
+
 import { useArtworks } from '../../context/ArtworksContext';
+import { searchByArtist, searchByTag } from '../../services/metAPI';
 
 const makeArtworksContext = (overrides = {}) => ({
   artworks: [mockArtwork],
@@ -125,5 +131,39 @@ describe('DiscoveryFeed — likes persistence', () => {
     fireEvent.click(likeBtn);
     const stored = JSON.parse(localStorageMock.getItem('immediart_liked_artworks'));
     expect(stored).toContain(1);
+  });
+});
+
+describe('DiscoveryFeed — hover prefetch debounce', () => {
+  let localStorageMock;
+
+  beforeEach(() => {
+    localStorageMock = makeLocalStorageMock();
+    vi.stubGlobal('localStorage', localStorageMock);
+    vi.useFakeTimers();
+    useArtworks.mockReturnValue(makeArtworksContext());
+    searchByArtist.mockClear();
+    searchByTag.mockClear();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it('fires searchByArtist after 150ms debounce on artist chip mouseenter', () => {
+    render(<DiscoveryFeed />);
+    fireEvent.mouseEnter(screen.getByRole('button', { name: /vangogh/i }));
+    expect(searchByArtist).not.toHaveBeenCalled();
+    act(() => vi.advanceTimersByTime(150));
+    expect(searchByArtist).toHaveBeenCalledWith('Van Gogh');
+  });
+
+  it('fires searchByTag after 150ms debounce on hashtag mouseenter', () => {
+    render(<DiscoveryFeed />);
+    fireEvent.mouseEnter(screen.getByRole('button', { name: /#impressionism/i }));
+    expect(searchByTag).not.toHaveBeenCalled();
+    act(() => vi.advanceTimersByTime(150));
+    expect(searchByTag).toHaveBeenCalledWith('impressionism');
   });
 });

@@ -8,7 +8,7 @@ import flyingMachineIcon from '../../assets/FlyingMachine2_tinted_gold.png';
  * Purely presentational — navigation side effects are lifted to DiscoveryFeed
  * via onArtistClick and onTagClick props.
  */
-export default function ArtworkCard({ artwork, isLiked, onLike, onImageDoubleClick, onArtistClick, onTagClick }) {
+export default function ArtworkCard({ artwork, isLiked, onLike, onImageDoubleClick, onArtistClick, onTagClick, onArtistHover, onTagHover }) {
   const navigate = useNavigate();
   const [imageLoaded, setImageLoaded] = useState(false);
   const [isLandscape, setIsLandscape] = useState(true);
@@ -102,6 +102,8 @@ export default function ArtworkCard({ artwork, isLiked, onLike, onImageDoubleCli
             <span
               className="artist-name clickable"
               onClick={handleArtistClick}
+              onMouseEnter={() => onArtistHover?.(artwork.artistName)}
+              onFocus={() => onArtistHover?.(artwork.artistName)}
               role="button"
               tabIndex={0}
               onKeyDown={(e) => e.key === 'Enter' && handleArtistClick()}
@@ -118,6 +120,8 @@ export default function ArtworkCard({ artwork, isLiked, onLike, onImageDoubleCli
               <span
                 className="hashtag"
                 onClick={() => handleHashtagClick(tag)}
+                onMouseEnter={() => onTagHover?.(tag)}
+                onFocus={() => onTagHover?.(tag)}
                 role="button"
                 tabIndex={0}
                 onKeyDown={(e) => e.key === 'Enter' && handleHashtagClick(tag)}

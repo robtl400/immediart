@@ -48,7 +48,16 @@ Fixed by /qa on feat/architecture-revamp. Root cause: `initSearch` depended on `
 
 ---
 
-## (Low) Pre-existing: GridBrowse.test.jsx result count tests broken
-**What:** Two tests in GridBrowse.test.jsx fail: they assert on a `totalCount` prop but the component renders `artworks.length`. Tests are stale — the component was updated but tests weren't.
-**Fix:** Either update the tests to match actual component behavior (mock artworks array with the right length) or update the component to use totalCount.
-**Found by:** /autoplan system audit, 2026-04-27.
+## (Low) Touch-intent prefetch for artist/tag navigation
+**What:** Hover prefetch (desktop) only fires on mouseenter — mobile touch devices get no benefit. An IntersectionObserver-based approach would prefetch artist/tag IDs as feed cards scroll into the viewport, warming the IndexedDB cache before the user taps.
+**Why:** Mobile is the dominant interaction model for a vertical scroll feed. Touch-navigation currently always pays the full NAVIGATION_DELAY_MS (150ms) + SEARCH_COOLDOWN_MS (300ms) on cache miss. Viewport prefetch eliminates this for visible cards.
+**Approach:** Add an IntersectionObserver in ArtworkCard or DiscoveryFeed that fires searchByArtist/searchByTag when a card enters the viewport. More aggressive than hover (fires for all visible cards) but platform-agnostic.
+**Cons:** Potentially more background requests than hover during fast scrolling — may need per-card rate limiting or a shared prefetch queue.
+**Depends on:** Hover prefetch plan shipped first (establishes onArtistHover/onTagHover prop pattern).
+**Found by:** /plan-eng-review outside voice, 2026-04-29.
+
+---
+
+## ~~(Low) Pre-existing: GridBrowse.test.jsx result count tests broken~~ DONE (2026-04-29)
+Tests updated to match actual component behavior (`artworks.length` + " found" suffix).
+Added `makeMockArtwork` helper; tests now provide real artwork arrays with `hasMore: false`.
