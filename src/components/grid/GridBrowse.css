@@ -21,8 +21,26 @@
 
 /* Search Heading */
 .search-heading {
-  padding: 16px 15px 12px;
+  padding: 10px 15px 12px;
   background-color: var(--color-bg);
+}
+
+.grid-back-btn {
+  display: block;
+  background: none;
+  border: none;
+  color: var(--color-text-secondary);
+  font-size: 14px;
+  font-family: inherit;
+  cursor: pointer;
+  padding: 4px 0;
+  margin-bottom: 4px;
+  transition: color 0.2s ease;
+}
+
+.grid-back-btn:hover,
+.grid-back-btn:focus-visible {
+  color: var(--color-gold);
 }
 
 .search-term {
@@ -32,7 +50,7 @@
   font-weight: 400;
   margin: 0;
   text-align: center;
-    letter-spacing: .9px;
+  letter-spacing: .9px;
 }
 
 /* Thumbnail Grid */

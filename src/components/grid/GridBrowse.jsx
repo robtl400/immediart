@@ -58,6 +58,9 @@ export default function GridBrowse({ type }) {
     <>
       <Banner />
       <div className="search-heading">
+        <button className="grid-back-btn" onClick={() => navigate(-1)} aria-label="Back to feed">
+          ← Back
+        </button>
         <h2 className="search-term">{displayTerm}</h2>
       </div>
     </>
