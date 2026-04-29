@@ -45,7 +45,6 @@ const makeContext = (overrides = {}) => ({
   initSearch: mockInitSearch,
   loadMore: vi.fn(),
   abort: vi.fn(),
-  totalCount: 0,
   searchType: 'artist',
   searchTerm: 'Van Gogh',
   ...overrides,
@@ -109,6 +108,18 @@ describe('GridBrowse — empty state', () => {
     render(<GridBrowse type="artist" />);
     fireEvent.click(screen.getByRole('button', { name: /explore the collection/i }));
     expect(mockNavigate).toHaveBeenCalledWith('/');
+  });
+});
+
+describe('GridBrowse — end message (T3-A)', () => {
+  it('end message includes flying machine icon when results exhausted', () => {
+    const artworks = Array.from({ length: 5 }, (_, i) => makeMockArtwork(i));
+    useGridBrowse.mockReturnValue(makeContext({ artworks, hasMore: false }));
+    const { container } = render(<GridBrowse type="artist" />);
+    const icon = container.querySelector('.end-message-icon');
+    expect(icon).toBeTruthy();
+    expect(icon.tagName).toBe('IMG');
+    expect(icon.getAttribute('alt')).toBe('');
   });
 });
 

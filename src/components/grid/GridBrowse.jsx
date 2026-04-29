@@ -15,7 +15,7 @@ export default function GridBrowse({ type }) {
   const rawTerm = type === 'artist' ? params.artistName : params.tagName;
   const searchTerm = rawTerm ? decodeURIComponent(rawTerm) : '';
 
-  const { artworks, loading, loadingMore, error, hasMore, initSearch, loadMore, abort, totalCount } = useGridBrowse();
+  const { artworks, loading, loadingMore, error, hasMore, initSearch, loadMore, abort } = useGridBrowse();
   const { openModal } = useArtworkModal();
   const navigate = useNavigate();
 
@@ -125,6 +125,7 @@ export default function GridBrowse({ type }) {
 
       {!hasMore && artworks.length > 0 && (
         <div className="end-message">
+          <img src={flyingMachineIcon} alt="" className="end-message-icon" />
           <p>{artworks.length} artwork{artworks.length !== 1 ? 's' : ''} found</p>
         </div>
       )}

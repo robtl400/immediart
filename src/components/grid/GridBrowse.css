@@ -35,14 +35,6 @@
     letter-spacing: .9px;
 }
 
-.search-count {
-  color: var(--color-text-muted);
-  font-size: 13px;
-  text-align: center;
-  margin: 0;
-  padding-bottom: 8px;
-}
-
 /* Thumbnail Grid */
 .thumbnail-grid {
   display: grid;
@@ -132,6 +124,13 @@
 }
 
 /* End Message */
+.grid-browse .end-message-icon {
+  width: 48px;
+  height: 48px;
+  opacity: 0.6;
+  margin-bottom: 12px;
+}
+
 .grid-browse .end-message {
   text-align: center;
   padding: 20px;
