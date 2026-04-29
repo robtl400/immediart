@@ -72,7 +72,7 @@ export default function ArtworkCard({ artwork, isLiked, onLike, onImageDoubleCli
           alt={`${artwork.title}${hasArtist ? ` by ${artwork.artistName}` : ''}`}
           className="artwork-image"
           onLoad={handleImageLoad}
-          onDoubleClick={onImageDoubleClick}
+          onClick={onImageDoubleClick}
           loading="lazy"
         />
         <div className={`image-placeholder${imageLoaded ? ' loaded' : ''}`} />
