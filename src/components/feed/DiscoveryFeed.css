@@ -277,9 +277,8 @@
 }
 
 .artist-name.clickable:hover,
-.artist-name.clickable:focus {
+.artist-name.clickable:focus-visible {
   opacity: 0.8;
-  outline: none;
 }
 
 .artwork-date {
@@ -305,9 +304,8 @@
 }
 
 .hashtag:hover,
-.hashtag:focus {
+.hashtag:focus-visible {
   opacity: 0.8;
-  outline: none;
 }
 
 /* Comment Section */
