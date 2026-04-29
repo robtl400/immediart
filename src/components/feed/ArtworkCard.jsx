@@ -75,7 +75,7 @@ export default function ArtworkCard({ artwork, isLiked, onLike, onImageDoubleCli
           onDoubleClick={onImageDoubleClick}
           loading="lazy"
         />
-        {!imageLoaded && <div className="image-placeholder" />}
+        <div className={`image-placeholder${imageLoaded ? ' loaded' : ''}`} />
       </div>
 
       {/* Action Buttons */}
@@ -113,7 +113,7 @@ export default function ArtworkCard({ artwork, isLiked, onLike, onImageDoubleCli
           ) : (
             <span className="artist-name">{artwork.username}</span>
           )}{' '}
-          {artwork.description}.
+          {artwork.description && `${artwork.description}.`}
           {artwork.tags.map((tag, index) => (
             <Fragment key={index}>
               {'  '}

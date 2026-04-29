@@ -34,6 +34,16 @@
   cursor: pointer;
 }
 
+.banner:hover {
+  opacity: 0.85;
+  transition: opacity 0.2s ease;
+}
+
+.banner:focus-visible {
+  outline: 2px solid var(--color-gold);
+  outline-offset: 2px;
+}
+
 /* Bezeled gold separator line */
 .banner::after {
   content: '';
@@ -132,6 +142,13 @@
   height: 100%;
   background-color: var(--color-surface);
   overflow: hidden;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.image-placeholder.loaded {
+  opacity: 0;
 }
 
 .image-placeholder::before {

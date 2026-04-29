@@ -109,6 +109,51 @@ describe('ArtworkCard — hover prefetch props', () => {
   });
 });
 
+describe('ArtworkCard — image placeholder (T1-A)', () => {
+  it('image placeholder stays in DOM after image load (unconditional render)', () => {
+    const { container } = render(<ArtworkCard artwork={makeArtwork()} isLiked={false} onLike={vi.fn()} onImageDoubleClick={vi.fn()} />);
+    const img = container.querySelector('.artwork-image');
+    fireEvent.load(img);
+    expect(container.querySelector('.image-placeholder')).toBeTruthy();
+  });
+
+  it('image placeholder has loaded class after image load', () => {
+    const { container } = render(<ArtworkCard artwork={makeArtwork()} isLiked={false} onLike={vi.fn()} onImageDoubleClick={vi.fn()} />);
+    const img = container.querySelector('.artwork-image');
+    fireEvent.load(img);
+    expect(container.querySelector('.image-placeholder.loaded')).toBeTruthy();
+  });
+
+  it('image placeholder has no loaded class before image load', () => {
+    const { container } = render(<ArtworkCard artwork={makeArtwork()} isLiked={false} onLike={vi.fn()} onImageDoubleClick={vi.fn()} />);
+    expect(container.querySelector('.image-placeholder.loaded')).toBeNull();
+    expect(container.querySelector('.image-placeholder')).toBeTruthy();
+  });
+
+  it('image is clickable (onImageDoubleClick fires) after image load — pointer-events:none regression', () => {
+    const onImageDoubleClick = vi.fn();
+    const { container } = render(<ArtworkCard artwork={makeArtwork()} isLiked={false} onLike={vi.fn()} onImageDoubleClick={onImageDoubleClick} />);
+    const img = container.querySelector('.artwork-image');
+    fireEvent.load(img);
+    fireEvent.doubleClick(img);
+    expect(onImageDoubleClick).toHaveBeenCalled();
+  });
+});
+
+describe('ArtworkCard — description period (T1-B)', () => {
+  it('description with content renders trailing period', () => {
+    render(<ArtworkCard artwork={makeArtwork({ description: 'Oil on canvas' })} isLiked={false} onLike={vi.fn()} onImageDoubleClick={vi.fn()} />);
+    expect(screen.getByText(/Oil on canvas\./)).toBeTruthy();
+  });
+
+  it('empty description renders no trailing period', () => {
+    const { container } = render(<ArtworkCard artwork={makeArtwork({ description: '' })} isLiked={false} onLike={vi.fn()} onImageDoubleClick={vi.fn()} />);
+    const desc = container.querySelector('.artwork-description');
+    expect(desc.textContent).not.toMatch(/^\./);
+    expect(desc.textContent).not.toContain('.');
+  });
+});
+
 describe('ArtworkCard — like state', () => {
   it('renders Like aria-label when not liked', () => {
     render(<ArtworkCard artwork={makeArtwork()} isLiked={false} onLike={vi.fn()} onImageDoubleClick={vi.fn()} />);
