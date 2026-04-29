@@ -110,17 +110,19 @@ const OBJECT_TYPES = [
   'kakemono',
 ];
 
-export function validateArtwork(artwork) {
+// strict=true applies the OBJECT_TYPES allowlist (feed only). Artist/tag searches use strict=false
+// so all medium types (prints, drawings, sculptures, etc.) are included.
+export function validateArtwork(artwork, { strict = false } = {}) {
   const name = artwork?.objectName?.toLowerCase() ?? '';
   return Boolean(
     artwork?.primaryImage?.trim() &&
     artwork?.title?.trim() &&
-    OBJECT_TYPES.some(type => name.startsWith(type))
+    (!strict || OBJECT_TYPES.some(type => name.startsWith(type)))
   );
 }
 
 // Fetch single artwork (with cache + in-flight dedup via requestManager)
-export async function fetchArtworkByID(objectID, signal = null) {
+export async function fetchArtworkByID(objectID, signal = null, { strict = false } = {}) {
   // 1. Cache check
   const cached = await getCachedArtwork(objectID);
   if (cached) return cached;
@@ -131,7 +133,7 @@ export async function fetchArtworkByID(objectID, signal = null) {
     const response = await requestManager.fetchDeduped(url, signal);
     if (!response.ok) return null;
     const artwork = await response.json();
-    const result = validateArtwork(artwork) ? artwork : null;
+    const result = validateArtwork(artwork, { strict }) ? artwork : null;
     if (result) await setCachedArtwork(objectID, result);
     return result;
   } catch (error) {
@@ -141,7 +143,7 @@ export async function fetchArtworkByID(objectID, signal = null) {
 }
 
 // Batch fetch with parallel requests — uses requestManager.maxConcurrent for dynamic sizing
-export async function batchFetchArtworks(objectIDs, targetCount = 4, signal = null) {
+export async function batchFetchArtworks(objectIDs, targetCount = 4, signal = null, { strict = false } = {}) {
   const artworks = [];
   let idIndex = 0;
 
@@ -161,7 +163,7 @@ export async function batchFetchArtworks(objectIDs, targetCount = 4, signal = nu
 
     // Parallel fetch — propagate AbortError, swallow everything else
     const results = await Promise.all(
-      batchIDs.map(id => fetchArtworkByID(id, signal).catch(err => {
+      batchIDs.map(id => fetchArtworkByID(id, signal, { strict }).catch(err => {
         if (err.name === 'AbortError') throw err;
         return null;
       }))

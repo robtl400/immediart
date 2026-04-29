@@ -9,9 +9,9 @@ import { validateArtwork } from './metAPI';
 
 // ─── validateArtwork ──────────────────────────────────────────────────────────
 
-describe('validateArtwork — painting filter (Phase 3)', () => {
-  // Happy path — all three fields required
-  it('returns true for a painting with all required fields', () => {
+describe('validateArtwork — strict: false (default, artist/tag searches)', () => {
+  // Basic validation: image + title only — objectName is irrelevant
+  it('returns true for a painting with all fields present', () => {
     expect(validateArtwork({
       primaryImage: 'https://example.com/img.jpg',
       title: 'Starry Night',
@@ -19,131 +19,30 @@ describe('validateArtwork — painting filter (Phase 3)', () => {
     })).toBe(true);
   });
 
-  it('returns true for "Painting, miniature" (startsWith still matches)', () => {
+  it('returns true for a non-painting (e.g. Drawing) — objectName not checked', () => {
     expect(validateArtwork({
       primaryImage: 'https://example.com/img.jpg',
-      title: 'Portrait',
-      objectName: 'Painting, miniature',
+      title: 'Self-Portrait',
+      objectName: 'Drawing',
     })).toBe(true);
   });
 
-  // Expanded types — confirmed present in live MET API pool
-  it('returns true for Watercolor', () => {
-    expect(validateArtwork({
-      primaryImage: 'https://example.com/img.jpg',
-      title: 'Sargent Study',
-      objectName: 'Watercolor',
-    })).toBe(true);
-  });
-
-  it('returns true for "Watercolor on paper" (startsWith still matches)', () => {
-    expect(validateArtwork({
-      primaryImage: 'https://example.com/img.jpg',
-      title: 'Homer Seascape',
-      objectName: 'Watercolor on paper',
-    })).toBe(true);
-  });
-
-  it('returns true for Fresco', () => {
-    expect(validateArtwork({
-      primaryImage: 'https://example.com/img.jpg',
-      title: 'Roman Wall Fragment',
-      objectName: 'Fresco',
-    })).toBe(true);
-  });
-
-  it('returns true for Mural', () => {
-    expect(validateArtwork({
-      primaryImage: 'https://example.com/img.jpg',
-      title: 'Wall Painting',
-      objectName: 'Mural',
-    })).toBe(true);
-  });
-
-  it('returns true for Portrait', () => {
-    expect(validateArtwork({
-      primaryImage: 'https://example.com/img.jpg',
-      title: 'Portrait of a Woman',
-      objectName: 'Portrait',
-    })).toBe(true);
-  });
-
-  it('returns true for Thangka', () => {
-    expect(validateArtwork({
-      primaryImage: 'https://example.com/img.jpg',
-      title: 'White Tara',
-      objectName: 'Thangka',
-    })).toBe(true);
-  });
-
-  it('returns true for Kakemono', () => {
-    expect(validateArtwork({
-      primaryImage: 'https://example.com/img.jpg',
-      title: 'Bamboo in Wind',
-      objectName: 'Kakemono',
-    })).toBe(true);
-  });
-
-  it('returns true even when artistDisplayName is missing', () => {
-    expect(validateArtwork({
-      primaryImage: 'https://example.com/img.jpg',
-      title: 'Untitled',
-      objectName: 'Painting',
-      artistDisplayName: '',
-    })).toBe(true);
-  });
-
-  it('returns true even when isPublicDomain is false', () => {
-    expect(validateArtwork({
-      primaryImage: 'https://example.com/img.jpg',
-      title: 'Modern Work',
-      objectName: 'Painting',
-      isPublicDomain: false,
-    })).toBe(true);
-  });
-
-  // objectName filter — the new check
-  it('returns false for a Handscroll (non-painting objectName)', () => {
+  it('returns true for a Handscroll — objectName not checked', () => {
     expect(validateArtwork({
       primaryImage: 'https://example.com/img.jpg',
       title: 'River Scene',
       objectName: 'Handscroll',
-    })).toBe(false);
-  });
-
-  it('returns false for a Snuffbox (non-painting objectName)', () => {
-    expect(validateArtwork({
-      primaryImage: 'https://example.com/img.jpg',
-      title: 'Decorated Box',
-      objectName: 'Snuffbox',
-    })).toBe(false);
-  });
-
-  it('returns true for "PAINTING" (uppercase — toLowerCase normalization)', () => {
-    expect(validateArtwork({
-      primaryImage: 'https://example.com/img.jpg',
-      title: 'Landscape',
-      objectName: 'PAINTING',
     })).toBe(true);
   });
 
-  // Null safety
-  it('returns false when objectName is undefined', () => {
+  it('returns true when objectName is missing — objectName not checked', () => {
     expect(validateArtwork({
       primaryImage: 'https://example.com/img.jpg',
       title: 'No Type',
-    })).toBe(false);
+    })).toBe(true);
   });
 
-  it('returns false when objectName is null', () => {
-    expect(validateArtwork({
-      primaryImage: 'https://example.com/img.jpg',
-      title: 'No Type',
-      objectName: null,
-    })).toBe(false);
-  });
-
-  // Pre-existing guards still work
+  // Core guards still apply
   it('returns false when primaryImage is missing', () => {
     expect(validateArtwork({
       primaryImage: '',
@@ -163,6 +62,147 @@ describe('validateArtwork — painting filter (Phase 3)', () => {
   it('returns false for null/undefined artwork', () => {
     expect(validateArtwork(null)).toBe(false);
     expect(validateArtwork(undefined)).toBe(false);
+  });
+});
+
+describe('validateArtwork — strict: true (feed/painting filter)', () => {
+  // Happy path — painting-type objectNames pass
+  it('returns true for a painting with all required fields', () => {
+    expect(validateArtwork({
+      primaryImage: 'https://example.com/img.jpg',
+      title: 'Starry Night',
+      objectName: 'Painting',
+    }, { strict: true })).toBe(true);
+  });
+
+  it('returns true for "Painting, miniature" (startsWith still matches)', () => {
+    expect(validateArtwork({
+      primaryImage: 'https://example.com/img.jpg',
+      title: 'Portrait',
+      objectName: 'Painting, miniature',
+    }, { strict: true })).toBe(true);
+  });
+
+  it('returns true for Watercolor', () => {
+    expect(validateArtwork({
+      primaryImage: 'https://example.com/img.jpg',
+      title: 'Sargent Study',
+      objectName: 'Watercolor',
+    }, { strict: true })).toBe(true);
+  });
+
+  it('returns true for "Watercolor on paper" (startsWith still matches)', () => {
+    expect(validateArtwork({
+      primaryImage: 'https://example.com/img.jpg',
+      title: 'Homer Seascape',
+      objectName: 'Watercolor on paper',
+    }, { strict: true })).toBe(true);
+  });
+
+  it('returns true for Fresco', () => {
+    expect(validateArtwork({
+      primaryImage: 'https://example.com/img.jpg',
+      title: 'Roman Wall Fragment',
+      objectName: 'Fresco',
+    }, { strict: true })).toBe(true);
+  });
+
+  it('returns true for Mural', () => {
+    expect(validateArtwork({
+      primaryImage: 'https://example.com/img.jpg',
+      title: 'Wall Painting',
+      objectName: 'Mural',
+    }, { strict: true })).toBe(true);
+  });
+
+  it('returns true for Portrait', () => {
+    expect(validateArtwork({
+      primaryImage: 'https://example.com/img.jpg',
+      title: 'Portrait of a Woman',
+      objectName: 'Portrait',
+    }, { strict: true })).toBe(true);
+  });
+
+  it('returns true for Thangka', () => {
+    expect(validateArtwork({
+      primaryImage: 'https://example.com/img.jpg',
+      title: 'White Tara',
+      objectName: 'Thangka',
+    }, { strict: true })).toBe(true);
+  });
+
+  it('returns true for Kakemono', () => {
+    expect(validateArtwork({
+      primaryImage: 'https://example.com/img.jpg',
+      title: 'Bamboo in Wind',
+      objectName: 'Kakemono',
+    }, { strict: true })).toBe(true);
+  });
+
+  it('returns true even when artistDisplayName is missing', () => {
+    expect(validateArtwork({
+      primaryImage: 'https://example.com/img.jpg',
+      title: 'Untitled',
+      objectName: 'Painting',
+      artistDisplayName: '',
+    }, { strict: true })).toBe(true);
+  });
+
+  it('returns true for "PAINTING" (uppercase — toLowerCase normalization)', () => {
+    expect(validateArtwork({
+      primaryImage: 'https://example.com/img.jpg',
+      title: 'Landscape',
+      objectName: 'PAINTING',
+    }, { strict: true })).toBe(true);
+  });
+
+  // objectName filter — only applies with strict: true
+  it('returns false for a Handscroll (not in OBJECT_TYPES allowlist)', () => {
+    expect(validateArtwork({
+      primaryImage: 'https://example.com/img.jpg',
+      title: 'River Scene',
+      objectName: 'Handscroll',
+    }, { strict: true })).toBe(false);
+  });
+
+  it('returns false for a Snuffbox (not in OBJECT_TYPES allowlist)', () => {
+    expect(validateArtwork({
+      primaryImage: 'https://example.com/img.jpg',
+      title: 'Decorated Box',
+      objectName: 'Snuffbox',
+    }, { strict: true })).toBe(false);
+  });
+
+  it('returns false when objectName is undefined', () => {
+    expect(validateArtwork({
+      primaryImage: 'https://example.com/img.jpg',
+      title: 'No Type',
+    }, { strict: true })).toBe(false);
+  });
+
+  it('returns false when objectName is null', () => {
+    expect(validateArtwork({
+      primaryImage: 'https://example.com/img.jpg',
+      title: 'No Type',
+      objectName: null,
+    }, { strict: true })).toBe(false);
+  });
+
+  // Core guards still apply
+  it('returns false when primaryImage is missing', () => {
+    expect(validateArtwork({
+      primaryImage: '',
+      title: 'No Image',
+      objectName: 'Painting',
+    }, { strict: true })).toBe(false);
+  });
+
+  it('returns false when title is missing', () => {
+    expect(validateArtwork({
+      primaryImage: 'https://example.com/img.jpg',
+      title: '',
+      objectName: 'Painting',
+    }, { strict: true })).toBe(false);
   });
 });
 
@@ -261,13 +301,13 @@ describe('fetchAllObjectIDs()', () => {
 
 // ─── artist/tag search — objectName filter ───────────────────────────────────
 
-describe('artist/tag search — objectName filter via validateArtwork', () => {
+describe('artist/tag search — fetchArtworkByID strict param', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     getCachedArtwork.mockResolvedValue(null);
   });
 
-  it('fetchArtworkByID returns null for a non-painting (e.g. objectName: Drawing)', async () => {
+  it('strict: false (default) — returns Drawing for artist/tag searches', async () => {
     const { requestManager } = await import('./requestManager');
     requestManager.fetchDeduped.mockResolvedValueOnce({
       ok: true,
@@ -280,10 +320,27 @@ describe('artist/tag search — objectName filter via validateArtwork', () => {
     });
     const { fetchArtworkByID } = await import('./metAPI');
     const result = await fetchArtworkByID(99);
+    expect(result).not.toBeNull();
+    expect(result.objectID).toBe(99);
+  });
+
+  it('strict: true (feed) — returns null for a non-painting (e.g. objectName: Drawing)', async () => {
+    const { requestManager } = await import('./requestManager');
+    requestManager.fetchDeduped.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        objectID: 99,
+        title: 'Self-Portrait',
+        primaryImage: 'https://example.com/drawing.jpg',
+        objectName: 'Drawing',
+      }),
+    });
+    const { fetchArtworkByID } = await import('./metAPI');
+    const result = await fetchArtworkByID(99, null, { strict: true });
     expect(result).toBeNull();
   });
 
-  it('fetchArtworkByID returns artwork for a painting (objectName: Painting)', async () => {
+  it('strict: true (feed) — returns artwork for a painting (objectName: Painting)', async () => {
     const { requestManager } = await import('./requestManager');
     requestManager.fetchDeduped.mockResolvedValueOnce({
       ok: true,
@@ -295,7 +352,7 @@ describe('artist/tag search — objectName filter via validateArtwork', () => {
       }),
     });
     const { fetchArtworkByID } = await import('./metAPI');
-    const result = await fetchArtworkByID(100);
+    const result = await fetchArtworkByID(100, null, { strict: true });
     expect(result).not.toBeNull();
     expect(result.objectID).toBe(100);
   });

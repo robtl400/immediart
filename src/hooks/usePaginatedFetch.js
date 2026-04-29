@@ -33,6 +33,7 @@ export function usePaginatedFetch({
   initialBatchSize = null, // smaller first batch so first artworks appear sooner; defaults to batchSize
   maxInMemory      = Infinity,
   onBatchReady     = null,
+  strictValidation = false, // true = apply OBJECT_TYPES filter (feed only); false = accept all media types
 }) {
   // ── State ────────────────────────────────────────────────────────────────
   const [artworks,    setArtworks]    = useState([]);
@@ -89,13 +90,13 @@ export function usePaginatedFetch({
 
     if (idsToTry.length === 0) return;
 
-    batchFetchArtworks(idsToTry, batchSize, signal)
+    batchFetchArtworks(idsToTry, batchSize, signal, { strict: strictValidation })
       .then(raw => {
         if (signal.aborted) return;
         prefetchRef.current = { artworks: raw.map(transformAPIToDisplay), nextIndex };
       })
       .catch(() => {}); // prefetch failure is non-fatal
-  }, [shuffleIDs, batchSize]);
+  }, [shuffleIDs, batchSize, strictValidation]);
 
   // ── fetchBatch ────────────────────────────────────────────────────────────
   //
@@ -157,7 +158,7 @@ export function usePaginatedFetch({
         return;
       }
 
-      const rawArtworks = await batchFetchArtworks(idsToTry, targetCount, signal);
+      const rawArtworks = await batchFetchArtworks(idsToTry, targetCount, signal, { strict: strictValidation });
       if (fetchIdRef.current !== currentFetchId) return;
 
       const newArtworks = rawArtworks.map(transformAPIToDisplay);
@@ -199,7 +200,7 @@ export function usePaginatedFetch({
           return;
         }
 
-        const retryRaw = await batchFetchArtworks(idsToTry, targetCount, signal);
+        const retryRaw = await batchFetchArtworks(idsToTry, targetCount, signal, { strict: strictValidation });
         if (fetchIdRef.current !== currentFetchId) return;
 
         const retryArtworks = retryRaw.map(transformAPIToDisplay);
@@ -234,7 +235,7 @@ export function usePaginatedFetch({
         fetchingRef.current = false;
       }
     }
-  }, [shuffleIDs, batchSize, initialBatchSize, maxInMemory, startPrefetch]);
+  }, [shuffleIDs, batchSize, initialBatchSize, maxInMemory, strictValidation, startPrefetch]);
 
   // ── loadMore ──────────────────────────────────────────────────────────────
 

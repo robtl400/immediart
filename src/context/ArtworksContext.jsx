@@ -18,6 +18,7 @@ export function ArtworksProvider({ children }) {
     batchSize:        FEED_BATCH_SIZE,
     initialBatchSize: FEED_INITIAL_BATCH_SIZE,
     maxInMemory:      MAX_ARTWORKS_IN_MEMORY,
+    strictValidation: true,
   });
 
   // Initialize on mount
