@@ -5,6 +5,7 @@ import { transformAPIToDisplay } from '../utils/transformers';
 import { useArtworkModal } from '../context/ArtworkModalContext';
 import flyingMachineIcon from '../assets/FlyingMachine2_tinted_gold.png';
 import LoadingSpinner from './common/LoadingSpinner';
+import './ArtworkDeepLink.css';
 
 export default function ArtworkDeepLink() {
   const { artworkId } = useParams();
@@ -38,33 +39,19 @@ export default function ArtworkDeepLink() {
 
   if (error) {
     return (
-      <div style={{
-        display: 'flex', flexDirection: 'column', alignItems: 'center',
-        justifyContent: 'center', minHeight: '100vh', gap: '16px',
-        background: '#121212', color: '#888', textAlign: 'center', padding: '20px'
-      }}>
-        <img src={flyingMachineIcon} alt="" style={{ width: 64, height: 64, opacity: 0.5 }} />
-        <p style={{ color: '#F0B900', fontWeight: 600 }}>Artwork not found</p>
-        <p style={{ fontSize: 14 }}>{error}</p>
-        <button
-          onClick={() => navigate('/')}
-          style={{
-            background: '#F0B900', color: '#121212', border: 'none',
-            padding: '12px 24px', borderRadius: 8, fontWeight: 600, cursor: 'pointer'
-          }}
-        >
+      <div className="deep-link-error">
+        <img src={flyingMachineIcon} alt="" className="deep-link-error-icon" />
+        <p className="deep-link-error-title">Artwork not found</p>
+        <p className="deep-link-error-detail">{error}</p>
+        <button className="deep-link-retry-btn" onClick={() => navigate('/')}>
           Explore the collection
         </button>
       </div>
     );
   }
 
-  // Loading state — flying machine sweep
   return (
-    <div style={{
-      display: 'flex', flexDirection: 'column', minHeight: '100vh',
-      background: '#121212'
-    }}>
+    <div className="deep-link-loading">
       <LoadingSpinner />
     </div>
   );

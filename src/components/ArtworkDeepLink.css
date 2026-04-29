@@ -1,0 +1,44 @@
+.deep-link-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  gap: 16px;
+  background-color: var(--color-bg);
+  padding: 20px;
+  text-align: center;
+}
+
+.deep-link-loading {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  background-color: var(--color-bg);
+}
+
+.deep-link-error-icon {
+  width: 64px;
+  height: 64px;
+  opacity: 0.5;
+}
+
+.deep-link-error-title {
+  color: var(--color-gold);
+  font-weight: 600;
+}
+
+.deep-link-error-detail {
+  font-size: 14px;
+  color: var(--color-text-body);
+}
+
+.deep-link-retry-btn {
+  background: var(--color-gold);
+  color: var(--color-bg);
+  border: none;
+  padding: 12px 24px;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+}
