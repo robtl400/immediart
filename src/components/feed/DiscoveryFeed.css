@@ -197,7 +197,7 @@
 
 /* Like Button */
 .like-btn .icon {
-  color: var(--color-gold);
+  color: var(--color-gold-muted);
   font-size: 29px;
   line-height: 1;
   position: relative;
@@ -222,7 +222,7 @@
 }
 
 .like-btn .btn-label {
-  color: var(--color-gold);
+  color: var(--color-gold-muted);
   font-size: 14px;
   font-weight: 500;
 }
@@ -233,7 +233,7 @@
 
 /* Share Button */
 .share-btn {
-  color: var(--color-gold);
+  color: var(--color-gold-muted);
 }
 
 .share-btn:hover {
@@ -364,6 +364,10 @@
 
   .action-buttons {
     padding: 10px 20px;
+  }
+
+  .meta-left {
+    padding-left: 20px;
   }
 
   .text-info {
@@ -520,14 +524,14 @@
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 3px;
+  gap: 1px;
   padding: 10px 0 10px 15px;
 }
 
 .post-date,
 .post-location {
   color: var(--color-gold-muted);
-  font-size: 12px;
+  font-size: 11px;
   display: flex;
   align-items: center;
   gap: 4px;
