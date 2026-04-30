@@ -153,18 +153,10 @@ export default function ArtworkCard({ artwork, isLiked, onLike, onImageDoubleCli
         </p>
 
         {artwork.creditLine?.trim() && (
-          <div className="sponsored-post">
-            <span className="sponsored-label">Sponsored</span>
-            <p className="sponsor-name">{artwork.creditLine.trim()}</p>
-            {artwork.accessionYear && (
-              <p className="acquired-date">Acquired {artwork.accessionYear}</p>
-            )}
-            {artwork.objectURL && (
-              <a href={artwork.objectURL} target="_blank" rel="noopener noreferrer" className="view-acquisition">
-                View Acquisition →
-              </a>
-            )}
-          </div>
+          <p className="sponsored-post">
+            <span className="sponsored-label">Sponsored Post:</span>{' '}
+            {artwork.creditLine.trim()}
+          </p>
         )}
       </div>
 

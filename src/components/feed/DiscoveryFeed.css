@@ -546,30 +546,13 @@
 
 /* Sponsored post */
 .sponsored-post {
-  padding: 4px 0;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.5);
+  margin: 2px 0;
 }
 .sponsored-label {
   font-size: 10px;
-  color: rgba(255, 255, 255, 0.4);
+  color: rgba(255, 255, 255, 0.35);
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  display: block;
-}
-.sponsor-name {
-  font-size: 11px;
-  color: rgba(255, 255, 255, 0.6);
-  font-style: italic;
-  margin: 2px 0;
-}
-.acquired-date {
-  font-size: 10px;
-  color: rgba(255, 255, 255, 0.35);
-  margin: 2px 0;
-}
-.view-acquisition {
-  display: inline-block;
-  font-size: 11px;
-  color: var(--color-gold);
-  text-decoration: underline;
-  padding: 2px 0;
 }

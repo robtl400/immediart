@@ -232,23 +232,6 @@ describe('ArtworkCard — sponsored post', () => {
     expect(container.querySelector('.sponsored-post')).toBeNull();
   });
 
-  it('renders accessionYear when present in sponsored post', () => {
-    const { container } = render(<ArtworkCard artwork={makeArtwork({ creditLine: 'Gift, 1920', accessionYear: '1920' })} isLiked={false} onLike={vi.fn()} onImageDoubleClick={vi.fn()} />);
-    expect(container.querySelector('.acquired-date').textContent).toBe('Acquired 1920');
-  });
-
-  it('renders View Acquisition link when objectURL present', () => {
-    const { container } = render(<ArtworkCard artwork={makeArtwork({ creditLine: 'Gift', objectURL: 'https://met.org/1' })} isLiked={false} onLike={vi.fn()} onImageDoubleClick={vi.fn()} />);
-    const link = container.querySelector('.view-acquisition');
-    expect(link).toBeTruthy();
-    expect(link.href).toBe('https://met.org/1');
-  });
-
-  it('does not render View Acquisition link when objectURL absent', () => {
-    const { container } = render(<ArtworkCard artwork={makeArtwork({ creditLine: 'Gift', objectURL: '' })} isLiked={false} onLike={vi.fn()} onImageDoubleClick={vi.fn()} />);
-    expect(container.querySelector('.view-acquisition')).toBeNull();
-  });
-
   it('does not render sponsored post when creditLine is whitespace-only', () => {
     const { container } = render(<ArtworkCard artwork={makeArtwork({ creditLine: '   ' })} isLiked={false} onLike={vi.fn()} onImageDoubleClick={vi.fn()} />);
     expect(container.querySelector('.sponsored-post')).toBeNull();
