@@ -141,17 +141,19 @@ export class RequestManager {
       this._cbProbeInFlight = true;
     }
 
-    // Throttled HTTP call (same sequential queue pattern as old throttledFetch)
-    const myRequest = this._requestQueue.then(async () => {
+    // Enforce gap between dispatches only — not between completions.
+    // _requestQueue resolves as soon as the gap elapses so the next request
+    // can be dispatched concurrently rather than waiting for the HTTP response.
+    const dispatchReady = this._requestQueue.then(async () => {
       const now     = Date.now();
       const elapsed = now - this._lastRequestTime;
       if (elapsed < this._minGapMs) {
         await delay(this._minGapMs - elapsed);
       }
       this._lastRequestTime = Date.now();
-      return globalThis.fetch(url, { signal });
     });
-    this._requestQueue = myRequest.catch(() => {}); // prevent chain breakage
+    this._requestQueue = dispatchReady.catch(() => {}); // prevent chain breakage
+    const myRequest    = dispatchReady.then(() => globalThis.fetch(url, { signal }));
 
     let response;
     try {
