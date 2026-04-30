@@ -78,35 +78,38 @@ export default function ArtworkCard({ artwork, isLiked, onLike, onImageDoubleCli
         <div className={`image-placeholder${imageLoaded ? ' loaded' : ''}`} />
       </div>
 
-      {/* Post Meta Bar — Posted date + Location/Gallery */}
-      {(artwork.date || artwork.gallery || artwork.city?.trim()) && (
-        <div className="post-meta-bar">
-          {artwork.date && <span className="post-date">Posted: {artwork.date}</span>}
-          {(artwork.gallery || artwork.city?.trim()) && (
-            <span className="post-location">
-              📍{artwork.gallery
-                ? ` Gallery ${artwork.gallery}`
-                : ` ${artwork.city.trim()}${artwork.country ? `, ${artwork.country}` : ''}`}
-            </span>
-          )}
+      {/* Post Meta Bar — date + location (left) and action buttons (right) */}
+      <div className="post-meta-bar">
+        {(artwork.date || artwork.gallery || artwork.city?.trim()) && (
+          <div className="meta-left">
+            {artwork.date && <span className="post-date">Posted: {artwork.date}</span>}
+            {(artwork.gallery || artwork.city?.trim()) && (
+              <span className="post-location">
+                <svg width="9" height="12" viewBox="0 0 9 12" fill="currentColor" aria-hidden="true">
+                  <path d="M4.5 0C2.01 0 0 2.01 0 4.5c0 3.375 4.5 7.5 4.5 7.5S9 7.875 9 4.5C9 2.01 6.99 0 4.5 0zm0 6.25a1.75 1.75 0 1 1 0-3.5 1.75 1.75 0 0 1 0 3.5z"/>
+                </svg>
+                {artwork.gallery
+                  ? ` Gallery ${artwork.gallery}`
+                  : ` ${artwork.city.trim()}${artwork.country ? `, ${artwork.country}` : ''}`}
+              </span>
+            )}
+          </div>
+        )}
+        <div className="action-buttons">
+          <button
+            className={`action-btn like-btn ${isLiked ? 'liked' : ''}`}
+            onClick={onLike}
+            aria-label={isLiked ? 'Unlike' : 'Like'}
+          >
+            <span className="icon heart-icon">{isLiked ? '♥' : '♡'}</span>
+            <span className="btn-label">Like</span>
+          </button>
+
+          <button className="action-btn share-btn" onClick={handleShare} aria-label="Share">
+            <img src={flyingMachineIcon} alt="Share" className="icon share-icon" />
+            <span className="btn-label">{shareCopied ? 'Copied!' : 'Share'}</span>
+          </button>
         </div>
-      )}
-
-      {/* Action Buttons */}
-      <div className="action-buttons">
-        <button
-          className={`action-btn like-btn ${isLiked ? 'liked' : ''}`}
-          onClick={onLike}
-          aria-label={isLiked ? 'Unlike' : 'Like'}
-        >
-          <span className="icon heart-icon">{isLiked ? '♥' : '♡'}</span>
-          <span className="btn-label">Like</span>
-        </button>
-
-        <button className="action-btn share-btn" onClick={handleShare} aria-label="Share">
-          <img src={flyingMachineIcon} alt="Share" className="icon share-icon" />
-          <span className="btn-label">{shareCopied ? 'Copied!' : 'Share'}</span>
-        </button>
       </div>
 
       {/* Text Information */}

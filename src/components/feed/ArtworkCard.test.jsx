@@ -195,9 +195,9 @@ describe('ArtworkCard — post meta bar', () => {
     expect(container.querySelector('.post-location').textContent).not.toContain(',');
   });
 
-  it('renders no post-meta-bar when date, gallery, and city are all absent', () => {
+  it('renders no meta-left when date, gallery, and city are all absent', () => {
     const { container } = render(<ArtworkCard artwork={makeArtwork({ date: '' })} isLiked={false} onLike={vi.fn()} onImageDoubleClick={vi.fn()} />);
-    expect(container.querySelector('.post-meta-bar')).toBeNull();
+    expect(container.querySelector('.meta-left')).toBeNull();
   });
 
   it('renders no post-location when city is whitespace-only', () => {
