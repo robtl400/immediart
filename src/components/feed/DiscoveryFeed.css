@@ -511,3 +511,66 @@
   height: 1px;
   width: 100%;
 }
+
+/* Location tag — between image and action buttons */
+.location-tag {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 12px;
+  font-size: 11px;
+  color: var(--color-gold);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.location-tag a {
+  color: inherit;
+  text-decoration: underline;
+}
+
+/* Verified badge — inline after @handle */
+.verified-badge {
+  font-size: 10px;
+  color: var(--color-gold);
+  margin-left: 3px;
+  vertical-align: middle;
+}
+
+/* Artist bio snippet — below @handle, above description */
+.artist-bio-snippet {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  font-style: italic;
+  margin: 2px 0;
+  padding: 0;
+}
+
+/* Sponsored post */
+.sponsored-post {
+  padding: 4px 0;
+}
+.sponsored-label {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.4);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  display: block;
+}
+.sponsor-name {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.6);
+  font-style: italic;
+  margin: 2px 0;
+}
+.acquired-date {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.35);
+  margin: 2px 0;
+}
+.view-acquisition {
+  display: inline-block;
+  font-size: 11px;
+  color: var(--color-gold);
+  text-decoration: underline;
+  padding: 2px 0;
+}

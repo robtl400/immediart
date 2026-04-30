@@ -39,9 +39,7 @@ export function buildComments(artwork) {
 
   const text = artwork.GalleryNumber
     ? `From the ${artwork.department} department — Gallery ${artwork.GalleryNumber}`
-    : artwork.creditLine
-      ? `From the ${artwork.department} department — ${artwork.creditLine.trim()}.`
-      : `From the ${artwork.department} department.`;
+    : `From the ${artwork.department} department.`;
 
   return [{ username: '@TheMetMuseum', text }];
 }
@@ -79,6 +77,12 @@ export function transformAPIToDisplay(apiArtwork) {
     country: apiArtwork.country || '',
     region: apiArtwork.region || '',
     subregion: apiArtwork.subregion || '',
-    repository: apiArtwork.repository || ''
+    repository: apiArtwork.repository || '',
+    artistBio: apiArtwork.artistDisplayBio || '',
+    artistULAN_URL: apiArtwork.artistULAN_URL || '',
+    objectURL: apiArtwork.objectURL || '',
+    accessionYear: apiArtwork.accessionYear || '',
+    additionalImages: apiArtwork.additionalImages || [], // reserved for A-4 carousel — see TODOS.md
+    constituents: apiArtwork.constituents || [] // reserved for A-5 tagged contributors — see design plan
   };
 }

@@ -34,6 +34,16 @@ const makeMockArtwork = (id) => ({
   title: `Artwork ${id}`,
   artistName: 'Test Artist',
   imageUrl: 'https://example.com/img.jpg',
+  artistBio: '',
+  isHighlight: false,
+  artistULAN_URL: '',
+  objectURL: '',
+  gallery: null,
+  city: '',
+  country: '',
+  creditLine: '',
+  accessionYear: '',
+  additionalImages: [],
 });
 
 const makeContext = (overrides = {}) => ({

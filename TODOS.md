@@ -61,3 +61,11 @@ Fixed by /qa on feat/architecture-revamp. Root cause: `initSearch` depended on `
 ## ~~(Low) Pre-existing: GridBrowse.test.jsx result count tests broken~~ DONE (2026-04-29)
 Tests updated to match actual component behavior (`artworks.length` + " found" suffix).
 Added `makeMockArtwork` helper; tests now provide real artwork arrays with `hasMore: false`.
+
+---
+
+## (Medium) additionalImages carousel — A-4 deferred
+**What:** Add `additionalImages` dot indicator AND swipe implementation as a single feature.
+**Why:** Dots-without-swipe is a false interactive affordance (users swipe, nothing happens). Deferred from Social Media Layer pass — /autoplan gate 2026-04-29.
+**Implementation:** Dot indicator + touch swipe handler together; first dot permanently active, remaining dots reflect current image index.
+**Depends on:** Social Media Layer pass (Pass 1-3) — shipped 2026-04-29.

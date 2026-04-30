@@ -78,6 +78,28 @@ export default function ArtworkCard({ artwork, isLiked, onLike, onImageDoubleCli
         <div className={`image-placeholder${imageLoaded ? ' loaded' : ''}`} />
       </div>
 
+      {/* Location Tag — between image and action buttons */}
+      {(artwork.gallery || artwork.city?.trim()) && (
+        <div className="location-tag">
+          <span aria-hidden="true">📍</span>
+          {artwork.gallery ? (
+            <span className="location-text">
+              Gallery {artwork.gallery} · The Met
+            </span>
+          ) : (
+            <a
+              href={artwork.objectURL?.trim() || `https://www.metmuseum.org/search-results#!/search?q=${encodeURIComponent(artwork.city.trim())}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="location-text"
+              aria-label={`${artwork.city.trim()}${artwork.country ? `, ${artwork.country}` : ''} — view on The Met`}
+            >
+              {artwork.city.trim()}{artwork.country ? `, ${artwork.country}` : ''}
+            </a>
+          )}
+        </div>
+      )}
+
       {/* Action Buttons */}
       <div className="action-buttons">
         <button
@@ -112,6 +134,9 @@ export default function ArtworkCard({ artwork, isLiked, onLike, onImageDoubleCli
             </span>
           ) : (
             <span className="artist-name">{artwork.username}</span>
+          )}
+          {artwork.isHighlight && (
+            <span className="verified-badge" aria-label="Museum Highlight">✓</span>
           )}{' '}
           {artwork.description && `${artwork.description}.`}
           {artwork.tags.map((tag, index) => (
@@ -131,6 +156,25 @@ export default function ArtworkCard({ artwork, isLiked, onLike, onImageDoubleCli
             </Fragment>
           ))}
         </p>
+
+        {artwork.artistBio?.trim() && (
+          <p className="artist-bio-snippet">{artwork.artistBio.trim()}</p>
+        )}
+
+        {artwork.creditLine?.trim() && (
+          <div className="sponsored-post">
+            <span className="sponsored-label">Sponsored</span>
+            <p className="sponsor-name">{artwork.creditLine.trim()}</p>
+            {artwork.accessionYear && (
+              <p className="acquired-date">Acquired {artwork.accessionYear}</p>
+            )}
+            {artwork.objectURL && (
+              <a href={artwork.objectURL} target="_blank" rel="noopener noreferrer" className="view-acquisition">
+                View Acquisition →
+              </a>
+            )}
+          </div>
+        )}
 
         {artwork.date && <p className="artwork-date">Posted: {artwork.date}</p>}
       </div>

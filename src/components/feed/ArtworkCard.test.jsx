@@ -29,6 +29,16 @@ const makeArtwork = (overrides = {}) => ({
   tags: ['impressionism', 'night'],
   date: '1889',
   comments: [],
+  gallery: null,
+  city: '',
+  country: '',
+  isHighlight: false,
+  artistBio: '',
+  creditLine: '',
+  accessionYear: '',
+  objectURL: '',
+  additionalImages: [],
+  artistULAN_URL: '',
   ...overrides,
 });
 
@@ -135,7 +145,7 @@ describe('ArtworkCard — image placeholder (T1-A)', () => {
     const { container } = render(<ArtworkCard artwork={makeArtwork()} isLiked={false} onLike={vi.fn()} onImageDoubleClick={onImageDoubleClick} />);
     const img = container.querySelector('.artwork-image');
     fireEvent.load(img);
-    fireEvent.doubleClick(img);
+    fireEvent.click(img);
     expect(onImageDoubleClick).toHaveBeenCalled();
   });
 });
@@ -163,5 +173,95 @@ describe('ArtworkCard — like state', () => {
   it('renders Unlike aria-label when liked', () => {
     render(<ArtworkCard artwork={makeArtwork()} isLiked={true} onLike={vi.fn()} onImageDoubleClick={vi.fn()} />);
     expect(screen.getByLabelText('Unlike')).toBeTruthy();
+  });
+});
+
+describe('ArtworkCard — location tag', () => {
+  it('renders gallery number as plain text when gallery present', () => {
+    const { container } = render(<ArtworkCard artwork={makeArtwork({ gallery: '634' })} isLiked={false} onLike={vi.fn()} onImageDoubleClick={vi.fn()} />);
+    expect(container.querySelector('.location-tag')).toBeTruthy();
+    expect(container.querySelector('.location-text').textContent).toContain('Gallery 634');
+    expect(container.querySelector('.location-tag a')).toBeNull();
+  });
+
+  it('renders city/country as link when no gallery', () => {
+    const { container } = render(<ArtworkCard artwork={makeArtwork({ city: 'Paris', country: 'France', objectURL: 'https://met.org/1' })} isLiked={false} onLike={vi.fn()} onImageDoubleClick={vi.fn()} />);
+    expect(container.querySelector('.location-tag')).toBeTruthy();
+    expect(container.querySelector('.location-tag a').textContent).toContain('Paris, France');
+  });
+
+  it('renders city-only link with no trailing comma when country absent', () => {
+    const { container } = render(<ArtworkCard artwork={makeArtwork({ city: 'Paris', country: '' })} isLiked={false} onLike={vi.fn()} onImageDoubleClick={vi.fn()} />);
+    expect(container.querySelector('.location-tag a').textContent).toBe('Paris');
+  });
+
+  it('renders no location tag when both gallery and city are absent', () => {
+    const { container } = render(<ArtworkCard artwork={makeArtwork()} isLiked={false} onLike={vi.fn()} onImageDoubleClick={vi.fn()} />);
+    expect(container.querySelector('.location-tag')).toBeNull();
+  });
+
+  it('renders no location tag when city is whitespace-only', () => {
+    const { container } = render(<ArtworkCard artwork={makeArtwork({ city: '   ' })} isLiked={false} onLike={vi.fn()} onImageDoubleClick={vi.fn()} />);
+    expect(container.querySelector('.location-tag')).toBeNull();
+  });
+});
+
+describe('ArtworkCard — verified badge', () => {
+  it('renders verified badge when isHighlight is true', () => {
+    const { container } = render(<ArtworkCard artwork={makeArtwork({ isHighlight: true })} isLiked={false} onLike={vi.fn()} onImageDoubleClick={vi.fn()} />);
+    expect(container.querySelector('.verified-badge')).toBeTruthy();
+  });
+
+  it('does not render verified badge when isHighlight is false', () => {
+    const { container } = render(<ArtworkCard artwork={makeArtwork({ isHighlight: false })} isLiked={false} onLike={vi.fn()} onImageDoubleClick={vi.fn()} />);
+    expect(container.querySelector('.verified-badge')).toBeNull();
+  });
+});
+
+describe('ArtworkCard — artist bio snippet', () => {
+  it('renders bio snippet when artistBio is present', () => {
+    const { container } = render(<ArtworkCard artwork={makeArtwork({ artistBio: 'Dutch, 1853–1890' })} isLiked={false} onLike={vi.fn()} onImageDoubleClick={vi.fn()} />);
+    expect(container.querySelector('.artist-bio-snippet').textContent).toBe('Dutch, 1853–1890');
+  });
+
+  it('does not render bio snippet when artistBio is empty', () => {
+    const { container } = render(<ArtworkCard artwork={makeArtwork({ artistBio: '' })} isLiked={false} onLike={vi.fn()} onImageDoubleClick={vi.fn()} />);
+    expect(container.querySelector('.artist-bio-snippet')).toBeNull();
+  });
+});
+
+describe('ArtworkCard — sponsored post', () => {
+  it('renders sponsored post when creditLine is present', () => {
+    const { container } = render(<ArtworkCard artwork={makeArtwork({ creditLine: 'Purchase, Mr. Fund, 1955' })} isLiked={false} onLike={vi.fn()} onImageDoubleClick={vi.fn()} />);
+    expect(container.querySelector('.sponsored-post')).toBeTruthy();
+    expect(container.querySelector('.sponsored-label').textContent).toBe('Sponsored');
+    expect(container.querySelector('.sponsor-name').textContent).toBe('Purchase, Mr. Fund, 1955');
+  });
+
+  it('does not render sponsored post when creditLine is absent', () => {
+    const { container } = render(<ArtworkCard artwork={makeArtwork({ creditLine: '' })} isLiked={false} onLike={vi.fn()} onImageDoubleClick={vi.fn()} />);
+    expect(container.querySelector('.sponsored-post')).toBeNull();
+  });
+
+  it('renders accessionYear when present in sponsored post', () => {
+    const { container } = render(<ArtworkCard artwork={makeArtwork({ creditLine: 'Gift, 1920', accessionYear: '1920' })} isLiked={false} onLike={vi.fn()} onImageDoubleClick={vi.fn()} />);
+    expect(container.querySelector('.acquired-date').textContent).toBe('Acquired 1920');
+  });
+
+  it('renders View Acquisition link when objectURL present', () => {
+    const { container } = render(<ArtworkCard artwork={makeArtwork({ creditLine: 'Gift', objectURL: 'https://met.org/1' })} isLiked={false} onLike={vi.fn()} onImageDoubleClick={vi.fn()} />);
+    const link = container.querySelector('.view-acquisition');
+    expect(link).toBeTruthy();
+    expect(link.href).toBe('https://met.org/1');
+  });
+
+  it('does not render View Acquisition link when objectURL absent', () => {
+    const { container } = render(<ArtworkCard artwork={makeArtwork({ creditLine: 'Gift', objectURL: '' })} isLiked={false} onLike={vi.fn()} onImageDoubleClick={vi.fn()} />);
+    expect(container.querySelector('.view-acquisition')).toBeNull();
+  });
+
+  it('does not render sponsored post when creditLine is whitespace-only', () => {
+    const { container } = render(<ArtworkCard artwork={makeArtwork({ creditLine: '   ' })} isLiked={false} onLike={vi.fn()} onImageDoubleClick={vi.fn()} />);
+    expect(container.querySelector('.sponsored-post')).toBeNull();
   });
 });

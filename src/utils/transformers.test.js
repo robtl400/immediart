@@ -1,11 +1,11 @@
 /**
  * transformers.js unit tests
  *
- * Covers: formatArtistUsername (T2-A), buildComments (T1-C).
+ * Covers: formatArtistUsername (T2-A), buildComments (T1-C), transformAPIToDisplay new fields.
  */
 
 import { describe, it, expect } from 'vitest';
-import { formatArtistUsername, buildComments } from './transformers';
+import { formatArtistUsername, buildComments, transformAPIToDisplay } from './transformers';
 
 describe('formatArtistUsername (T2-A)', () => {
   it('formats plain name', () => {
@@ -56,10 +56,10 @@ describe('buildComments (T1-C)', () => {
     expect(result[0].text).not.toContain('come visit us');
   });
 
-  it('non-gallery with creditLine uses em dash format and trims trailing space', () => {
+  it('non-gallery always uses department-only text (creditLine no longer in comment)', () => {
     const result = buildComments(makeArtwork({ creditLine: 'Purchase, Mr. Fund, 1955' }));
-    expect(result[0].text).toBe('From the European Paintings department — Purchase, Mr. Fund, 1955.');
-    expect(result[0].text).not.toContain('©');
+    expect(result[0].text).toBe('From the European Paintings department.');
+    expect(result[0].text).not.toContain('Purchase');
   });
 
   it('non-gallery without creditLine falls back to department only', () => {
@@ -70,5 +70,69 @@ describe('buildComments (T1-C)', () => {
   it('comment username is @TheMetMuseum', () => {
     const result = buildComments(makeArtwork());
     expect(result[0].username).toBe('@TheMetMuseum');
+  });
+});
+
+describe('transformAPIToDisplay — new social media fields', () => {
+  const makeAPIArtwork = (overrides = {}) => ({
+    objectID: 1,
+    primaryImageSmall: 'https://example.com/img.jpg',
+    artistDisplayName: 'Van Gogh',
+    title: 'Starry Night',
+    objectDate: '1889',
+    department: 'European Paintings',
+    GalleryNumber: null,
+    creditLine: '',
+    isHighlight: false,
+    city: '',
+    country: '',
+    artistDisplayBio: '',
+    artistULAN_URL: '',
+    objectURL: '',
+    accessionYear: '',
+    additionalImages: [],
+    constituents: [],
+    ...overrides,
+  });
+
+  it('extracts artistBio from artistDisplayBio', () => {
+    const result = transformAPIToDisplay(makeAPIArtwork({ artistDisplayBio: 'Dutch, 1853–1890' }));
+    expect(result.artistBio).toBe('Dutch, 1853–1890');
+  });
+
+  it('defaults artistBio to empty string when absent', () => {
+    const result = transformAPIToDisplay(makeAPIArtwork({ artistDisplayBio: undefined }));
+    expect(result.artistBio).toBe('');
+  });
+
+  it('extracts objectURL', () => {
+    const result = transformAPIToDisplay(makeAPIArtwork({ objectURL: 'https://www.metmuseum.org/art/collection/search/1' }));
+    expect(result.objectURL).toBe('https://www.metmuseum.org/art/collection/search/1');
+  });
+
+  it('defaults objectURL to empty string when absent', () => {
+    const result = transformAPIToDisplay(makeAPIArtwork({ objectURL: undefined }));
+    expect(result.objectURL).toBe('');
+  });
+
+  it('extracts accessionYear', () => {
+    const result = transformAPIToDisplay(makeAPIArtwork({ accessionYear: '1955' }));
+    expect(result.accessionYear).toBe('1955');
+  });
+
+  it('defaults additionalImages to empty array when absent', () => {
+    const result = transformAPIToDisplay(makeAPIArtwork({ additionalImages: undefined }));
+    expect(result.additionalImages).toEqual([]);
+  });
+
+  it('preserves additionalImages array', () => {
+    const imgs = ['https://example.com/a.jpg', 'https://example.com/b.jpg'];
+    const result = transformAPIToDisplay(makeAPIArtwork({ additionalImages: imgs }));
+    expect(result.additionalImages).toEqual(imgs);
+  });
+
+  it('extracts artistULAN_URL', () => {
+    const result = transformAPIToDisplay(makeAPIArtwork({ artistULAN_URL: 'https://ulan.example.com/123' }));
+    expect(result.artistULAN_URL).toBe('https://ulan.example.com/123');
   });
 });

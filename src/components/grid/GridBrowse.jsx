@@ -7,6 +7,7 @@ import { useArtworkModal } from '../../context/ArtworkModalContext';
 import Banner from '../common/Banner';
 import LoadingSpinner, { InlineLoader } from '../common/LoadingSpinner';
 import ThumbnailCard from './ThumbnailCard';
+import ArtistProfileHeader from './ArtistProfileHeader';
 import useInfiniteScroll from '../../hooks/useInfiniteScroll';
 import { GRID_ROOT_MARGIN } from '../../utils/constants';
 
@@ -115,6 +116,10 @@ export default function GridBrowse({ type }) {
   return (
     <div className="grid-browse" ref={gridRef}>
       <Header />
+
+      {type === 'artist' && (
+        <ArtistProfileHeader artistName={searchTerm} artworks={artworks} />
+      )}
 
       <div className="thumbnail-grid columns-2">
         {artworks.map((artwork) => (
