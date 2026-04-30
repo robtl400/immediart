@@ -35,11 +35,29 @@ export function buildDescription(artwork) {
 
 // Build comments array
 export function buildComments(artwork) {
-  if (!artwork.department) return [];
+  const dept = artwork.department;
+  const bio  = artwork.artistDisplayBio?.trim();
+  if (!dept && !bio) return [];
 
-  const text = artwork.GalleryNumber
-    ? `From the ${artwork.department} department — Gallery ${artwork.GalleryNumber}`
-    : `From the ${artwork.department} department.`;
+  let text;
+  if (dept && bio) {
+    const t = [
+      `From our ${dept} collection. ${bio}.`,
+      `${bio} — part of the ${dept} collection.`,
+      `${bio}. A work from the ${dept} department.`,
+      `Part of the ${dept} collection. ${bio}.`,
+    ];
+    text = t[(artwork.objectID ?? 0) % t.length];
+  } else if (dept) {
+    const t = [
+      `From the ${dept} department.`,
+      `Part of the ${dept} collection.`,
+      `A work from the ${dept} collection.`,
+    ];
+    text = t[(artwork.objectID ?? 0) % t.length];
+  } else {
+    text = `${bio}.`;
+  }
 
   return [{ username: '@TheMetMuseum', text }];
 }

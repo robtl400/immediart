@@ -103,7 +103,7 @@ export default function ArtworkModal() {
             onClick={closeModal}
             aria-label="Close artwork details"
           >
-            ×
+            ‹
           </button>
           <div className="artwork-modal-content">
             <div className="artwork-modal-image-container">

@@ -42,7 +42,7 @@ export function GridBrowseProvider({ children }) {
 
   // initSearch — constructs a fetchIDs closure with navigation/cooldown delays,
   // then kicks off a fresh fetch via grid.reset() synchronously.
-  const initSearch = useCallback((type, term) => {
+  const initSearch = useCallback((type, term, seedArtworks = []) => {
     setSearchType(type);
     setSearchTerm(term);
     setTotalCount(0);
@@ -68,7 +68,7 @@ export function GridBrowseProvider({ children }) {
       const ids = cachedIDs ?? await searchFn(term, signal);
       setTotalCount(ids.length);
       return ids;
-    });
+    }, seedArtworks);
   }, [gridReset]);
 
   // abort — pause all in-flight work without resetting displayed artworks

@@ -128,7 +128,7 @@ export class RequestManager {
   async fetch(url, signal) {
     // Fast-fail if breaker is OPEN
     if (this._cbState === 'OPEN') {
-      throw new DOMException('Circuit breaker open — request rejected', 'AbortError');
+      throw new Error('Circuit breaker open');
     }
 
     // HALF_OPEN: only one probe goes through; all others queue
@@ -236,7 +236,7 @@ export class RequestManager {
 
     const pending = this._cbPendingResolvers.splice(0);
     for (const { reject } of pending) {
-      reject(new DOMException('Circuit breaker open — request rejected', 'AbortError'));
+      reject(new Error('Circuit breaker open'));
     }
 
     this._cbOpenTimer = setTimeout(() => {

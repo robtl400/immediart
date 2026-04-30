@@ -50,7 +50,7 @@ describe('ArtworkCard — artist click', () => {
     render(<ArtworkCard artwork={makeArtwork()} isLiked={false} onLike={vi.fn()} onImageDoubleClick={vi.fn()} onArtistClick={onArtistClick} />);
     // Artist button renders with the username as text
     fireEvent.click(screen.getByRole('button', { name: /vangogh/i }));
-    expect(onArtistClick).toHaveBeenCalledWith('Van Gogh');
+    expect(onArtistClick).toHaveBeenCalledWith('Van Gogh', expect.objectContaining({ id: 1 }));
     expect(mockNavigate).not.toHaveBeenCalled();
   });
 
@@ -76,7 +76,7 @@ describe('ArtworkCard — tag click', () => {
     const onTagClick = vi.fn();
     render(<ArtworkCard artwork={makeArtwork()} isLiked={false} onLike={vi.fn()} onImageDoubleClick={vi.fn()} onTagClick={onTagClick} />);
     fireEvent.click(screen.getByRole('button', { name: /#impressionism/i }));
-    expect(onTagClick).toHaveBeenCalledWith('impressionism');
+    expect(onTagClick).toHaveBeenCalledWith('impressionism', expect.objectContaining({ id: 1 }));
     expect(mockNavigate).not.toHaveBeenCalled();
   });
 
@@ -115,7 +115,7 @@ describe('ArtworkCard — hover prefetch props', () => {
     const onArtistHover = vi.fn();
     render(<ArtworkCard artwork={makeArtwork()} isLiked={false} onLike={vi.fn()} onImageDoubleClick={vi.fn()} onArtistClick={onArtistClick} onArtistHover={onArtistHover} />);
     fireEvent.click(screen.getByRole('button', { name: /vangogh/i }));
-    expect(onArtistClick).toHaveBeenCalledWith('Van Gogh');
+    expect(onArtistClick).toHaveBeenCalledWith('Van Gogh', expect.objectContaining({ id: 1 }));
   });
 });
 
@@ -176,33 +176,33 @@ describe('ArtworkCard — like state', () => {
   });
 });
 
-describe('ArtworkCard — location tag', () => {
-  it('renders gallery number as plain text when gallery present', () => {
+describe('ArtworkCard — post meta bar', () => {
+  it('renders post-meta-bar with gallery number when gallery present', () => {
     const { container } = render(<ArtworkCard artwork={makeArtwork({ gallery: '634' })} isLiked={false} onLike={vi.fn()} onImageDoubleClick={vi.fn()} />);
-    expect(container.querySelector('.location-tag')).toBeTruthy();
-    expect(container.querySelector('.location-text').textContent).toContain('Gallery 634');
-    expect(container.querySelector('.location-tag a')).toBeNull();
+    expect(container.querySelector('.post-meta-bar')).toBeTruthy();
+    expect(container.querySelector('.post-location').textContent).toContain('Gallery 634');
   });
 
-  it('renders city/country as link when no gallery', () => {
-    const { container } = render(<ArtworkCard artwork={makeArtwork({ city: 'Paris', country: 'France', objectURL: 'https://met.org/1' })} isLiked={false} onLike={vi.fn()} onImageDoubleClick={vi.fn()} />);
-    expect(container.querySelector('.location-tag')).toBeTruthy();
-    expect(container.querySelector('.location-tag a').textContent).toContain('Paris, France');
+  it('renders city/country as plain text in post-location when no gallery', () => {
+    const { container } = render(<ArtworkCard artwork={makeArtwork({ city: 'Paris', country: 'France' })} isLiked={false} onLike={vi.fn()} onImageDoubleClick={vi.fn()} />);
+    expect(container.querySelector('.post-meta-bar')).toBeTruthy();
+    expect(container.querySelector('.post-location').textContent).toContain('Paris, France');
   });
 
-  it('renders city-only link with no trailing comma when country absent', () => {
+  it('renders city-only with no trailing comma when country absent', () => {
     const { container } = render(<ArtworkCard artwork={makeArtwork({ city: 'Paris', country: '' })} isLiked={false} onLike={vi.fn()} onImageDoubleClick={vi.fn()} />);
-    expect(container.querySelector('.location-tag a').textContent).toBe('Paris');
+    expect(container.querySelector('.post-location').textContent).toContain('Paris');
+    expect(container.querySelector('.post-location').textContent).not.toContain(',');
   });
 
-  it('renders no location tag when both gallery and city are absent', () => {
-    const { container } = render(<ArtworkCard artwork={makeArtwork()} isLiked={false} onLike={vi.fn()} onImageDoubleClick={vi.fn()} />);
-    expect(container.querySelector('.location-tag')).toBeNull();
+  it('renders no post-meta-bar when date, gallery, and city are all absent', () => {
+    const { container } = render(<ArtworkCard artwork={makeArtwork({ date: '' })} isLiked={false} onLike={vi.fn()} onImageDoubleClick={vi.fn()} />);
+    expect(container.querySelector('.post-meta-bar')).toBeNull();
   });
 
-  it('renders no location tag when city is whitespace-only', () => {
-    const { container } = render(<ArtworkCard artwork={makeArtwork({ city: '   ' })} isLiked={false} onLike={vi.fn()} onImageDoubleClick={vi.fn()} />);
-    expect(container.querySelector('.location-tag')).toBeNull();
+  it('renders no post-location when city is whitespace-only', () => {
+    const { container } = render(<ArtworkCard artwork={makeArtwork({ city: '   ', date: '' })} isLiked={false} onLike={vi.fn()} onImageDoubleClick={vi.fn()} />);
+    expect(container.querySelector('.post-location')).toBeNull();
   });
 });
 
@@ -218,17 +218,6 @@ describe('ArtworkCard — verified badge', () => {
   });
 });
 
-describe('ArtworkCard — artist bio snippet', () => {
-  it('renders bio snippet when artistBio is present', () => {
-    const { container } = render(<ArtworkCard artwork={makeArtwork({ artistBio: 'Dutch, 1853–1890' })} isLiked={false} onLike={vi.fn()} onImageDoubleClick={vi.fn()} />);
-    expect(container.querySelector('.artist-bio-snippet').textContent).toBe('Dutch, 1853–1890');
-  });
-
-  it('does not render bio snippet when artistBio is empty', () => {
-    const { container } = render(<ArtworkCard artwork={makeArtwork({ artistBio: '' })} isLiked={false} onLike={vi.fn()} onImageDoubleClick={vi.fn()} />);
-    expect(container.querySelector('.artist-bio-snippet')).toBeNull();
-  });
-});
 
 describe('ArtworkCard — sponsored post', () => {
   it('renders sponsored post when creditLine is present', () => {

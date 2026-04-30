@@ -16,6 +16,7 @@ const mockInitSearch = vi.fn();
 vi.mock('react-router-dom', () => ({
   useParams: () => ({ artistName: 'Van Gogh' }),
   useNavigate: () => mockNavigate,
+  useLocation: () => ({ state: null }),
 }));
 
 vi.mock('../common/Banner', () => ({ default: () => <div data-testid="banner" /> }));

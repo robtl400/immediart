@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import flyingMachineIcon from '../../assets/FlyingMachine2_tinted_gold.png';
 import './GridBrowse.css';
 import { useGridBrowse } from '../../context/GridBrowseContext';
@@ -20,6 +20,8 @@ export default function GridBrowse({ type }) {
   const { artworks, loading, loadingMore, error, hasMore, initSearch, loadMore, abort } = useGridBrowse();
   const { openModal } = useArtworkModal();
   const navigate = useNavigate();
+  const location = useLocation();
+  const seedArtworks = location.state?.seedArtworks ?? [];
 
   const gridRef = useRef(null);
   const lastSearchRef = useRef('');
@@ -38,8 +40,10 @@ export default function GridBrowse({ type }) {
   useEffect(() => {
     if (searchTerm && searchTerm !== lastSearchRef.current) {
       lastSearchRef.current = searchTerm;
-      initSearch(type, searchTerm);
+      initSearch(type, searchTerm, seedArtworks);
     }
+  // seedArtworks is stable per navigation — only re-run when term/type changes
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [type, searchTerm, initSearch]);
 
   // Abort on unmount
@@ -60,8 +64,8 @@ export default function GridBrowse({ type }) {
     <>
       <Banner />
       <div className="search-heading">
-        <button className="grid-back-btn" onClick={() => navigate(-1)} aria-label="Back to feed">
-          ← Back
+        <button className="grid-back-btn" onClick={() => navigate(-1)} aria-label="Back">
+          ‹
         </button>
         <h2 className="search-term">{displayTerm}</h2>
       </div>

@@ -281,12 +281,6 @@
   opacity: 0.8;
 }
 
-.artwork-date {
-  color: var(--color-gold-muted);
-  font-size: 14px;
-  margin: 0;
-}
-
 /* Hashtags */
 .hashtags {
   display: flex;
@@ -319,6 +313,9 @@
   margin-bottom: 6px;
   font-size: 14px;
   line-height: 1.5;
+  border-left: 2px solid var(--color-gold-muted);
+  padding-left: 10px;
+  margin-left: 4px;
 }
 
 .comment:last-child {
@@ -512,20 +509,18 @@
   width: 100%;
 }
 
-/* Location tag — between image and action buttons */
-.location-tag {
+/* Post meta bar — Posted date + Location/Gallery on one line */
+.post-meta-bar {
   display: flex;
+  justify-content: space-between;
   align-items: center;
-  gap: 4px;
   padding: 4px 12px;
-  font-size: 11px;
-  color: var(--color-gold);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  background-color: var(--color-bg);
 }
-.location-tag a {
-  color: inherit;
-  text-decoration: underline;
+.post-date,
+.post-location {
+  color: var(--color-gold-muted);
+  font-size: 12px;
 }
 
 /* Verified badge — inline after @handle */
@@ -534,15 +529,6 @@
   color: var(--color-gold);
   margin-left: 3px;
   vertical-align: middle;
-}
-
-/* Artist bio snippet — below @handle, above description */
-.artist-bio-snippet {
-  font-size: 11px;
-  color: var(--color-text-muted);
-  font-style: italic;
-  margin: 2px 0;
-  padding: 0;
 }
 
 /* Sponsored post */

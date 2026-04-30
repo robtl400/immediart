@@ -47,7 +47,7 @@ export default function ArtworkCard({ artwork, isLiked, onLike, onImageDoubleCli
     // Guard: anonymous works have no artistName — skip navigation
     if (!artwork.artistName) return;
     if (onArtistClick) {
-      onArtistClick(artwork.artistName);
+      onArtistClick(artwork.artistName, artwork);
     } else {
       navigate(`/artist/${encodeURIComponent(artwork.artistName)}`);
     }
@@ -55,7 +55,7 @@ export default function ArtworkCard({ artwork, isLiked, onLike, onImageDoubleCli
 
   const handleHashtagClick = (tag) => {
     if (onTagClick) {
-      onTagClick(tag);
+      onTagClick(tag, artwork);
     } else {
       navigate(`/tag/${encodeURIComponent(tag)}`);
     }
@@ -78,24 +78,16 @@ export default function ArtworkCard({ artwork, isLiked, onLike, onImageDoubleCli
         <div className={`image-placeholder${imageLoaded ? ' loaded' : ''}`} />
       </div>
 
-      {/* Location Tag — between image and action buttons */}
-      {(artwork.gallery || artwork.city?.trim()) && (
-        <div className="location-tag">
-          <span aria-hidden="true">📍</span>
-          {artwork.gallery ? (
-            <span className="location-text">
-              Gallery {artwork.gallery} · The Met
+      {/* Post Meta Bar — Posted date + Location/Gallery */}
+      {(artwork.date || artwork.gallery || artwork.city?.trim()) && (
+        <div className="post-meta-bar">
+          {artwork.date && <span className="post-date">Posted: {artwork.date}</span>}
+          {(artwork.gallery || artwork.city?.trim()) && (
+            <span className="post-location">
+              📍{artwork.gallery
+                ? ` Gallery ${artwork.gallery}`
+                : ` ${artwork.city.trim()}${artwork.country ? `, ${artwork.country}` : ''}`}
             </span>
-          ) : (
-            <a
-              href={artwork.objectURL?.trim() || `https://www.metmuseum.org/search-results#!/search?q=${encodeURIComponent(artwork.city.trim())}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="location-text"
-              aria-label={`${artwork.city.trim()}${artwork.country ? `, ${artwork.country}` : ''} — view on The Met`}
-            >
-              {artwork.city.trim()}{artwork.country ? `, ${artwork.country}` : ''}
-            </a>
           )}
         </div>
       )}
@@ -157,10 +149,6 @@ export default function ArtworkCard({ artwork, isLiked, onLike, onImageDoubleCli
           ))}
         </p>
 
-        {artwork.artistBio?.trim() && (
-          <p className="artist-bio-snippet">{artwork.artistBio.trim()}</p>
-        )}
-
         {artwork.creditLine?.trim() && (
           <div className="sponsored-post">
             <span className="sponsored-label">Sponsored</span>
@@ -175,8 +163,6 @@ export default function ArtworkCard({ artwork, isLiked, onLike, onImageDoubleCli
             )}
           </div>
         )}
-
-        {artwork.date && <p className="artwork-date">Posted: {artwork.date}</p>}
       </div>
 
       {/* Comments */}

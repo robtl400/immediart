@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import flyingMachineIcon from '../../assets/FlyingMachine2_tinted_gold.png';
 import './DiscoveryFeed.css';
 import { useArtworks } from '../../context/ArtworksContext';
-import { useGridBrowse } from '../../context/GridBrowseContext';
 import { useArtworkModal } from '../../context/ArtworkModalContext';
 import LoadingSpinner, { InlineLoader } from '../common/LoadingSpinner';
 import Banner from '../common/Banner';
@@ -15,7 +14,6 @@ import { debounce } from '../../utils/delay';
 
 export default function DiscoveryFeed() {
   const { artworks, loading, loadingMore, error, hasMore, loadMoreArtworks, retry, pause } = useArtworks();
-  const { initSearch } = useGridBrowse();
   const { openModal } = useArtworkModal();
   const navigate = useNavigate();
 
@@ -92,18 +90,19 @@ export default function DiscoveryFeed() {
     });
   };
 
-  // Pre-warm: start loading grid data before the route change completes
-  const handleArtistClick = useCallback((artistName) => {
+  const handleArtistClick = useCallback((artistName, artwork) => {
     pause();
-    initSearch('artist', artistName);
-    navigate(`/artist/${encodeURIComponent(artistName)}`);
-  }, [pause, initSearch, navigate]);
+    navigate(`/artist/${encodeURIComponent(artistName)}`, {
+      state: { seedArtworks: [artwork] },
+    });
+  }, [pause, navigate]);
 
-  const handleTagClick = useCallback((tag) => {
+  const handleTagClick = useCallback((tag, artwork) => {
     pause();
-    initSearch('tag', tag);
-    navigate(`/tag/${encodeURIComponent(tag)}`);
-  }, [pause, initSearch, navigate]);
+    navigate(`/tag/${encodeURIComponent(tag)}`, {
+      state: { seedArtworks: [artwork] },
+    });
+  }, [pause, navigate]);
 
   // Hover prefetch — warm IndexedDB cache before user clicks artist/tag chip
   const artistHoverRef = useRef(debounce((name) => searchByArtist(name).catch(() => {}), 150));

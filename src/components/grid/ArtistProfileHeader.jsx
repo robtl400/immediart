@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { formatArtistUsername } from '../../utils/transformers';
 
 export default function ArtistProfileHeader({ artistName, artworks }) {
@@ -15,6 +16,16 @@ export default function ArtistProfileHeader({ artistName, artworks }) {
   const highlightCount = artworks.filter(a => a.isHighlight).length;
   const username = formatArtistUsername(artistName);
 
+  // Fallback descriptor — most-frequent department in the loaded batch
+  const fallbackDesc = useMemo(() => {
+    if (artistBio) return null;
+    const freq = new Map();
+    artworks.forEach(a => a.department && freq.set(a.department, (freq.get(a.department) ?? 0) + 1));
+    if (!freq.size) return null;
+    const top = [...freq.entries()].reduce((a, b) => b[1] > a[1] ? b : a)[0];
+    return `Works in the ${top} collection`;
+  }, [artworks, artistBio]);
+
   return (
     <div className="artist-profile-header">
       <div className="profile-identity">
@@ -26,7 +37,12 @@ export default function ArtistProfileHeader({ artistName, artworks }) {
 
       <p className="profile-display-name">{artistName}</p>
 
-      {artistBio && <p className="profile-bio">{artistBio}</p>}
+      {artistBio
+        ? <p className="profile-bio">{artistBio}</p>
+        : fallbackDesc
+          ? <p className="profile-bio profile-bio--fallback">{fallbackDesc}</p>
+          : null
+      }
 
       <a
         href={linkInBio}

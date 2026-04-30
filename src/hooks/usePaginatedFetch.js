@@ -46,6 +46,8 @@ export function usePaginatedFetch({
   const allIDsRef            = useRef([]);
   const currentIndexRef      = useRef(0);
   const shownIDsRef          = useRef(new Set());     // only used when shuffleIDs=true
+  const seedIDsRef           = useRef(new Set());     // IDs already shown via seed — skip in fetch
+  const hasSeedRef           = useRef(false);         // true when reset() was called with seed artworks
   const fetchingRef          = useRef(false);
   const abortControllerRef   = useRef(null);
   const fetchIdRef           = useRef(0);
@@ -79,12 +81,15 @@ export function usePaginatedFetch({
       let i = fromIndex;
       while (idsToTry.length < batchSize * 3 && i < allIDsRef.current.length) {
         const id = allIDsRef.current[i];
-        if (!shownIDsRef.current.has(id)) idsToTry.push(id);
+        if (!shownIDsRef.current.has(id) && !seedIDsRef.current.has(String(id))) idsToTry.push(id);
         i++;
       }
       nextIndex = i;
     } else {
-      idsToTry  = allIDsRef.current.slice(fromIndex, fromIndex + batchSize * 2);
+      const raw = allIDsRef.current.slice(fromIndex, fromIndex + batchSize * 2);
+      idsToTry  = seedIDsRef.current.size > 0
+        ? raw.filter(id => !seedIDsRef.current.has(String(id)))
+        : raw;
       nextIndex = fromIndex + batchSize * 2;
     }
 
@@ -125,7 +130,9 @@ export function usePaginatedFetch({
 
     try {
       if (isInitial) {
-        setLoading(true);
+        // Skip the full-screen skeleton when seed artworks are already visible
+        if (hasSeedRef.current) setLoadingMore(true);
+        else setLoading(true);
 
         // Fetch IDs via the installed fetchIDs function (includes any delays)
         const allIDs = await fetchIDsRef.current(signal);
@@ -138,18 +145,21 @@ export function usePaginatedFetch({
         setLoadingMore(true);
       }
 
-      // Slice next batch of IDs
+      // Slice next batch of IDs, skipping any already shown via seed
       if (shuffleIDs) {
         let i = currentIndexRef.current;
         while (idsToTry.length < targetCount * 3 && i < allIDsRef.current.length) {
           const id = allIDsRef.current[i];
-          if (!shownIDsRef.current.has(id)) idsToTry.push(id);
+          if (!shownIDsRef.current.has(id) && !seedIDsRef.current.has(String(id))) idsToTry.push(id);
           i++;
         }
         currentIndexRef.current = i;
       } else {
         const start = currentIndexRef.current;
-        idsToTry = allIDsRef.current.slice(start, start + targetCount * 2);
+        const raw = allIDsRef.current.slice(start, start + targetCount * 2);
+        idsToTry = seedIDsRef.current.size > 0
+          ? raw.filter(id => !seedIDsRef.current.has(String(id)))
+          : raw;
         currentIndexRef.current = start + targetCount * 2;
       }
 
@@ -184,7 +194,7 @@ export function usePaginatedFetch({
       startPrefetch(currentIndexRef.current);
 
     } catch (err) {
-      if (err.name === 'AbortError') return;
+      if (err.name === 'AbortError' || err.message === 'Circuit breaker open') return;
       if (fetchIdRef.current !== currentFetchId) return;
 
       // Auto-retry once — never surface raw error messages
@@ -271,7 +281,7 @@ export function usePaginatedFetch({
   // → fetchIDsRef.current is updated after abort so in-flight code that
   //   reaches the AbortError check exits before reading the new ref value.
 
-  const reset = useCallback((newFetchIDs) => {
+  const reset = useCallback((newFetchIDs, seedArtworks = []) => {
     abortControllerRef.current?.abort();
     prefetchControllerRef.current?.abort();
     fetchIDsRef.current  = newFetchIDs;
@@ -279,8 +289,10 @@ export function usePaginatedFetch({
     allIDsRef.current    = [];
     currentIndexRef.current = 0;
     if (shuffleIDs) shownIDsRef.current = new Set();
+    hasSeedRef.current   = seedArtworks.length > 0;
+    seedIDsRef.current   = new Set(seedArtworks.map(a => String(a.id)));
     fetchingRef.current  = false;
-    setArtworks([]);
+    setArtworks(seedArtworks);
     setError(null);
     setHasMore(true);
     fetchBatch(true);

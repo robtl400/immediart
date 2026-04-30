@@ -30,6 +30,7 @@ async function fetchWithRetry(url, signal = null) {
       return response;
     } catch (error) {
       if (error.name === 'AbortError') throw error;
+      if (error.message === 'Circuit breaker open') throw error;
       if (i === MAX_RETRIES - 1) throw error;
       await delayOrAbort(addJitter(RATE_LIMIT_DELAYS[i] || RATE_LIMIT_DELAYS.at(-1)), signal);
     }
@@ -138,6 +139,7 @@ export async function fetchArtworkByID(objectID, signal = null, { strict = false
     return result;
   } catch (error) {
     if (error.name === 'AbortError') throw error;
+    if (error.message === 'Circuit breaker open') throw error;
     return null;
   }
 }
@@ -165,6 +167,7 @@ export async function batchFetchArtworks(objectIDs, targetCount = 4, signal = nu
     const results = await Promise.all(
       batchIDs.map(id => fetchArtworkByID(id, signal, { strict }).catch(err => {
         if (err.name === 'AbortError') throw err;
+        if (err.message === 'Circuit breaker open') throw err;
         return null;
       }))
     );
