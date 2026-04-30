@@ -168,7 +168,7 @@
   flex-direction: row;
   align-items: center;
   gap: 15px;
-  padding: 10px 15px;
+  padding: 0 15px;
   background-color: var(--color-bg);
   flex-shrink: 0;
 }
@@ -184,7 +184,6 @@
   border-radius: 8px;
   transition: transform 0.2s ease, opacity 0.2s ease;
   min-width: 44px;
-  min-height: 44px;
 }
 
 .action-btn:hover {
@@ -198,7 +197,7 @@
 /* Like Button */
 .like-btn .icon {
   color: var(--color-gold-muted);
-  font-size: 29px;
+  font-size: 31px;
   line-height: 1;
   position: relative;
   top: -3px;
@@ -223,7 +222,7 @@
 
 .like-btn .btn-label {
   color: var(--color-gold-muted);
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 500;
 }
 
@@ -246,7 +245,7 @@
 }
 
 .share-btn .btn-label {
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 500;
 }
 
@@ -363,7 +362,7 @@
   }
 
   .action-buttons {
-    padding: 10px 20px;
+    padding: 0 20px;
   }
 
   .meta-left {
