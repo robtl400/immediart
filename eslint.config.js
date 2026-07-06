@@ -26,4 +26,19 @@ export default defineConfig([
       'no-unused-vars': ['error', { varsIgnorePattern: '^[A-Z_]' }],
     },
   },
+  {
+    // Node utility scripts — not part of the browser bundle
+    files: ['scripts/**/*.js'],
+    languageOptions: {
+      globals: globals.node,
+    },
+  },
+  {
+    // Test files — empty catch blocks are used deliberately to trip the
+    // circuit breaker and assert on state afterwards
+    files: ['**/*.test.{js,jsx}', 'src/test/**/*.js'],
+    rules: {
+      'no-empty': ['error', { allowEmptyCatch: true }],
+    },
+  },
 ])

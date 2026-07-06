@@ -9,7 +9,7 @@ export default function useInfiniteScroll({
   isLoading,
   enabled = true,
   rootMargin = '400px',
-  root = null  // Pass container ref.current directly
+  rootRef = null  // Ref object for the scroll container; read at effect time so it's populated after mount
 }) {
   const sentinelRef = useRef(null);
 
@@ -23,12 +23,12 @@ export default function useInfiniteScroll({
       ([entry]) => {
         if (entry.isIntersecting) onLoadMore();
       },
-      { root, rootMargin }
+      { root: rootRef?.current ?? null, rootMargin }
     );
 
     observer.observe(sentinel);
     return () => observer.disconnect();
-  }, [enabled, hasMore, isLoading, onLoadMore, root, rootMargin]);
+  }, [enabled, hasMore, isLoading, onLoadMore, rootRef, rootMargin]);
 
   return sentinelRef;
 }

@@ -83,7 +83,7 @@ describe('DiscoveryFeed — first-visit hint', () => {
     useArtworks.mockReturnValue(makeArtworksContext());
     render(<DiscoveryFeed />);
     expect(screen.getByRole('status')).toBeTruthy();
-    expect(screen.getByText(/double-tap image for details/i)).toBeTruthy();
+    expect(screen.getByText(/tap image for details/i)).toBeTruthy();
   });
 
   it('does not render hint when localStorage flag is set', () => {

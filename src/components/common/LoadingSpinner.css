@@ -15,15 +15,7 @@
   justify-content: center;
   width: 100%;
   padding: 40px 0;
-}
-
-.loading-spinner-container.large {
   min-height: 60vh;
-}
-
-.loading-spinner-container.small {
-  padding: 20px;
-  min-height: auto;
 }
 
 /* Sweep container for the flying machine animation */
@@ -74,21 +66,6 @@
   93.33% { bottom: calc(100% + 100px); left: calc(100% + 100px); opacity: 1; }
   93.34% { opacity: 0; }
   100%   { bottom: 60px;  left: -150px; opacity: 0; }
-}
-
-.loading-spinner-container.small .sweep-container {
-  max-width: 200px;
-}
-
-.loading-spinner-container.small .flying-machine-loader {
-  width: 60px;
-  height: 60px;
-}
-
-.loading-message {
-  color: var(--color-text-muted);
-  font-size: 14px;
-  margin-top: 16px;
 }
 
 /* Inline loader for infinite scroll */

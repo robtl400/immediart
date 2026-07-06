@@ -2,7 +2,7 @@
  * Data transformers - API to display format
  */
 
-import { shuffleArray } from '../services/metAPI';
+import { shuffleArray } from './shuffle';
 
 // Format artist name as username: "Vincent van Gogh" → "@vincent_van_gogh"
 export function formatArtistUsername(artistName) {
@@ -88,18 +88,13 @@ export function transformAPIToDisplay(apiArtwork) {
     primaryImageFull: apiArtwork.primaryImage || '',
     objectName: apiArtwork.objectName || '',
     portfolio: apiArtwork.portfolio || '',
-    artistBeginDate: apiArtwork.artistBeginDate || '',
     dimensions: apiArtwork.dimensions || '',
     city: apiArtwork.city || '',
     state: apiArtwork.state || '',
     country: apiArtwork.country || '',
-    region: apiArtwork.region || '',
-    subregion: apiArtwork.subregion || '',
-    repository: apiArtwork.repository || '',
     artistBio: apiArtwork.artistDisplayBio || '',
     artistULAN_URL: apiArtwork.artistULAN_URL || '',
     objectURL: apiArtwork.objectURL || '',
-    accessionYear: apiArtwork.accessionYear || '',
     additionalImages: apiArtwork.additionalImages || [], // reserved for A-4 carousel — see TODOS.md
     constituents: apiArtwork.constituents || [] // reserved for A-5 tagged contributors — see design plan
   };

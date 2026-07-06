@@ -8,7 +8,7 @@
  * the async function aborts before `setShareCopied(true)` is reached, so "Copied!" never shows.
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { render, screen, act, fireEvent } from '@testing-library/react';
 import ArtworkCard from './ArtworkCard';
 
@@ -46,7 +46,7 @@ describe('ArtworkCard — Share feedback (ISSUE-004 regression)', () => {
     });
 
     vi.useFakeTimers();
-    render(<ArtworkCard artwork={artwork} isLiked={false} onLike={vi.fn()} onImageDoubleClick={vi.fn()} />);
+    render(<ArtworkCard artwork={artwork} isLiked={false} onLike={vi.fn()} onImageClick={vi.fn()} />);
 
     const shareBtn = screen.getByRole('button', { name: /share/i });
     await act(async () => {
@@ -68,7 +68,7 @@ describe('ArtworkCard — Share feedback (ISSUE-004 regression)', () => {
     });
 
     vi.useFakeTimers();
-    render(<ArtworkCard artwork={artwork} isLiked={false} onLike={vi.fn()} onImageDoubleClick={vi.fn()} />);
+    render(<ArtworkCard artwork={artwork} isLiked={false} onLike={vi.fn()} onImageClick={vi.fn()} />);
 
     const shareBtn = screen.getByRole('button', { name: /share/i });
     await act(async () => {
@@ -90,7 +90,7 @@ describe('ArtworkCard — Share feedback (ISSUE-004 regression)', () => {
     });
 
     vi.useFakeTimers();
-    render(<ArtworkCard artwork={artwork} isLiked={false} onLike={vi.fn()} onImageDoubleClick={vi.fn()} />);
+    render(<ArtworkCard artwork={artwork} isLiked={false} onLike={vi.fn()} onImageClick={vi.fn()} />);
 
     const shareBtn = screen.getByRole('button', { name: /share/i });
     await act(async () => {

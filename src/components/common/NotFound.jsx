@@ -2,7 +2,7 @@ import Banner from './Banner';
 
 export default function NotFound() {
   return (
-    <div className="not-found-page">
+    <div className="not-found-page app-frame">
       <Banner isScrolled={true} />
       <div className="not-found-content">
         <p className="not-found-text">Page not found</p>

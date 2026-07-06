@@ -26,7 +26,9 @@ export default function ArtworkDeepLink() {
         if (!apiArtwork) throw new Error('Artwork not found');
         const artwork = transformAPIToDisplay(apiArtwork);
         navigate('/');
-        // Open modal after navigation settles
+        // Open modal after navigation settles. Deliberately NOT cleared on
+        // unmount: navigate('/') unmounts this component, and the timer must
+        // outlive it for the modal (context-level) to open.
         setTimeout(() => openModal(artwork), 50);
       })
       .catch(err => {

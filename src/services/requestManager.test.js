@@ -19,7 +19,6 @@ const DEFAULT_OPTS = { minGapMs: 0, maxConcurrent: 4, batchCooldownMs: 250 };
 
 const ok200 = () => Promise.resolve({ status: 200 });
 const err403 = () => Promise.resolve({ status: 403 });
-const netErr = () => Promise.reject(new TypeError('network'));
 
 function makeManager(opts = {}) {
   return new RequestManager({ ...DEFAULT_OPTS, ...opts });
@@ -160,11 +159,133 @@ describe('RequestManager — OPEN → HALF_OPEN → CLOSED', () => {
     const probePromise = rm.fetch('http://probe', null).catch(() => 'probe-rejected');
     const queuedPromise = rm.fetch('http://queued', null).catch(() => 'queued-rejected');
 
-    const [probe, queued] = await Promise.all([probePromise, queuedPromise]);
+    const [, queued] = await Promise.all([probePromise, queuedPromise]);
     // Probe itself returns the 403 response (not an error) — but breaker re-opens
     expect(rm.state).toBe('OPEN');
     // Queued caller was rejected when breaker re-opened
     expect(queued).toBe('queued-rejected');
+  });
+
+  it('probe abort: stays HALF_OPEN (not OPEN); next successful fetch closes the breaker', async () => {
+    // Regression: an aborted probe says nothing about API health — it must
+    // release the probe slot and keep the breaker HALF_OPEN, not re-open it.
+    globalThis.fetch.mockImplementation(err403);
+    const rm = makeManager();
+    for (let i = 0; i < 5; i++) {
+      try { await rm.fetch('http://x', null); } catch {}
+    }
+    await vi.runAllTimersAsync(); // → HALF_OPEN
+    expect(rm.state).toBe('HALF_OPEN');
+
+    // Probe aborts mid-flight
+    globalThis.fetch.mockImplementationOnce(() =>
+      Promise.reject(new DOMException('Aborted', 'AbortError'))
+    );
+    await expect(rm.fetch('http://probe', null)).rejects.toMatchObject({ name: 'AbortError' });
+    expect(rm.state).toBe('HALF_OPEN');
+
+    // Next call becomes the new probe — success closes the breaker
+    globalThis.fetch.mockImplementationOnce(ok200);
+    const res = await rm.fetch('http://probe2', null);
+    expect(res.status).toBe(200);
+    expect(rm.state).toBe('CLOSED');
+  });
+
+  it('probe abort: promotes the next queued caller as the new probe', async () => {
+    globalThis.fetch.mockImplementation(err403);
+    const rm = makeManager();
+    for (let i = 0; i < 5; i++) {
+      try { await rm.fetch('http://x', null); } catch {}
+    }
+    await vi.runAllTimersAsync(); // → HALF_OPEN
+
+    // Probe stalls; a second caller queues behind it
+    let rejectProbe;
+    globalThis.fetch
+      .mockImplementationOnce(() => new Promise((_, reject) => { rejectProbe = reject; }))
+      .mockImplementationOnce(ok200); // promoted queued caller succeeds
+
+    const probePromise  = rm.fetch('http://probe', null).catch(e => e.name);
+    const queuedPromise = rm.fetch('http://queued', null);
+
+    await vi.runAllTimersAsync(); // let the probe dispatch so rejectProbe is assigned
+    rejectProbe(new DOMException('Aborted', 'AbortError'));
+
+    expect(await probePromise).toBe('AbortError');
+    const queuedRes = await queuedPromise;
+    expect(queuedRes.status).toBe(200);
+    expect(rm.state).toBe('CLOSED');
+  });
+
+  it('probe abort: rejects already-aborted queued callers and promotes the next live one', async () => {
+    // Batch fetches share one AbortController — a navigate-away can abort the
+    // probe and queued callers together. The promotion loop must skip past
+    // (and reject) aborted entries rather than stranding the live ones.
+    globalThis.fetch.mockImplementation(err403);
+    const rm = makeManager();
+    for (let i = 0; i < 5; i++) {
+      try { await rm.fetch('http://x', null); } catch {}
+    }
+    await vi.runAllTimersAsync(); // → HALF_OPEN
+
+    let rejectProbe;
+    globalThis.fetch
+      .mockImplementationOnce(() => new Promise((_, reject) => { rejectProbe = reject; }))
+      .mockImplementationOnce(ok200); // promoted LIVE queued caller succeeds
+
+    const probePromise = rm.fetch('http://probe', null).catch(e => e.name);
+
+    // Caller whose signal is already aborted at arrival — the abort event
+    // never fires again, so the pre-queue guard must reject it immediately
+    // (the promotion loop's aborted-entry check is the defensive backstop)
+    const abortedCtrl = new AbortController();
+    abortedCtrl.abort();
+    const abortedQueuedPromise = rm.fetch('http://aborted-queued', abortedCtrl.signal).catch(e => e.name);
+
+    // Live queued caller behind the aborted one
+    const liveQueuedPromise = rm.fetch('http://live-queued', null);
+
+    await vi.runAllTimersAsync(); // let the probe dispatch so rejectProbe is assigned
+    rejectProbe(new DOMException('Aborted', 'AbortError'));
+
+    expect(await probePromise).toBe('AbortError');
+    // Aborted queued caller rejected with AbortError, never dispatched
+    expect(await abortedQueuedPromise).toBe('AbortError');
+    const urls = globalThis.fetch.mock.calls.map(c => c[0]);
+    expect(urls).not.toContain('http://aborted-queued');
+
+    // Live queued caller was promoted to probe — success closes the breaker
+    const liveRes = await liveQueuedPromise;
+    expect(liveRes.status).toBe(200);
+    expect(urls.concat(globalThis.fetch.mock.calls.map(c => c[0]))).toContain('http://live-queued');
+    expect(rm.state).toBe('CLOSED');
+  });
+
+  it('a queued caller whose signal aborts WHILE queued rejects immediately', async () => {
+    globalThis.fetch.mockImplementation(err403);
+    const rm = makeManager();
+    for (let i = 0; i < 5; i++) {
+      try { await rm.fetch('http://x', null); } catch {}
+    }
+    await vi.runAllTimersAsync(); // → HALF_OPEN
+
+    // Probe hangs forever — the breaker never resolves during this test
+    globalThis.fetch.mockImplementationOnce(() => new Promise(() => {}));
+    rm.fetch('http://probe', null).catch(() => {}); // hangs; silence rejection
+
+    const ctrl = new AbortController();
+    const queuedPromise = rm.fetch('http://queued', ctrl.signal);
+    await vi.runAllTimersAsync(); // let the probe dispatch
+
+    const callsBefore = globalThis.fetch.mock.calls.length;
+    ctrl.abort();
+
+    // Rejects right away — no waiting on probe/breaker resolution
+    await expect(queuedPromise).rejects.toMatchObject({ name: 'AbortError' });
+    // No fetch was ever dispatched for the queued caller
+    expect(globalThis.fetch.mock.calls.length).toBe(callsBefore);
+    expect(globalThis.fetch.mock.calls.map(c => c[0])).not.toContain('http://queued');
+    expect(rm.state).toBe('HALF_OPEN');
   });
 });
 

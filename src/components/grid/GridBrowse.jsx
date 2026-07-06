@@ -12,12 +12,39 @@ import ArtistProfileHeader from './ArtistProfileHeader';
 import useInfiniteScroll from '../../hooks/useInfiniteScroll';
 import { GRID_ROOT_MARGIN } from '../../utils/constants';
 
+// Hoisted out of GridBrowse so the header subtree isn't remounted on every
+// render (an inline component gets a new type identity each render).
+function GridHeader({ displayTerm, onBack }) {
+  return (
+    <>
+      <Banner />
+      <div className="search-heading">
+        <button className="grid-back-btn" onClick={onBack} aria-label="Back">
+          ‹
+        </button>
+        <h2 className="search-term">{displayTerm}</h2>
+      </div>
+    </>
+  );
+}
+
+// decodeURIComponent throws URIError on malformed escapes (e.g. /artist/%E0) —
+// fall back to the raw segment rather than crashing the render.
+function safeDecode(term) {
+  if (!term) return '';
+  try {
+    return decodeURIComponent(term);
+  } catch {
+    return term;
+  }
+}
+
 export default function GridBrowse({ type }) {
   const params = useParams();
   const rawTerm = type === 'artist' ? params.artistName : params.tagName;
-  const searchTerm = rawTerm ? decodeURIComponent(rawTerm) : '';
+  const searchTerm = safeDecode(rawTerm);
 
-  const { artworks, loading, loadingMore, error, hasMore, initSearch, loadMore, abort } = useGridBrowse();
+  const { artworks, loading, loadingMore, error, hasMore, initSearch, loadMore, retryLoadMore, abort } = useGridBrowse();
   const { openModal } = useArtworkModal();
   const navigate = useNavigate();
   const location = useLocation();
@@ -32,7 +59,7 @@ export default function GridBrowse({ type }) {
     hasMore,
     isLoading: loadingMore,
     enabled: !loading,
-    root: gridRef.current,
+    rootRef: gridRef,
     rootMargin: GRID_ROOT_MARGIN
   });
 
@@ -59,38 +86,28 @@ export default function GridBrowse({ type }) {
     ? `@${searchTerm.toLowerCase().replace(/\s+/g, '_')}`
     : `#${searchTerm.replace(/\s+/g, '')}`;
 
-  // Shared header
-  const Header = () => (
-    <>
-      <Banner />
-      <div className="search-heading">
-        <button className="grid-back-btn" onClick={() => navigate(-1)} aria-label="Back">
-          ‹
-        </button>
-        <h2 className="search-term">{displayTerm}</h2>
-      </div>
-    </>
-  );
+  const header = <GridHeader displayTerm={displayTerm} onBack={() => navigate(-1)} />;
 
   // Loading
   if (loading) {
     return (
-      <div className="grid-browse" ref={gridRef}>
-        <Header />
+      <div className="grid-browse app-frame" ref={gridRef}>
+        {header}
         <div className="thumbnail-grid columns-2">
           {Array.from({ length: 6 }, (_, i) => (
-            <SkeletonCard key={i} variant="grid" />
+            <SkeletonCard key={i} />
           ))}
         </div>
       </div>
     );
   }
 
-  // Error
-  if (error) {
+  // Error — full-screen only when nothing is showing; a load-more error on a
+  // populated grid renders inline below the results instead of wiping them.
+  if (error && artworks.length === 0) {
     return (
-      <div className="grid-browse" ref={gridRef}>
-        <Header />
+      <div className="grid-browse app-frame" ref={gridRef}>
+        {header}
         <div className="error-container">
           <p className="error-message">Unable to load artworks</p>
           <p className="error-detail">{error}</p>
@@ -108,8 +125,8 @@ export default function GridBrowse({ type }) {
   // Empty
   if (artworks.length === 0) {
     return (
-      <div className="grid-browse" ref={gridRef}>
-        <Header />
+      <div className="grid-browse app-frame" ref={gridRef}>
+        {header}
         <div className="empty-state">
           <img src={flyingMachineIcon} alt="" className="empty-state-icon" />
           <p className="empty-state-message">No artworks found for this search.</p>
@@ -123,8 +140,8 @@ export default function GridBrowse({ type }) {
 
   // Results
   return (
-    <div className="grid-browse" ref={gridRef}>
-      <Header />
+    <div className="grid-browse app-frame" ref={gridRef}>
+      {header}
 
       {type === 'artist' && (
         <ArtistProfileHeader artistName={searchTerm} artworks={artworks} />
@@ -139,6 +156,13 @@ export default function GridBrowse({ type }) {
       <div ref={sentinelRef} className="scroll-sentinel" />
 
       {loadingMore && <InlineLoader />}
+
+      {error && (
+        <div className="inline-error" role="status">
+          <p>{error}</p>
+          <button className="retry-button" onClick={retryLoadMore}>Try Again</button>
+        </div>
+      )}
 
       {!hasMore && artworks.length > 0 && (
         <div className="end-message">

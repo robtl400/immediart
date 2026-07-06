@@ -29,6 +29,7 @@ export const MAX_ARTWORKS_IN_MEMORY = 30; // Maximum artworks to keep in discove
 export const SEARCH_COOLDOWN_MS = 300; // Minimum time between searches (allows rate limit recovery)
 export const NAVIGATION_DELAY_MS = 150; // Delay before search after navigation
 export const MODAL_CLOSE_DELAY_MS = 200; // Delay for modal close animation
+export const SHARE_FEEDBACK_MS = 2000; // How long the "Copied!" share confirmation shows
 
 // Scroll Detection
 export const BANNER_SCROLL_THRESHOLD = 500; // Pixels scrolled before banner collapses

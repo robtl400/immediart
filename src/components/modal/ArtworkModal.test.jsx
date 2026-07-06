@@ -105,4 +105,25 @@ describe('ArtworkModal — image error fallback', () => {
     fireEvent.error(img);
     expect(screen.getByText('Image unavailable')).toBeTruthy();
   });
+
+  it('error state clears when selectedArtwork changes to a different id (keyed remount)', () => {
+    // ModalImage is keyed by selectedArtwork.id — switching artworks must
+    // remount it so a previous artwork's error state can't leak through
+    useArtworkModal.mockReturnValue({ selectedArtwork: makeArtwork({ id: 1 }), isOpen: true, closeModal: mockCloseModal });
+    const { container, rerender } = render(<ArtworkModal />);
+    fireEvent.error(container.querySelector('.artwork-modal-image'));
+    expect(screen.getByText('Image unavailable')).toBeTruthy();
+
+    useArtworkModal.mockReturnValue({
+      selectedArtwork: makeArtwork({ id: 2, title: 'Sunflowers', primaryImageFull: 'https://example.com/other.jpg' }),
+      isOpen: true,
+      closeModal: mockCloseModal,
+    });
+    rerender(<ArtworkModal />);
+
+    expect(screen.queryByText('Image unavailable')).toBeNull();
+    const img = container.querySelector('.artwork-modal-image');
+    expect(img).toBeTruthy();
+    expect(img.src).toBe('https://example.com/other.jpg');
+  });
 });

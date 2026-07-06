@@ -4,7 +4,7 @@
  * Covers: validateArtwork, search(), fetchAllObjectIDs()
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { validateArtwork } from './metAPI';
 
 // ─── validateArtwork ──────────────────────────────────────────────────────────
@@ -241,9 +241,11 @@ vi.mock('./artworkCache', () => ({
   setCachedIDs: vi.fn(),
   getCachedArtwork: vi.fn(),
   setCachedArtwork: vi.fn(),
+  removeCachedArtwork: vi.fn(),
 }));
 
 vi.mock('./requestManager', () => ({
+  CIRCUIT_BREAKER_OPEN: 'Circuit breaker open',
   requestManager: {
     fetch: vi.fn().mockResolvedValue({
       ok: true,
@@ -355,5 +357,112 @@ describe('artist/tag search — fetchArtworkByID strict param', () => {
     const result = await fetchArtworkByID(100, null, { strict: true });
     expect(result).not.toBeNull();
     expect(result.objectID).toBe(100);
+  });
+});
+
+// ─── fetchArtworkByID — cache hit re-validation ──────────────────────────────
+//
+// Regression: the artwork cache is shared between strict (feed) and non-strict
+// (grid) callers. A cache hit written by a non-strict caller must be re-validated
+// against the current caller's strictness — not returned unconditionally.
+
+describe('fetchArtworkByID — cache hit re-validation', () => {
+  // Valid non-painting: has primaryImage + title, but objectName not in OBJECT_TYPES
+  const cachedPrint = {
+    objectID: 55,
+    title: 'Etching Study',
+    primaryImage: 'https://example.com/print.jpg',
+    objectName: 'Print',
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    getCachedArtwork.mockResolvedValue(cachedPrint);
+  });
+
+  it('strict: true — cached Print fails re-validation, returns null without fetching', async () => {
+    const { requestManager } = await import('./requestManager');
+    const { fetchArtworkByID } = await import('./metAPI');
+    const result = await fetchArtworkByID(55, null, { strict: true });
+    expect(result).toBeNull();
+    expect(requestManager.fetchDeduped).not.toHaveBeenCalled();
+    expect(requestManager.fetch).not.toHaveBeenCalled();
+  });
+
+  it('strict: false — same cached Print passes re-validation, returned without fetching', async () => {
+    const { requestManager } = await import('./requestManager');
+    const { fetchArtworkByID } = await import('./metAPI');
+    const result = await fetchArtworkByID(55, null, { strict: false });
+    expect(result).toEqual(cachedPrint);
+    expect(requestManager.fetchDeduped).not.toHaveBeenCalled();
+    expect(requestManager.fetch).not.toHaveBeenCalled();
+  });
+});
+
+// ─── searchByArtist / searchByTag — empty result guard ───────────────────────
+//
+// Regression: an empty search result must not be cached, otherwise a transient
+// API hiccup poisons the cache and the artist/tag search stays empty forever.
+
+describe('searchByArtist / searchByTag — do not cache empty results', () => {
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    getCachedIDs.mockResolvedValue(null);
+    // Empty results are negative-cached in module memory — reset between tests
+    const { _clearEmptySearchCache } = await import('./metAPI');
+    _clearEmptySearchCache();
+  });
+
+  it('searchByArtist does not call setCachedIDs when search returns []', async () => {
+    const { requestManager } = await import('./requestManager');
+    requestManager.fetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ objectIDs: [] }),
+    });
+    const { searchByArtist } = await import('./metAPI');
+    const result = await searchByArtist('Vermeer');
+    expect(result).toEqual([]);
+    expect(setCachedIDs).not.toHaveBeenCalled();
+  });
+
+  it('searchByTag does not call setCachedIDs when search returns []', async () => {
+    const { requestManager } = await import('./requestManager');
+    requestManager.fetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ objectIDs: [] }),
+    });
+    const { searchByTag } = await import('./metAPI');
+    const result = await searchByTag('sunflowers');
+    expect(result).toEqual([]);
+    expect(setCachedIDs).not.toHaveBeenCalled();
+  });
+
+  it('legacy cached EMPTY array is treated as a miss — live search runs', async () => {
+    // Pre-fix builds wrote [] to IndexedDB with a 24h TTL; honoring those
+    // entries would keep the poisoned "no results" alive after the fix.
+    getCachedIDs.mockResolvedValue([]);
+    const { requestManager } = await import('./requestManager');
+    requestManager.fetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ objectIDs: [7, 8, 9] }),
+    });
+    const { searchByArtist } = await import('./metAPI');
+    const result = await searchByArtist('Vermeer');
+    expect(result).toEqual([7, 8, 9]);
+    expect(setCachedIDs).toHaveBeenCalledWith('ids:artist:Vermeer', [7, 8, 9]);
+  });
+
+  it('repeat empty search within the negative-cache TTL skips the network', async () => {
+    const { requestManager } = await import('./requestManager');
+    requestManager.fetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ objectIDs: [] }),
+    });
+    const { searchByArtist } = await import('./metAPI');
+    await searchByArtist('Nobody');
+    const callsAfterFirst = requestManager.fetch.mock.calls.length;
+    const result = await searchByArtist('Nobody');
+    expect(result).toEqual([]);
+    expect(requestManager.fetch.mock.calls.length).toBe(callsAfterFirst);
   });
 });

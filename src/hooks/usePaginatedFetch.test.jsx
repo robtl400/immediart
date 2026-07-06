@@ -19,6 +19,9 @@ import { RATE_LIMIT_RECOVERY_MS } from '../utils/constants';
 
 vi.mock('../services/metAPI', () => ({
   batchFetchArtworks: vi.fn(),
+}));
+
+vi.mock('../utils/shuffle', () => ({
   shuffleArray: (arr) => arr,
 }));
 
@@ -45,7 +48,7 @@ const makeBatch = (count, startId = 1) =>
 const drain = () => act(async () => { await vi.runAllTimersAsync(); });
 
 // fetchIDs function that returns ALL_IDS synchronously
-const fetchIDs = vi.fn(async (_signal) => ALL_IDS);
+const fetchIDs = vi.fn(async () => ALL_IDS);
 
 // ─── shuffleIDs=false (grid path) ────────────────────────────────────────────
 
@@ -188,8 +191,6 @@ describe('usePaginatedFetch — reset()', () => {
     // Start first search
     await act(async () => { result.current.reset(firstFetchIDs); });
     await drain();
-
-    const firstArtworks = result.current.artworks.map(a => a.id);
 
     // Immediately replace with second search
     await act(async () => { result.current.reset(secondFetchIDs); });
@@ -377,6 +378,64 @@ describe('usePaginatedFetch — circuit breaker silent freeze', () => {
   });
 });
 
+// ─── circuit breaker open error ──────────────────────────────────────────────
+
+describe('usePaginatedFetch — circuit breaker open error', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.clearAllMocks();
+    fetchIDs.mockResolvedValue(ALL_IDS);
+  });
+  afterEach(() => vi.useRealTimers());
+
+  // Regression: batchFetchArtworks rejecting with Error('Circuit breaker open')
+  // previously returned silently — the feed stalled with no error UI. The hook
+  // must now surface the retry affordance immediately (no auto-retry: retrying
+  // right away would just hit the open breaker again).
+  it("sets \"Couldn't load more art. Tap to retry.\" instead of silently returning", async () => {
+    batchFetchArtworks.mockRejectedValue(new Error('Circuit breaker open'));
+
+    const { result } = renderHook(() =>
+      usePaginatedFetch({ shuffleIDs: false, batchSize: BATCH })
+    );
+    await act(async () => { result.current.reset(fetchIDs); });
+    await drain();
+
+    expect(result.current.error).toBe("Couldn't load more art. Tap to retry.");
+    expect(result.current.loading).toBe(false);
+    expect(result.current.loadingMore).toBe(false);
+    // No auto-retry against a known-open breaker — single attempt only
+    expect(batchFetchArtworks).toHaveBeenCalledTimes(1);
+  });
+
+  // Regression: when the INITIAL fetchIDs call is what failed (e.g. a seeded
+  // grid whose search hit the open breaker), retryLoadMore must re-run the
+  // initial phase — fetchBatch(false) against the empty ID list would set
+  // hasMore=false and dead-end the view with no retry affordance.
+  it('retryLoadMore re-runs the initial phase when IDs never loaded', async () => {
+    fetchIDs
+      .mockRejectedValueOnce(new Error('Circuit breaker open'))
+      .mockResolvedValue(ALL_IDS);
+    batchFetchArtworks.mockResolvedValue(makeBatch(BATCH));
+
+    const { result } = renderHook(() =>
+      usePaginatedFetch({ shuffleIDs: false, batchSize: BATCH })
+    );
+    await act(async () => { result.current.reset(fetchIDs, [{ id: 999 }]); });
+    await drain();
+
+    expect(result.current.error).toBe("Couldn't load more art. Tap to retry.");
+
+    await act(async () => { result.current.retryLoadMore(); });
+    await drain();
+
+    expect(result.current.error).toBeNull();
+    expect(fetchIDs).toHaveBeenCalledTimes(2); // initial phase re-ran
+    expect(result.current.hasMore).toBe(true);
+    expect(result.current.artworks.length).toBeGreaterThan(1); // seed + fresh batch
+  });
+});
+
 // ─── error auto-retry ─────────────────────────────────────────────────────────
 
 describe('usePaginatedFetch — error auto-retry', () => {
@@ -430,5 +489,59 @@ describe('usePaginatedFetch — error auto-retry', () => {
 
     expect(result.current.error).toBe("Couldn't load more art. Tap to retry.");
     expect(result.current.error).not.toContain('Internal API error');
+  });
+});
+
+// ─── error gate & retryLoadMore ──────────────────────────────────────────────
+
+describe('usePaginatedFetch — loadMore error gate & retryLoadMore', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.clearAllMocks();
+    fetchIDs.mockResolvedValue(ALL_IDS);
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it('loadMore is a no-op while error is set (no batchFetchArtworks call)', async () => {
+    // Breaker-open error surfaces immediately with no auto-retry — exactly 1 call
+    batchFetchArtworks.mockRejectedValue(new Error('Circuit breaker open'));
+
+    const { result } = renderHook(() =>
+      usePaginatedFetch({ shuffleIDs: false, batchSize: BATCH })
+    );
+    await act(async () => { result.current.reset(fetchIDs); });
+    await drain();
+
+    expect(result.current.error).toBe("Couldn't load more art. Tap to retry.");
+    const callsBefore = batchFetchArtworks.mock.calls.length;
+
+    // While error is set, the sentinel-driven loadMore must not re-fire
+    await act(async () => { result.current.loadMore(); });
+    await drain();
+
+    expect(batchFetchArtworks.mock.calls.length).toBe(callsBefore);
+    expect(result.current.error).toBe("Couldn't load more art. Tap to retry.");
+  });
+
+  it('retryLoadMore clears the error and fetches the next batch', async () => {
+    batchFetchArtworks
+      .mockRejectedValueOnce(new Error('Circuit breaker open')) // initial batch fails fast
+      .mockResolvedValue(makeBatch(BATCH));                      // retry batch + prefetch succeed
+
+    const { result } = renderHook(() =>
+      usePaginatedFetch({ shuffleIDs: false, batchSize: BATCH })
+    );
+    await act(async () => { result.current.reset(fetchIDs); });
+    await drain();
+
+    expect(result.current.error).toBe("Couldn't load more art. Tap to retry.");
+    expect(result.current.artworks).toHaveLength(0);
+
+    await act(async () => { result.current.retryLoadMore(); });
+    await drain();
+
+    expect(result.current.error).toBeNull();
+    expect(result.current.artworks).toHaveLength(BATCH);
+    expect(batchFetchArtworks.mock.calls.length).toBeGreaterThan(1);
   });
 });

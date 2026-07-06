@@ -6,3 +6,20 @@
   from = "/*"
   to = "/index.html"
   status = 200
+
+# Security headers for all routes. CSP is intentionally omitted for now —
+# it needs careful allowlisting (Met API, Met images, Google Fonts) and
+# a report-only trial before enforcing.
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Permissions-Policy = "camera=(), microphone=(), geolocation=()"
+
+# Hashed build assets are immutable — cache them for a year.
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"

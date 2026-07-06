@@ -100,7 +100,6 @@ describe('transformAPIToDisplay — new social media fields', () => {
     artistDisplayBio: '',
     artistULAN_URL: '',
     objectURL: '',
-    accessionYear: '',
     additionalImages: [],
     constituents: [],
     ...overrides,
@@ -124,11 +123,6 @@ describe('transformAPIToDisplay — new social media fields', () => {
   it('defaults objectURL to empty string when absent', () => {
     const result = transformAPIToDisplay(makeAPIArtwork({ objectURL: undefined }));
     expect(result.objectURL).toBe('');
-  });
-
-  it('extracts accessionYear', () => {
-    const result = transformAPIToDisplay(makeAPIArtwork({ accessionYear: '1955' }));
-    expect(result.accessionYear).toBe('1955');
   });
 
   it('defaults additionalImages to empty array when absent', () => {

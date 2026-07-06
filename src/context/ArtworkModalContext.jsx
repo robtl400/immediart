@@ -5,15 +5,19 @@
 
 /* eslint-disable react-refresh/only-export-components */
 
-import { createContext, useContext, useState, useCallback } from 'react';
+import { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
+import { MODAL_CLOSE_DELAY_MS } from '../utils/constants';
 
 const ArtworkModalContext = createContext(null);
 
 export function ArtworkModalProvider({ children }) {
   const [selectedArtwork, setSelectedArtwork] = useState(null);
   const [isOpen, setIsOpen] = useState(false);
+  const closeTimerRef = useRef(null);
 
   const openModal = useCallback((artwork) => {
+    // Cancel a pending close-clear so it can't wipe the newly opened artwork
+    clearTimeout(closeTimerRef.current);
     setSelectedArtwork(artwork);
     setIsOpen(true);
   }, []);
@@ -21,8 +25,11 @@ export function ArtworkModalProvider({ children }) {
   const closeModal = useCallback(() => {
     setIsOpen(false);
     // Delay clearing artwork to allow for exit animation if needed
-    setTimeout(() => setSelectedArtwork(null), 200);
+    clearTimeout(closeTimerRef.current);
+    closeTimerRef.current = setTimeout(() => setSelectedArtwork(null), MODAL_CLOSE_DELAY_MS);
   }, []);
+
+  useEffect(() => () => clearTimeout(closeTimerRef.current), []);
 
   const value = {
     selectedArtwork,

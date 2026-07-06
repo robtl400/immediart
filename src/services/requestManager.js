@@ -20,6 +20,11 @@
 
 import { delay } from '../utils/delay';
 
+// Shared error message for the open-breaker fast-fail. Consumers match on
+// this constant (not a retyped string) so a rewording can't silently break
+// their error handling.
+export const CIRCUIT_BREAKER_OPEN = 'Circuit breaker open';
+
 // Circuit breaker constants
 const CB_FAILURE_THRESHOLD = 5;   // consecutive failures to trip breaker
 const CB_OPEN_DURATION_MS  = 5000; // time OPEN before moving to HALF_OPEN
@@ -128,17 +133,35 @@ export class RequestManager {
   async fetch(url, signal) {
     // Fast-fail if breaker is OPEN
     if (this._cbState === 'OPEN') {
-      throw new Error('Circuit breaker open');
+      throw new Error(CIRCUIT_BREAKER_OPEN);
     }
 
     // HALF_OPEN: only one probe goes through; all others queue
+    let isProbe = false;
     if (this._cbState === 'HALF_OPEN') {
       if (this._cbProbeInFlight) {
+        // A signal that aborted before we got here would never fire its
+        // 'abort' event again — reject now rather than queueing a zombie.
+        if (signal?.aborted) {
+          throw new DOMException('Aborted', 'AbortError');
+        }
         return new Promise((resolve, reject) => {
-          this._cbPendingResolvers.push({ resolve, reject, url, signal });
+          const entry = { resolve, reject, url, signal };
+          this._cbPendingResolvers.push(entry);
+          // A queued caller must observe its own abort — otherwise callers
+          // whose component unmounted pend until the breaker resolves (or
+          // forever, if the probe hangs).
+          signal?.addEventListener('abort', () => {
+            const i = this._cbPendingResolvers.indexOf(entry);
+            if (i !== -1) {
+              this._cbPendingResolvers.splice(i, 1);
+              reject(new DOMException('Aborted', 'AbortError'));
+            }
+          }, { once: true });
         });
       }
       this._cbProbeInFlight = true;
+      isProbe = true;
     }
 
     // Enforce gap between dispatches only — not between completions.
@@ -159,9 +182,27 @@ export class RequestManager {
     try {
       response = await myRequest;
     } catch (err) {
-      // Network / abort error
-      if (err.name !== 'AbortError') this.recordResult(false);
-      if (this._cbState === 'HALF_OPEN') this._reopenBreaker();
+      if (err.name !== 'AbortError') {
+        // Network error — count it, and a failed HALF_OPEN probe re-opens the breaker
+        this.recordResult(false);
+        if (this._cbState === 'HALF_OPEN') this._reopenBreaker();
+      } else if (isProbe && this._cbState === 'HALF_OPEN') {
+        // An aborted probe says nothing about API health — release the probe
+        // slot and promote the next LIVE queued caller as the new probe.
+        // Loop past aborted entries (batch fetches share one AbortController,
+        // so a navigate-away can abort the probe and queued callers together);
+        // stopping at the first aborted entry would strand the rest.
+        this._cbProbeInFlight = false;
+        let next;
+        while ((next = this._cbPendingResolvers.shift())) {
+          if (next.signal?.aborted) {
+            next.reject(new DOMException('Aborted', 'AbortError'));
+            continue;
+          }
+          this.fetch(next.url, next.signal).then(next.resolve, next.reject);
+          break;
+        }
+      }
       throw err;
     }
 
@@ -236,7 +277,7 @@ export class RequestManager {
 
     const pending = this._cbPendingResolvers.splice(0);
     for (const { reject } of pending) {
-      reject(new Error('Circuit breaker open'));
+      reject(new Error(CIRCUIT_BREAKER_OPEN));
     }
 
     this._cbOpenTimer = setTimeout(() => {

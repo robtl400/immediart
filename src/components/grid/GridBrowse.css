@@ -9,16 +9,6 @@
   overflow-y: auto;
 }
 
-/* Desktop wrapper - centers and constrains to mobile-like width */
-@media (min-width: 481px) {
-  .grid-browse {
-    max-width: 430px;
-    margin: 0 auto;
-    border-radius: 40px;
-    box-shadow: 0 0 60px rgba(0, 0, 0, 0.5);
-  }
-}
-
 /* Search Heading */
 .search-heading {
   position: relative;
@@ -38,7 +28,7 @@
   height: 44px;
   border-radius: 50%;
   border: none;
-  background: rgba(240, 185, 0, 0.2);
+  background: var(--color-gold-a20);
   color: var(--color-gold);
   font-size: 24px;
   font-family: inherit;
@@ -52,7 +42,7 @@
 
 .grid-back-btn:hover,
 .grid-back-btn:focus-visible {
-  background: rgba(240, 185, 0, 0.4);
+  background: var(--color-gold-a40);
 }
 
 .grid-back-btn:focus {
@@ -158,36 +148,21 @@
   opacity: 0.8;
 }
 
-/* End Message */
-.grid-browse .end-message-icon {
-  width: 48px;
-  height: 48px;
-  opacity: 0.6;
-  margin-bottom: 12px;
-}
-
+/* End message — base styles shared in App.css; grid is more compact */
 .grid-browse .end-message {
-  text-align: center;
   padding: 20px;
-  color: var(--color-text-muted);
 }
 
 .grid-browse .end-message p {
   margin: 0;
-  font-size: 14px;
   color: var(--color-gold);
-}
-
-/* Scroll sentinel */
-.grid-browse .scroll-sentinel {
-  height: 1px;
-  width: 100%;
+  font-weight: 400;
 }
 
 /* Artist Profile Header */
 .artist-profile-header {
   padding: 16px 15px 12px;
-  border-bottom: 1px solid rgba(163, 125, 0, 0.2);
+  border-bottom: 1px solid var(--color-gold-muted-a20);
   min-height: 60px;
 }
 
@@ -239,7 +214,7 @@
 .profile-stats {
   display: flex;
   gap: 16px;
-  border-top: 1px solid rgba(163, 125, 0, 0.15);
+  border-top: 1px solid var(--color-gold-muted-a15);
   padding-top: 8px;
   margin-top: 8px;
 }
@@ -254,47 +229,4 @@
   font-weight: 600;
 }
 
-/* Error container */
-.grid-browse .error-container {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  min-height: 50vh;
-  padding: 20px;
-  text-align: center;
-}
-
-.grid-browse .error-message {
-  color: var(--color-gold);
-  font-size: 18px;
-  font-weight: 600;
-  margin: 0 0 10px 0;
-}
-
-.grid-browse .error-detail {
-  color: var(--color-text-muted);
-  font-size: 14px;
-  margin: 0;
-}
-
-.grid-browse .retry-button {
-  background-color: var(--color-gold);
-  color: var(--color-bg);
-  border: none;
-  padding: 12px 24px;
-  border-radius: 8px;
-  font-size: 16px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: transform 0.2s, opacity 0.2s;
-  margin-top: 10px;
-}
-
-.grid-browse .retry-button:hover {
-  transform: scale(1.05);
-}
-
-.grid-browse .retry-button:active {
-  transform: scale(0.95);
-}
+/* Error styles are shared — see App.css */

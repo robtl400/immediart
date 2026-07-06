@@ -22,7 +22,9 @@
  */
 
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { batchFetchArtworks, shuffleArray } from '../services/metAPI';
+import { batchFetchArtworks } from '../services/metAPI';
+import { CIRCUIT_BREAKER_OPEN } from '../services/requestManager';
+import { shuffleArray } from '../utils/shuffle';
 import { transformAPIToDisplay } from '../utils/transformers';
 import { delayOrAbort } from '../utils/delay';
 import { RATE_LIMIT_RECOVERY_MS } from '../utils/constants';
@@ -194,8 +196,16 @@ export function usePaginatedFetch({
       startPrefetch(currentIndexRef.current);
 
     } catch (err) {
-      if (err.name === 'AbortError' || err.message === 'Circuit breaker open') return;
+      if (err.name === 'AbortError') return;
       if (fetchIdRef.current !== currentFetchId) return;
+
+      // Breaker open = the API is known-unhealthy; retrying immediately would
+      // just hit the open breaker again. Surface the retry affordance instead
+      // of dying silently (the feed would otherwise stall with no error UI).
+      if (err.message === CIRCUIT_BREAKER_OPEN) {
+        setError("Couldn't load more art. Tap to retry.");
+        return;
+      }
 
       // Auto-retry once — never surface raw error messages
       console.warn('[ImmediArt] Fetch error (will retry):', err.message);
@@ -250,7 +260,10 @@ export function usePaginatedFetch({
   // ── loadMore ──────────────────────────────────────────────────────────────
 
   const loadMore = useCallback(() => {
-    if (fetchingRef.current || !hasMore || loadingMore) return;
+    // `error` gates the sentinel-driven loop: while an error is showing, the
+    // IntersectionObserver would otherwise re-fire fetchBatch continuously
+    // against a known-unhealthy API. Recovery goes through retryLoadMore.
+    if (fetchingRef.current || !hasMore || loadingMore || error) return;
 
     // Instant merge from prefetch if ready
     if (prefetchRef.current) {
@@ -265,12 +278,33 @@ export function usePaginatedFetch({
           : combined;
       });
       setHasMore(nextIndex < allIDsRef.current.length);
+
+      // Prefetch-merged batches get the same onBatchReady treatment as
+      // fetched ones (e.g. the grid's image warm-up) — fire and forget.
+      if (onBatchReadyRef.current) {
+        Promise.resolve(onBatchReadyRef.current(prefetched, undefined))
+          .catch(e => console.warn('[ImmediArt] onBatchReady error:', e.message));
+      }
+
       startPrefetch(nextIndex);
       return;
     }
 
     fetchBatch(false);
-  }, [fetchBatch, hasMore, loadingMore, shuffleIDs, maxInMemory, startPrefetch]);
+  }, [fetchBatch, hasMore, loadingMore, error, shuffleIDs, maxInMemory, startPrefetch]);
+
+  // ── retryLoadMore ─────────────────────────────────────────────────────────
+  //
+  // Manual recovery from a load-more error: clear the error (which re-enables
+  // loadMore) and fetch again. If the FAILED call was the initial one (IDs
+  // were never loaded — e.g. a seeded grid whose search threw), re-run the
+  // initial phase; fetchBatch(false) against an empty ID list would set
+  // hasMore=false and dead-end the view.
+
+  const retryLoadMore = useCallback(() => {
+    setError(null);
+    fetchBatch(allIDsRef.current.length === 0);
+  }, [fetchBatch]);
 
   // ── reset ─────────────────────────────────────────────────────────────────
   //
@@ -314,6 +348,7 @@ export function usePaginatedFetch({
     error,
     hasMore,
     loadMore,
+    retryLoadMore,
     reset,
     pause,
   };

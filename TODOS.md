@@ -1,5 +1,21 @@
 # TODOS
 
+## (Medium) Grid pagination silently skips unattempted IDs — review 2026-07-06
+**What:** `fetchBatch` advances `currentIndexRef` by `targetCount*2` up front, but `batchFetchArtworks` stops once `targetCount` artworks validate — unattempted IDs in the window are skipped forever, and after a load-more error the retry resumes at the NEXT window, dropping the failed one. The grid's "N artworks found" under-reports.
+**Fix sketch:** have `batchFetchArtworks` return how far it consumed so `fetchBatch` can set `currentIndexRef = start + consumed`; rewind the index to the batch start before `setError` so retry re-attempts the same window.
+**Found by:** /review red team, 2026-07-06.
+
+## (Low) Scroll-anchor hardening: image-load height shifts + iOS snap behavior — review 2026-07-06
+**What:** (a) `ArtworkCard` `setIsLandscape` flips container height 55vh↔68vh on image load without re-baselining the feed's card-top map — a trim shortly after can over-correct (low real-world impact: above-anchor images are usually long loaded). (b) `feed.scrollTop += delta` on a `scroll-snap-type: y mandatory` container needs real-device iOS testing — programmatic scrollTop during momentum may be ignored or kill the fling.
+**Fix sketch:** ResizeObserver on cards to refresh `cardTopsRef`; device QA pass (or `/ios-qa`-style manual check) for the snap interaction.
+**Found by:** /review adversarial + red team, 2026-07-06.
+
+## (Low) GridBrowse first-frame stale render — review 2026-07-06
+**What:** `initSearch` runs in an effect (after paint), so first navigation paints one frame of "No artworks found", and artist→artist navigation paints a frame of the previous artist's grid under the new header.
+**Fix sketch:** render the skeleton until context `searchTerm` matches the route term; needs matching updates to GridBrowse test mocks.
+**Found by:** /review red team, 2026-07-06.
+
+
 ## ~~Extract shared pagination hook~~ DONE (2026-03-20)
 `usePaginatedFetch` extracted. Both `ArtworksContext` and `GridBrowseContext` are now thin wrappers. Tests passing.
 

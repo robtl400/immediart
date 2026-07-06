@@ -1,1 +1,105 @@
-/* App-level styles - minimal, component styles in component files */
+/* App-level shared styles — pieces used by more than one view.
+   Component-specific styles live in component CSS files. */
+
+/* Error state (feed, grid, ErrorBoundary) */
+.error-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 50vh;
+  padding: 20px;
+  text-align: center;
+}
+
+.error-message {
+  color: var(--color-gold);
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0 0 10px 0;
+}
+
+.error-detail {
+  color: var(--color-text-muted);
+  font-size: 14px;
+  margin: 0 0 20px 0;
+}
+
+.retry-button {
+  background-color: var(--color-gold);
+  color: var(--color-bg);
+  border: none;
+  padding: 12px 24px;
+  border-radius: 8px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.2s, opacity 0.2s;
+}
+
+.retry-button:hover {
+  transform: scale(1.05);
+}
+
+.retry-button:active {
+  transform: scale(0.95);
+}
+
+/* End-of-list message (feed, grid) */
+.end-message {
+  text-align: center;
+  padding: 30px 20px;
+  color: var(--color-text-muted);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.end-message-icon {
+  width: 48px;
+  height: 48px;
+  opacity: 0.6;
+  margin-bottom: 12px;
+}
+
+.end-message p {
+  margin: 5px 0;
+  font-size: 14px;
+}
+
+.end-message p:first-of-type {
+  color: var(--color-gold);
+  font-weight: 500;
+}
+
+/* Scroll sentinel for IntersectionObserver (feed, grid) */
+.scroll-sentinel {
+  height: 1px;
+  width: 100%;
+}
+
+/* Inline load-more error (feed, grid) — shown below existing content */
+.inline-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 20px;
+  text-align: center;
+}
+
+.inline-error p {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 14px;
+}
+
+/* ErrorBoundary fallback — full-height framed page like every other view */
+.error-boundary-page {
+  min-height: 100vh;
+  width: 100%;
+  background-color: var(--color-bg);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}

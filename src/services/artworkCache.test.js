@@ -113,7 +113,6 @@ describe('artworkCache — storage error resilience', () => {
         const req = origOpen(...args);
         req.addEventListener('success', () => {
           const db = req.result;
-          const origTransaction = db.transaction.bind(db);
           db.transaction = () => { throw new DOMException('QuotaExceededError', 'QuotaExceededError'); };
         });
         return req;

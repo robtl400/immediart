@@ -14,6 +14,16 @@
   --color-text-body:      #e0e0e0;
   --color-text-secondary: #b0b0b0;
   --color-text-muted:     #888888;
+
+  /* Alpha tiers of the golds — keep translucent accents on-palette */
+  --color-gold-a40:       rgba(240, 185, 0, 0.4);
+  --color-gold-a20:       rgba(240, 185, 0, 0.2);
+  --color-gold-a07:       rgba(240, 185, 0, 0.07);
+  --color-gold-muted-a60: rgba(163, 125, 0, 0.6);
+  --color-gold-muted-a30: rgba(163, 125, 0, 0.3);
+  --color-gold-muted-a20: rgba(163, 125, 0, 0.2);
+  --color-gold-muted-a15: rgba(163, 125, 0, 0.15);
+  --color-text-faint:     rgba(255, 255, 255, 0.35);
 }
 
 * {
@@ -46,6 +56,14 @@ html, body {
     justify-content: center;
     padding: 20px 0;
   }
+
+  /* Phone-style frame around every top-level view */
+  .app-frame {
+    max-width: 430px;
+    margin: 0 auto;
+    border-radius: 40px;
+    box-shadow: 0 0 60px rgba(0, 0, 0, 0.5);
+  }
 }
 
 /* Remove default button styles */
@@ -67,15 +85,6 @@ button {
   height: 100vh;
   width: 100%;
   background-color: var(--color-bg);
-}
-
-@media (min-width: 481px) {
-  .not-found-page {
-    max-width: 430px;
-    margin: 0 auto;
-    border-radius: 40px;
-    box-shadow: 0 0 60px rgba(0, 0, 0, 0.5);
-  }
 }
 
 .not-found-content {

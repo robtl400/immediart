@@ -4,7 +4,7 @@
  * Covers: result count display, warm empty state, error state retry button.
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import GridBrowse from './GridBrowse';
 
@@ -13,8 +13,11 @@ vi.mock('../../assets/FlyingMachine2_tinted_gold.png', () => ({ default: 'icon.p
 const mockNavigate = vi.fn();
 const mockInitSearch = vi.fn();
 
+// Mutable route params — vi.hoisted so the mock factory can reference it safely
+const mockRoute = vi.hoisted(() => ({ params: { artistName: 'Van Gogh' } }));
+
 vi.mock('react-router-dom', () => ({
-  useParams: () => ({ artistName: 'Van Gogh' }),
+  useParams: () => mockRoute.params,
   useNavigate: () => mockNavigate,
   useLocation: () => ({ state: null }),
 }));
@@ -131,6 +134,26 @@ describe('GridBrowse — end message (T3-A)', () => {
     expect(icon).toBeTruthy();
     expect(icon.tagName).toBe('IMG');
     expect(icon.getAttribute('alt')).toBe('');
+  });
+});
+
+describe('GridBrowse — malformed URL escape', () => {
+  beforeEach(() => mockNavigate.mockClear());
+  afterEach(() => {
+    mockRoute.params = { artistName: 'Van Gogh' };
+  });
+
+  it('renders the raw term in the heading for a malformed percent-escape (/artist/%E0) instead of crashing', () => {
+    // decodeURIComponent('%E0') throws URIError — safeDecode must fall back
+    // to the raw segment so the page renders instead of white-screening
+    mockRoute.params = { artistName: '%E0' };
+    useGridBrowse.mockReturnValue(makeContext({ searchTerm: '%E0' }));
+
+    const { container } = render(<GridBrowse type="artist" />);
+
+    const heading = container.querySelector('.search-term');
+    expect(heading).toBeTruthy();
+    expect(heading.textContent).toBe('@%e0'); // raw term, artist-formatted
   });
 });
 

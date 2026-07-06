@@ -50,6 +50,7 @@ export function ArtworksProvider({ children }) {
     error:          feed.error,
     hasMore:        feed.hasMore,
     loadMoreArtworks: feed.loadMore,
+    retryLoadMore:  feed.retryLoadMore,
     retry,
     refresh,
     pause:          feed.pause,

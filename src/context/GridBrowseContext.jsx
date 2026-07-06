@@ -2,7 +2,7 @@
  * Grid Browse Context - Search results state management
  *
  * Thin wrapper around usePaginatedFetch. Owns search-specific state
- * (searchType, searchTerm, totalCount, lastSearchTimeRef) and wires
+ * (searchType, searchTerm, lastSearchTimeRef) and wires
  * initSearch() → grid.reset(fetchIDs).
  */
 
@@ -26,7 +26,6 @@ const GridBrowseContext = createContext(null);
 export function GridBrowseProvider({ children }) {
   const [searchType, setSearchType] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [totalCount, setTotalCount] = useState(0);
   const lastSearchTimeRef = useRef(0);
 
   const grid = usePaginatedFetch({
@@ -45,7 +44,6 @@ export function GridBrowseProvider({ children }) {
   const initSearch = useCallback((type, term, seedArtworks = []) => {
     setSearchType(type);
     setSearchTerm(term);
-    setTotalCount(0);
 
     const searchFn = type === 'artist' ? searchByArtist : searchByTag;
     const cacheKey = type === 'artist' ? `ids:artist:${term}` : `ids:tag:${term}`;
@@ -65,9 +63,9 @@ export function GridBrowseProvider({ children }) {
       }
 
       lastSearchTimeRef.current = Date.now();
-      const ids = cachedIDs ?? await searchFn(term, signal);
-      setTotalCount(ids.length);
-      return ids;
+      // Empty cached arrays are legacy poisoned entries — treat as a miss
+      // (searchFn consults the same cache and negative-caches empties itself)
+      return cachedIDs?.length > 0 ? cachedIDs : await searchFn(term, signal);
     }, seedArtworks);
   }, [gridReset]);
 
@@ -84,9 +82,9 @@ export function GridBrowseProvider({ children }) {
     hasMore:      grid.hasMore,
     searchType,
     searchTerm,
-    totalCount,
     initSearch,
-    loadMore:     grid.loadMore,
+    loadMore:      grid.loadMore,
+    retryLoadMore: grid.retryLoadMore,
     abort,
   };
 

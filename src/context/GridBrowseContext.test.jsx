@@ -146,7 +146,8 @@ describe('GridBrowseContext — initSearch', () => {
   });
 
   it('empty results: hasMore=false, batchFetchArtworks not called', async () => {
-    getCachedIDs.mockResolvedValue([]); // empty ID list
+    getCachedIDs.mockResolvedValue(null);
+    searchByArtist.mockResolvedValue([]); // live search finds nothing
 
     const { result } = renderHook(() => useGridBrowse(), { wrapper });
     act(() => { result.current.initSearch('artist', 'Unknown'); });
@@ -154,6 +155,20 @@ describe('GridBrowseContext — initSearch', () => {
 
     expect(result.current.hasMore).toBe(false);
     expect(batchFetchArtworks).not.toHaveBeenCalled();
+  });
+
+  it('legacy cached EMPTY ID list is treated as a miss — search re-runs', async () => {
+    // Pre-fix builds cached [] with a 24h TTL; honoring it would keep the
+    // poisoned "no results" alive after the empty-guard fix shipped.
+    getCachedIDs.mockResolvedValue([]);
+    searchByArtist.mockResolvedValue(ALL_IDS);
+
+    const { result } = renderHook(() => useGridBrowse(), { wrapper });
+    act(() => { result.current.initSearch('artist', 'Vermeer'); });
+    await drain();
+
+    expect(searchByArtist).toHaveBeenCalledWith('Vermeer', expect.anything());
+    expect(result.current.hasMore).toBe(true);
   });
 });
 
@@ -179,7 +194,8 @@ describe('GridBrowseContext — loadMore guard logic', () => {
   }
 
   it('does nothing when hasMore is false', async () => {
-    getCachedIDs.mockResolvedValue([]);
+    getCachedIDs.mockResolvedValue(null);
+    searchByArtist.mockResolvedValue([]);
     const { result } = renderHook(() => useGridBrowse(), { wrapper });
     act(() => { result.current.initSearch('artist', 'X'); });
     await drain();

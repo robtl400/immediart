@@ -18,6 +18,9 @@ import { FEED_BATCH_SIZE, MAX_ARTWORKS_IN_MEMORY } from '../utils/constants';
 vi.mock('../services/metAPI', () => ({
   fetchAllObjectIDs: vi.fn(),
   batchFetchArtworks: vi.fn(),
+}));
+
+vi.mock('../utils/shuffle', () => ({
   shuffleArray: (arr) => arr, // identity — deterministic ordering
 }));
 

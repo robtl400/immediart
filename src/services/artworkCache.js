@@ -92,6 +92,21 @@ async function getFromStore(storeName, key) {
   }
 }
 
+async function removeFromStore(storeName, key) {
+  try {
+    const db = await openDB();
+    await new Promise((resolve) => {
+      const tx = db.transaction(storeName, 'readwrite');
+      const store = tx.objectStore(storeName);
+      const req = store.delete(key);
+      req.onsuccess = () => resolve();
+      req.onerror = () => resolve(); // Swallow — best-effort
+    });
+  } catch {
+    // Swallow — storage errors are non-fatal
+  }
+}
+
 async function setInStore(storeName, key, data, ttl) {
   try {
     const db = await openDB();
@@ -124,6 +139,10 @@ export async function getCachedArtwork(id) {
 
 export async function setCachedArtwork(id, obj, ttl = TTL_ARTWORKS) {
   await setInStore('artworks', String(id), obj, ttl);
+}
+
+export async function removeCachedArtwork(id) {
+  await removeFromStore('artworks', String(id));
 }
 
 export async function clearCache() {

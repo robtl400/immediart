@@ -1,6 +1,6 @@
-import { useState, Fragment } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useRef, useEffect, Fragment } from 'react';
 import flyingMachineIcon from '../../assets/FlyingMachine2_tinted_gold.png';
+import { SHARE_FEEDBACK_MS } from '../../utils/constants';
 
 /**
  * ArtworkCard Component
@@ -8,8 +8,7 @@ import flyingMachineIcon from '../../assets/FlyingMachine2_tinted_gold.png';
  * Purely presentational — navigation side effects are lifted to DiscoveryFeed
  * via onArtistClick and onTagClick props.
  */
-export default function ArtworkCard({ artwork, isLiked, onLike, onImageDoubleClick, onArtistClick, onTagClick, onArtistHover, onTagHover }) {
-  const navigate = useNavigate();
+export default function ArtworkCard({ artwork, isLiked, onLike, onImageClick, onArtistClick, onTagClick, onArtistHover, onTagHover }) {
   const [imageLoaded, setImageLoaded] = useState(false);
   const [isLandscape, setIsLandscape] = useState(true);
   const [shareCopied, setShareCopied] = useState(false);
@@ -20,51 +19,47 @@ export default function ArtworkCard({ artwork, isLiked, onLike, onImageDoubleCli
     setImageLoaded(true);
   };
 
+  // Feed cards unmount mid-session (maxInMemory trim), so the feedback timer
+  // must be cleared on unmount; re-shares also reset rather than stack it.
+  const shareTimerRef = useRef(null);
+  useEffect(() => () => clearTimeout(shareTimerRef.current), []);
+
+  const copyLinkWithFeedback = async (url) => {
+    try {
+      await navigator.clipboard?.writeText(url);
+    } catch { /* clipboard unavailable */ }
+    setShareCopied(true);
+    clearTimeout(shareTimerRef.current);
+    shareTimerRef.current = setTimeout(() => setShareCopied(false), SHARE_FEEDBACK_MS);
+  };
+
   const handleShare = async () => {
     const url = `${window.location.origin}/artwork/${artwork.id}`;
     if (navigator.share) {
       try {
         await navigator.share({ title: artwork.title, text: `${artwork.title} by ${artwork.artistName}`, url });
       } catch (err) {
-        if (err.name !== 'AbortError') {
-          try {
-            await navigator.clipboard?.writeText(url);
-          } catch (_) { /* clipboard unavailable */ }
-          setShareCopied(true);
-          setTimeout(() => setShareCopied(false), 2000);
-        }
+        if (err.name !== 'AbortError') await copyLinkWithFeedback(url);
       }
     } else {
-      try {
-        await navigator.clipboard?.writeText(url);
-      } catch (_) { /* clipboard unavailable */ }
-      setShareCopied(true);
-      setTimeout(() => setShareCopied(false), 2000);
+      await copyLinkWithFeedback(url);
     }
   };
 
   const handleArtistClick = () => {
     // Guard: anonymous works have no artistName — skip navigation
     if (!artwork.artistName) return;
-    if (onArtistClick) {
-      onArtistClick(artwork.artistName, artwork);
-    } else {
-      navigate(`/artist/${encodeURIComponent(artwork.artistName)}`);
-    }
+    onArtistClick?.(artwork.artistName, artwork);
   };
 
   const handleHashtagClick = (tag) => {
-    if (onTagClick) {
-      onTagClick(tag, artwork);
-    } else {
-      navigate(`/tag/${encodeURIComponent(tag)}`);
-    }
+    onTagClick?.(tag, artwork);
   };
 
   const hasArtist = Boolean(artwork.artistName);
 
   return (
-    <article className="artwork-card">
+    <article className="artwork-card" data-artwork-id={artwork.id}>
       {/* Image Container */}
       <div className={`image-container ${isLandscape ? 'landscape' : 'portrait'}`}>
         <img
@@ -72,7 +67,7 @@ export default function ArtworkCard({ artwork, isLiked, onLike, onImageDoubleCli
           alt={`${artwork.title}${hasArtist ? ` by ${artwork.artistName}` : ''}`}
           className="artwork-image"
           onLoad={handleImageLoad}
-          onClick={onImageDoubleClick}
+          onClick={onImageClick}
           loading="lazy"
         />
         <div className={`image-placeholder${imageLoaded ? ' loaded' : ''}`} />

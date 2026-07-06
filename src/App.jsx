@@ -8,20 +8,23 @@ import GridBrowse from './components/grid/GridBrowse'
 import ArtworkModal from './components/modal/ArtworkModal'
 import ArtworkDeepLink from './components/ArtworkDeepLink'
 import NotFound from './components/common/NotFound'
+import ErrorBoundary from './components/common/ErrorBoundary'
 
 export default function App() {
   return (
     <ArtworksProvider>
       <GridBrowseProvider>
         <ArtworkModalProvider>
-          <Routes>
-            <Route path="/" element={<DiscoveryFeed />} />
-            <Route path="/artist/:artistName" element={<GridBrowse type="artist" />} />
-            <Route path="/tag/:tagName" element={<GridBrowse type="tag" />} />
-            <Route path="/artwork/:artworkId" element={<ArtworkDeepLink />} />
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-          <ArtworkModal />
+          <ErrorBoundary>
+            <Routes>
+              <Route path="/" element={<DiscoveryFeed />} />
+              <Route path="/artist/:artistName" element={<GridBrowse type="artist" />} />
+              <Route path="/tag/:tagName" element={<GridBrowse type="tag" />} />
+              <Route path="/artwork/:artworkId" element={<ArtworkDeepLink />} />
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+            <ArtworkModal />
+          </ErrorBoundary>
         </ArtworkModalProvider>
       </GridBrowseProvider>
     </ArtworksProvider>
