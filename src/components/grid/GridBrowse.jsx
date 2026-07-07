@@ -14,7 +14,7 @@ import { GRID_ROOT_MARGIN } from '../../utils/constants';
 
 // Hoisted out of GridBrowse so the header subtree isn't remounted on every
 // render (an inline component gets a new type identity each render).
-function GridHeader({ displayTerm, onBack }) {
+function GridHeader({ displayTerm, isQuery, onBack }) {
   return (
     <>
       <Banner />
@@ -22,7 +22,9 @@ function GridHeader({ displayTerm, onBack }) {
         <button className="grid-back-btn" onClick={onBack} aria-label="Back">
           ‹
         </button>
-        <h2 className="search-term">{displayTerm}</h2>
+        {/* A typed query is verbatim user text, so it renders in the UI sans-serif
+            (Outfit); artist/tag handles keep the decorative Allura script. */}
+        <h2 className={`search-term${isQuery ? ' search-term--query' : ''}`}>{displayTerm}</h2>
       </div>
     </>
   );
@@ -41,7 +43,7 @@ function safeDecode(term) {
 
 export default function GridBrowse({ type }) {
   const params = useParams();
-  const rawTerm = type === 'artist' ? params.artistName : params.tagName;
+  const rawTerm = params.artistName ?? params.tagName ?? params.query;
   const searchTerm = safeDecode(rawTerm);
 
   const {
@@ -67,15 +69,20 @@ export default function GridBrowse({ type }) {
     rootMargin: GRID_ROOT_MARGIN
   });
 
-  // Initialize search on mount or term change
+  // Initialize search on mount or route change. All of /artist, /tag and /search
+  // render this SAME component instance (React Router doesn't key route elements),
+  // so navigating between them with the *same word* (e.g. /tag/cats → /search/cats)
+  // changes `type` but not `searchTerm`. Key the guard on both, or that transition
+  // would skip initSearch and the first-frame guard below would wedge on skeletons.
+  const routeKey = `${type} ${searchTerm}`;
   useEffect(() => {
-    if (searchTerm && searchTerm !== lastSearchRef.current) {
-      lastSearchRef.current = searchTerm;
+    if (searchTerm && routeKey !== lastSearchRef.current) {
+      lastSearchRef.current = routeKey;
       initSearch(type, searchTerm, seedArtworks);
     }
-  // seedArtworks is stable per navigation — only re-run when term/type changes
+  // seedArtworks is stable per navigation — only re-run when route key changes
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [type, searchTerm, initSearch]);
+  }, [routeKey, initSearch]);
 
   // Abort on unmount
   useEffect(() => {
@@ -85,12 +92,15 @@ export default function GridBrowse({ type }) {
     };
   }, [abort]);
 
-  // Format display term
+  // Format display term: @handle for artists, #hashtag for tags, "quoted" for
+  // a free-text query (shown verbatim).
   const displayTerm = type === 'artist'
     ? `@${searchTerm.toLowerCase().replace(/\s+/g, '_')}`
-    : `#${searchTerm.replace(/\s+/g, '')}`;
+    : type === 'tag'
+    ? `#${searchTerm.replace(/\s+/g, '')}`
+    : `“${searchTerm}”`;
 
-  const header = <GridHeader displayTerm={displayTerm} onBack={() => navigate(-1)} />;
+  const header = <GridHeader displayTerm={displayTerm} isQuery={type === 'search'} onBack={() => navigate(-1)} />;
 
   // initSearch runs in an effect (after paint), so the context still holds the
   // PREVIOUS search on this render's first frame — showing either a stale grid

@@ -1,16 +1,19 @@
+import { useState, useRef, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import flyingMachineIcon from '../../assets/FlyingMachine2_tinted_gold.png';
 import { useArtworks } from '../../context/ArtworksContext';
 import { useGridBrowse } from '../../context/GridBrowseContext';
 import BannerActions from './BannerActions';
+import BannerSearch from './BannerSearch';
 
 /**
  * Shared Banner.
  * - The logo/title is the home/refresh control (a real <button>, so Enter/Space
  *   work natively) — only that region is clickable, not the whole header, so the
  *   right-aligned action cluster can nest without invalid nested interactives.
- * - `showActions` (default true) renders the likes cluster; the modal and 404
- *   pass false.
+ * - `showActions` (default true) renders the search + likes cluster; the modal
+ *   passes false (a static, action-free masthead). The 404 keeps the cluster so
+ *   a lost visitor can still search or reach their likes.
  * - `interactive` (default true) makes the logo a nav button; the modal passes
  *   false so its masthead is static (tapping it must not close the modal +
  *   reshuffle the feed behind a share recipient).
@@ -21,6 +24,17 @@ export default function Banner({ isScrolled = false, feedRef = null, showActions
   const { refresh } = useArtworks();
   const { abort: abortGrid } = useGridBrowse();
   const isHome = location.pathname === '/';
+
+  // Search open/closed lives here (not in BannerActions) so the expanded input
+  // can take over the full masthead. Closing restores focus to the magnifier
+  // toggle unless we're navigating away on submit.
+  const [searchOpen, setSearchOpen] = useState(false);
+  const searchToggleRef = useRef(null);
+  const openSearch = useCallback(() => setSearchOpen(true), []);
+  const closeSearch = useCallback(({ refocus = true } = {}) => {
+    setSearchOpen(false);
+    if (refocus) searchToggleRef.current?.focus();
+  }, []);
 
   const handleLogoClick = () => {
     if (isHome) {
@@ -50,7 +64,8 @@ export default function Banner({ isScrolled = false, feedRef = null, showActions
       ) : (
         logo
       )}
-      {showActions && <BannerActions />}
+      {showActions && <BannerActions onOpenSearch={openSearch} toggleRef={searchToggleRef} searchOpen={searchOpen} />}
+      {showActions && searchOpen && <BannerSearch onClose={closeSearch} />}
     </header>
   );
 }

@@ -100,7 +100,7 @@
 
 .banner-like-hint {
   position: absolute;
-  right: 48px;
+  right: 92px;
   top: 50%;
   transform: translateY(-50%);
   white-space: nowrap;
@@ -111,6 +111,89 @@
   border-radius: 6px;
   pointer-events: none;
   animation: hintFadeOut 0.5s ease 2s forwards;
+}
+
+/* Search: magnifier toggle inherits the icon-button look. The expanded input
+   overlays the whole masthead (a direct child of .banner) so it can span edge
+   to edge; it sits above the logo and the action cluster. */
+.banner-search {
+  position: absolute;
+  inset: 0;
+  z-index: 110;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+  background: var(--color-bg);
+  animation: searchSlideIn 0.18s ease;
+}
+
+@keyframes searchSlideIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.banner-search-back {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: none;
+  background: var(--color-gold-a20);
+  color: var(--color-gold);
+  font-size: 24px;
+  line-height: 1;
+  font-family: inherit;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.2s ease;
+}
+
+.banner-search-back:hover,
+.banner-search-back:focus-visible {
+  background: var(--color-gold-a40);
+}
+
+.banner-search-back:focus-visible {
+  outline: 2px solid var(--color-gold);
+  outline-offset: 2px;
+}
+
+.banner-search-input {
+  flex: 1;
+  min-width: 0;
+  height: 40px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-gold-muted);
+  border-radius: 20px;
+  padding: 0 16px;
+  color: var(--color-text);
+  font-family: 'Outfit', sans-serif;
+  /* 16px, not smaller: iOS Safari auto-zooms the viewport when focusing an input
+     under 16px, and this field autofocuses on open — that would jolt the page. */
+  font-size: 16px;
+  outline: none;
+  transition: border-color 0.2s ease;
+}
+
+.banner-search-input:focus {
+  border-color: var(--color-gold);
+}
+
+.banner-search-input::placeholder {
+  color: var(--color-text-faint);
+}
+
+/* Native search clear affordances vary by browser — hide for a consistent look */
+.banner-search-input::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.banner-search-go {
+  flex-shrink: 0;
 }
 
 /* Bezeled gold separator line */
@@ -203,6 +286,105 @@
   height: 100%;
   object-fit: cover;
   display: block;
+}
+
+/* Multi-image carousel — a horizontal scroll-snap strip inside the same
+   landscape/portrait frame as single-image cards. touch-action:pan-x lets
+   vertical swipes fall through to the feed's snap scroll; overscroll-behavior
+   stops a horizontal swipe from chaining into the feed. Slides are letterboxed
+   (contain) so mixed aspect ratios all show the whole work. */
+.image-container.carousel {
+  overflow: hidden;
+}
+
+.carousel-track {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-snap-type: x mandatory;
+  overscroll-behavior-x: contain;
+  touch-action: pan-x;
+  scrollbar-width: none;
+}
+
+.carousel-track::-webkit-scrollbar {
+  display: none;
+}
+
+.carousel-slide {
+  flex: 0 0 100%;
+  width: 100%;
+  height: 100%;
+  scroll-snap-align: center;
+  scroll-snap-stop: always;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Later single-class rule wins over .artwork-image's object-fit: cover */
+.carousel-image {
+  object-fit: contain;
+}
+
+.carousel-count {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  font-family: 'Outfit', sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 10px;
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* Dot strip lives below the frame (outside the image) */
+.carousel-dots {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 8px 0 2px;
+  background-color: var(--color-bg);
+  flex-shrink: 0;
+}
+
+.carousel-dot {
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+.carousel-dot::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--color-gold-muted);
+  transition: background-color 0.2s ease, transform 0.2s ease;
+}
+
+.carousel-dot.active::before {
+  background: var(--color-gold);
+  transform: scale(1.25);
+}
+
+.carousel-dot:focus-visible {
+  outline: 2px solid var(--color-gold);
+  outline-offset: 0;
+  border-radius: 50%;
 }
 
 .image-placeholder {

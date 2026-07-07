@@ -235,4 +235,19 @@ describe('DiscoveryFeed — keyboard navigation', () => {
     expect(mockToggleLike).not.toHaveBeenCalled();
     window.history.pushState({}, '', '/');
   });
+
+  it('"/" opens a closed search by clicking the magnifier toggle', () => {
+    // Banner is mocked here, so stand in a toggle the shortcut can find/click.
+    const toggle = document.createElement('button');
+    toggle.setAttribute('data-search-toggle', '');
+    const clickSpy = vi.fn();
+    toggle.addEventListener('click', clickSpy);
+    document.body.appendChild(toggle);
+
+    render(<DiscoveryFeed />);
+    act(() => { fireEvent.keyDown(document.body, { key: '/' }); });
+    expect(clickSpy).toHaveBeenCalled();
+
+    toggle.remove();
+  });
 });

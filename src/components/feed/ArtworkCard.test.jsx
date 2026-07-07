@@ -246,6 +246,34 @@ describe('ArtworkCard — verified badge', () => {
 });
 
 
+describe('ArtworkCard — carousel (multiple images)', () => {
+  const withImages = () => makeArtwork({
+    primaryImageFull: 'https://x/full-0.jpg',
+    additionalImages: ['https://images.metmuseum.org/CRDImages/ep/original/a.jpg'],
+  });
+
+  it('renders a carousel with one dot per image when additionalImages present', () => {
+    const { container } = render(<ArtworkCard artwork={withImages()} isLiked={false} onLike={vi.fn()} onImageClick={vi.fn()} />);
+    expect(container.querySelector('.image-container.carousel')).toBeTruthy();
+    expect(container.querySelectorAll('.carousel-slide img')).toHaveLength(2);
+    expect(container.querySelectorAll('.carousel-dot')).toHaveLength(2);
+  });
+
+  it('opens the modal with the first slide\'s full-res URL', () => {
+    const onImageClick = vi.fn();
+    const { container } = render(<ArtworkCard artwork={withImages()} isLiked={false} onLike={vi.fn()} onImageClick={onImageClick} />);
+    fireEvent.click(container.querySelectorAll('.carousel-slide img')[0]);
+    expect(onImageClick).toHaveBeenCalledWith('https://x/full-0.jpg');
+  });
+
+  it('a single-image work keeps the non-carousel path', () => {
+    const { container } = render(<ArtworkCard artwork={makeArtwork()} isLiked={false} onLike={vi.fn()} onImageClick={vi.fn()} />);
+    expect(container.querySelector('.image-container.carousel')).toBeNull();
+    expect(container.querySelector('.artwork-image')).toBeTruthy();
+    expect(container.querySelector('.image-placeholder')).toBeTruthy();
+  });
+});
+
 describe('ArtworkCard — sponsored post', () => {
   it('renders sponsored post when creditLine is present', () => {
     const { container } = render(<ArtworkCard artwork={makeArtwork({ creditLine: 'Purchase, Mr. Fund, 1955' })} isLiked={false} onLike={vi.fn()} onImageClick={vi.fn()} />);

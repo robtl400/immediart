@@ -186,3 +186,26 @@ describe('ArtworkModal — image error fallback', () => {
     expect(img.src).toBe('https://example.com/full.jpg');
   });
 });
+
+describe('ArtworkModal — image source (carousel slide)', () => {
+  it('prefers viewImageUrl (the slide the carousel opened on) over the primary', () => {
+    setup({ artwork: makeArtwork({ viewImageUrl: 'https://example.com/slide-3.jpg' }) });
+    const { container } = render(<ArtworkModal />);
+    expect(container.querySelector('.artwork-modal-image').src).toBe('https://example.com/slide-3.jpg');
+  });
+
+  it('falls back to primaryImageFull when there is no viewImageUrl', () => {
+    setup({ artwork: makeArtwork() });
+    const { container } = render(<ArtworkModal />);
+    expect(container.querySelector('.artwork-modal-image').src).toBe('https://example.com/full.jpg');
+  });
+
+  it('the image sits inside a focusable zoom viewport', () => {
+    setup();
+    const { container } = render(<ArtworkModal />);
+    const viewport = container.querySelector('.zoom-viewport');
+    expect(viewport).toBeTruthy();
+    expect(viewport.getAttribute('tabIndex')).toBe('0');
+    expect(viewport.contains(container.querySelector('.artwork-modal-image'))).toBe(true);
+  });
+});

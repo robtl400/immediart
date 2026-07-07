@@ -9,7 +9,7 @@
 /* eslint-disable react-refresh/only-export-components */
 
 import { createContext, useContext, useState, useCallback, useRef } from 'react';
-import { searchByArtist, searchByTag } from '../services/metAPI';
+import { searchByArtist, searchByTag, searchByQuery } from '../services/metAPI';
 import { getCachedIDs } from '../services/artworkCache';
 import { preloadArtworkImages } from '../utils/imageLoader';
 import { usePaginatedFetch } from '../hooks/usePaginatedFetch';
@@ -22,6 +22,11 @@ import {
 } from '../utils/constants';
 
 const GridBrowseContext = createContext(null);
+
+// Per-type search function + IndexedDB cache-key prefix. 'search' is the
+// banner's free-text box; artist/tag are the chip navigations.
+const SEARCH_FNS = { artist: searchByArtist, tag: searchByTag, search: searchByQuery };
+const CACHE_PREFIX = { artist: 'ids:artist:', tag: 'ids:tag:', search: 'ids:search:' };
 
 export function GridBrowseProvider({ children }) {
   const [searchType, setSearchType] = useState(null);
@@ -45,8 +50,8 @@ export function GridBrowseProvider({ children }) {
     setSearchType(type);
     setSearchTerm(term);
 
-    const searchFn = type === 'artist' ? searchByArtist : searchByTag;
-    const cacheKey = type === 'artist' ? `ids:artist:${term}` : `ids:tag:${term}`;
+    const searchFn = SEARCH_FNS[type] ?? searchByTag;
+    const cacheKey = `${CACHE_PREFIX[type] ?? 'ids:tag:'}${term}`;
 
     gridReset(async (signal) => {
       const cachedIDs = await getCachedIDs(cacheKey);

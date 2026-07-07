@@ -1,7 +1,9 @@
-import { useState, Fragment } from 'react';
+import { useState, useMemo, Fragment } from 'react';
 import flyingMachineIcon from '../../assets/FlyingMachine2_tinted_gold.png';
 import { activateOnKey } from '../../utils/keyboard';
 import { useShareArtwork } from '../../hooks/useShareArtwork';
+import { buildSlides } from '../../utils/slides';
+import ImageCarousel from './ImageCarousel';
 
 /**
  * ArtworkCard Component
@@ -31,25 +33,44 @@ export default function ArtworkCard({ artwork, isLiked, onLike, onImageClick, on
   };
 
   const hasArtist = Boolean(artwork.artistName);
+  const altText = `${artwork.title}${hasArtist ? ` by ${artwork.artistName}` : ''}`;
+
+  // A card with additionalImages becomes a swipeable carousel; most works have a
+  // single image and keep the lighter single-image path (and its aspect-driven
+  // frame + placeholder). Slides carry the full-res URL so opening the modal
+  // shows whichever image the user was on.
+  const slides = useMemo(() => buildSlides(artwork), [artwork]);
+  const primaryFull = slides[0].full;
+  const isCarousel = slides.length > 1;
 
   return (
     <article className="artwork-card" data-artwork-id={artwork.id}>
       {/* Image Container */}
-      <div className={`image-container ${isLandscape ? 'landscape' : 'portrait'}`}>
-        <img
-          src={artwork.imageUrl}
-          alt={`${artwork.title}${hasArtist ? ` by ${artwork.artistName}` : ''}`}
-          className="artwork-image"
-          onLoad={handleImageLoad}
-          onClick={onImageClick}
-          role="button"
-          tabIndex={0}
-          aria-label={`Open details for ${artwork.title}${hasArtist ? ` by ${artwork.artistName}` : ''}`}
-          onKeyDown={activateOnKey(onImageClick)}
-          loading="lazy"
+      {isCarousel ? (
+        <ImageCarousel
+          slides={slides}
+          alt={altText}
+          frameClass={isLandscape ? 'landscape' : 'portrait'}
+          onPrimaryLoad={handleImageLoad}
+          onOpen={onImageClick}
         />
-        <div className={`image-placeholder${imageLoaded ? ' loaded' : ''}`} />
-      </div>
+      ) : (
+        <div className={`image-container ${isLandscape ? 'landscape' : 'portrait'}`}>
+          <img
+            src={artwork.imageUrl}
+            alt={altText}
+            className="artwork-image"
+            onLoad={handleImageLoad}
+            onClick={() => onImageClick(primaryFull)}
+            role="button"
+            tabIndex={0}
+            aria-label={`Open details for ${altText}`}
+            onKeyDown={activateOnKey(() => onImageClick(primaryFull))}
+            loading="lazy"
+          />
+          <div className={`image-placeholder${imageLoaded ? ' loaded' : ''}`} />
+        </div>
+      )}
 
       {/* Post Meta Bar — date + location (left) and action buttons (right) */}
       <div className="post-meta-bar">

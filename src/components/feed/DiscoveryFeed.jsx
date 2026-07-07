@@ -185,6 +185,10 @@ export default function DiscoveryFeed() {
       // — don't let its shortcuts act on the hidden feed while the modal is up.
       if (window.location.pathname.startsWith('/artwork/')) return;
 
+      // Search overlay open (its input is mounted): it owns the keyboard, even if
+      // focus is on its back/go button — don't drive the feed underneath.
+      if (document.querySelector('[data-search-input]')) return;
+
       const t = e.target;
       if ((t?.tagName === 'INPUT' || t?.tagName === 'TEXTAREA' || t?.isContentEditable) && e.key !== 'Escape') return;
 
@@ -231,10 +235,15 @@ export default function DiscoveryFeed() {
           if (art) openModal(art);
           break;
         }
-        case '/':
+        case '/': {
           e.preventDefault();
-          document.querySelector('[data-search-input]')?.focus();
+          // Focus the search field if it's already open; otherwise click the
+          // magnifier toggle to open it (BannerSearch autofocuses on mount).
+          const input = document.querySelector('[data-search-input]');
+          if (input) input.focus();
+          else document.querySelector('[data-search-toggle]')?.click();
           break;
+        }
         default:
           break;
       }
@@ -285,7 +294,7 @@ export default function DiscoveryFeed() {
           artwork={artwork}
           isLiked={isLiked(artwork.id)}
           onLike={() => toggleLike(artwork.id)}
-          onImageClick={() => openModal(artwork)}
+          onImageClick={(viewImageUrl) => openModal(artwork, viewImageUrl)}
           onArtistClick={handleArtistClick}
           onTagClick={handleTagClick}
           onArtistHover={artistHover}

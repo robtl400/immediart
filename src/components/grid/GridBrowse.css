@@ -60,6 +60,20 @@
   letter-spacing: .9px;
 }
 
+/* Free-text query heading — verbatim user text, so sans-serif (Outfit) rather
+   than the decorative script, and constrained so a long query stays on one
+   readable line between the back button and the edge. */
+.search-term--query {
+  font-family: 'Outfit', sans-serif;
+  font-size: 1.25rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  max-width: calc(100% - 100px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* Thumbnail Grid */
 .thumbnail-grid {
   display: grid;

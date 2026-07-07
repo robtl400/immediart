@@ -21,8 +21,11 @@ export function ArtworkModalProvider({ children }) {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const openModal = useCallback((artwork) => {
-    setCachedArtwork(artwork);
+  const openModal = useCallback((artwork, viewImageUrl = null) => {
+    // viewImageUrl lets a carousel open the modal on the slide the user was
+    // looking at (rather than always the primary); a direct load has no cache
+    // and falls back to the primary image.
+    setCachedArtwork(viewImageUrl ? { ...artwork, viewImageUrl } : artwork);
     // Remember the page we opened from so closing returns to it (and the page
     // routes keep rendering it behind the modal).
     navigate(`/artwork/${artwork.id}`, { state: { background: location } });

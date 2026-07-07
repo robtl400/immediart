@@ -18,6 +18,7 @@ import { GRID_BATCH_SIZE, GRID_INITIAL_BATCH_SIZE } from '../utils/constants';
 vi.mock('../services/metAPI', () => ({
   searchByArtist: vi.fn(),
   searchByTag: vi.fn(),
+  searchByQuery: vi.fn(),
   batchFetchArtworks: vi.fn(),
 }));
 

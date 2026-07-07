@@ -466,3 +466,38 @@ describe('searchByArtist / searchByTag — do not cache empty results', () => {
     expect(requestManager.fetch.mock.calls.length).toBe(callsAfterFirst);
   });
 });
+
+// ─── searchByQuery — free-text banner search ─────────────────────────────────
+
+describe('searchByQuery — free-text banner search', () => {
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    getCachedIDs.mockResolvedValue(null);
+    const { _clearEmptySearchCache } = await import('./metAPI');
+    _clearEmptySearchCache();
+  });
+
+  it('caches non-empty results under a distinct ids:search: key', async () => {
+    const { requestManager } = await import('./requestManager');
+    requestManager.fetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ objectIDs: [1, 2, 3] }),
+    });
+    const { searchByQuery } = await import('./metAPI');
+    const result = await searchByQuery('sunflowers');
+    expect(result).toEqual([1, 2, 3]);
+    // Keyed separately from the #sunflowers tag slot so they can't clobber.
+    expect(setCachedIDs).toHaveBeenCalledWith('ids:search:sunflowers', [1, 2, 3]);
+  });
+
+  it('does not cache empty results', async () => {
+    const { requestManager } = await import('./requestManager');
+    requestManager.fetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ objectIDs: [] }),
+    });
+    const { searchByQuery } = await import('./metAPI');
+    expect(await searchByQuery('zzzznotarealthing')).toEqual([]);
+    expect(setCachedIDs).not.toHaveBeenCalled();
+  });
+});

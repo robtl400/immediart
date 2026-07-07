@@ -110,6 +110,13 @@ export async function searchByTag(term, signal) {
   return cachedSearch(`ids:tag:${term}`, () => search(term, { signal }));
 }
 
+// Free-text search from the banner search box. Same underlying full-text
+// endpoint as searchByTag, but keyed separately (ids:search:) so a typed query
+// and a tag chip of the same word don't clobber each other's cache slot.
+export async function searchByQuery(term, signal) {
+  return cachedSearch(`ids:search:${term}`, () => search(term, { signal }));
+}
+
 // Allowed object types — expanded from 'painting' only based on live API sampling.
 const OBJECT_TYPES = [
   'painting',

@@ -58,6 +58,14 @@ describe('ArtworkModalContext', () => {
     expect(result.current.cachedArtwork).toBe(artwork);
   });
 
+  it('openModal with a viewImageUrl caches it alongside the artwork (carousel slide)', () => {
+    const { result } = renderHook(() => useArtworkModal(), { wrapper: makeWrapper('/') });
+    const artwork = { id: 9, title: 'Slide' };
+
+    act(() => result.current.openModal(artwork, 'https://x/slide-2.jpg'));
+    expect(result.current.cachedArtwork).toEqual({ ...artwork, viewImageUrl: 'https://x/slide-2.jpg' });
+  });
+
   it('closeModal from a background location pops back with navigate(-1)', () => {
     // Seed a location that carries a background marker — i.e. we arrived here by
     // opening the modal from a page.

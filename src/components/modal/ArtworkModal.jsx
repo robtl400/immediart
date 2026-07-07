@@ -6,15 +6,20 @@ import { useShareArtwork } from '../../hooks/useShareArtwork';
 import { fetchArtworkByID } from '../../services/metAPI';
 import { transformAPIToDisplay } from '../../utils/transformers';
 import { activateOnKey } from '../../utils/keyboard';
+import useImageZoom from '../../hooks/useImageZoom';
 import Banner from '../common/Banner';
 import LoadingSpinner from '../common/LoadingSpinner';
 import flyingMachineIcon from '../../assets/FlyingMachine2_tinted_gold.png';
 import './ArtworkModal.css';
 
-// Keyed per artwork by the parent, so load/error state resets on artwork change.
+// Keyed per artwork by the parent, so load/error state (and zoom) reset on
+// artwork change. `viewImageUrl` is set when a carousel opened the modal on a
+// specific slide; otherwise it's the primary full-res image.
 function ModalImage({ artwork }) {
   const [imageError, setImageError] = useState(false);
   const [imageLoaded, setImageLoaded] = useState(false);
+  const { containerRef, imgRef, handlers, isZoomed } = useImageZoom();
+  const src = artwork.viewImageUrl || artwork.primaryImageFull || artwork.imageUrl;
 
   if (imageError) {
     return (
@@ -30,13 +35,25 @@ function ModalImage({ artwork }) {
       <div className="modal-image-spinner" aria-hidden="true">
         <img src={flyingMachineIcon} alt="" className="modal-fly-icon" />
       </div>
-      <img
-        src={artwork.primaryImageFull || artwork.imageUrl}
-        alt={artwork.artistName ? `${artwork.title} by ${artwork.artistName}` : artwork.title}
-        className="artwork-modal-image"
-        onLoad={() => setImageLoaded(true)}
-        onError={() => setImageError(true)}
-      />
+      <div
+        className={`zoom-viewport${isZoomed ? ' zoomed' : ''}`}
+        ref={containerRef}
+        {...handlers}
+        tabIndex={0}
+        role="group"
+        aria-label="Zoomable artwork image"
+        aria-roledescription="Zoomable image — double-tap or pinch to zoom, press 0 to reset"
+      >
+        <img
+          ref={imgRef}
+          src={src}
+          alt={artwork.artistName ? `${artwork.title} by ${artwork.artistName}` : artwork.title}
+          className="artwork-modal-image"
+          onLoad={() => setImageLoaded(true)}
+          onError={() => setImageError(true)}
+          draggable={false}
+        />
+      </div>
     </div>
   );
 }

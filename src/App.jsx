@@ -30,6 +30,7 @@ function AppRoutes() {
         <Route path="/liked" element={<LikedGrid />} />
         <Route path="/artist/:artistName" element={<GridBrowse type="artist" />} />
         <Route path="/tag/:tagName" element={<GridBrowse type="tag" />} />
+        <Route path="/search/:query" element={<GridBrowse type="search" />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
 

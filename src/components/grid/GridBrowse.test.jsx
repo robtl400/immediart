@@ -197,3 +197,60 @@ describe('GridBrowse — error state', () => {
     expect(mockInitSearch).toHaveBeenCalledWith('artist', 'Van Gogh');
   });
 });
+
+describe('GridBrowse — search (free-text query)', () => {
+  beforeEach(() => mockNavigate.mockClear());
+  afterEach(() => {
+    mockRoute.params = { artistName: 'Van Gogh' };
+  });
+
+  it('reads the term from the :query param and shows it quoted, sans-serif', () => {
+    mockRoute.params = { query: 'blue period' };
+    useGridBrowse.mockReturnValue(makeContext({
+      searchType: 'search', searchTerm: 'blue period',
+      artworks: [makeMockArtwork(1)], hasMore: false,
+    }));
+    const { container } = render(<GridBrowse type="search" />);
+    const heading = container.querySelector('.search-term');
+    // Verbatim query — no @/# formatting, and the sans-serif query class.
+    expect(heading.textContent).toBe('“blue period”');
+    expect(heading.className).toContain('search-term--query');
+  });
+
+  it('does not render the artist profile header for a query search', () => {
+    mockRoute.params = { query: 'blue' };
+    useGridBrowse.mockReturnValue(makeContext({
+      searchType: 'search', searchTerm: 'blue',
+      artworks: [makeMockArtwork(1)], hasMore: false,
+    }));
+    const { container } = render(<GridBrowse type="search" />);
+    expect(container.querySelector('.artist-profile-header')).toBeNull();
+  });
+
+  it('retry re-runs initSearch with the search type', () => {
+    mockRoute.params = { query: 'blue' };
+    useGridBrowse.mockReturnValue(makeContext({
+      searchType: 'search', searchTerm: 'blue', error: 'Network error', artworks: [],
+    }));
+    render(<GridBrowse type="search" />);
+    fireEvent.click(screen.getByRole('button', { name: /try again/i }));
+    expect(mockInitSearch).toHaveBeenCalledWith('search', 'blue');
+  });
+
+  // Regression: /artist, /tag and /search share ONE GridBrowse instance (routes
+  // aren't keyed). Navigating between them with the same word changes `type` but
+  // not `searchTerm`; the init effect must still re-run or the page wedges on
+  // skeletons forever.
+  it('re-runs initSearch when only the type changes (tag→search, same word)', () => {
+    mockRoute.params = { tagName: 'cats' };
+    useGridBrowse.mockReturnValue(makeContext({ searchType: 'tag', searchTerm: 'cats' }));
+    const { rerender } = render(<GridBrowse type="tag" />);
+    mockInitSearch.mockClear();
+
+    mockRoute.params = { query: 'cats' };
+    useGridBrowse.mockReturnValue(makeContext({ searchType: 'tag', searchTerm: 'cats' }));
+    rerender(<GridBrowse type="search" />);
+
+    expect(mockInitSearch).toHaveBeenCalledWith('search', 'cats', expect.anything());
+  });
+});
