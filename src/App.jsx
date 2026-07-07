@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Routes, Route, useLocation } from 'react-router-dom'
 import './App.css'
 import { ArtworksProvider } from './context/ArtworksContext'
@@ -10,6 +11,8 @@ import LikedGrid from './components/grid/LikedGrid'
 import ArtworkModal from './components/modal/ArtworkModal'
 import NotFound from './components/common/NotFound'
 import ErrorBoundary from './components/common/ErrorBoundary'
+import SplashScreen from './components/common/SplashScreen'
+import { prefersReducedMotion } from './utils/welcome'
 
 // The artwork modal is a route (/artwork/:id) rendered OVER whatever page the
 // user was on — the URL is the single source of truth for whether it's open.
@@ -47,17 +50,25 @@ function AppRoutes() {
 }
 
 export default function App() {
+  // One-time launch animation, plays over the loading feed (also covers the
+  // first fetch). App is the SPA root, so this initial state plays it once per
+  // page load; skipped for reduced-motion visitors.
+  const [showWelcome, setShowWelcome] = useState(() => !prefersReducedMotion())
+
   return (
-    <LikesProvider>
-      <ArtworksProvider>
-        <GridBrowseProvider>
-          <ArtworkModalProvider>
-            <ErrorBoundary>
-              <AppRoutes />
-            </ErrorBoundary>
-          </ArtworkModalProvider>
-        </GridBrowseProvider>
-      </ArtworksProvider>
-    </LikesProvider>
+    <>
+      <LikesProvider>
+        <ArtworksProvider>
+          <GridBrowseProvider>
+            <ArtworkModalProvider>
+              <ErrorBoundary>
+                <AppRoutes />
+              </ErrorBoundary>
+            </ArtworkModalProvider>
+          </GridBrowseProvider>
+        </ArtworksProvider>
+      </LikesProvider>
+      {showWelcome && <SplashScreen onDone={() => setShowWelcome(false)} />}
+    </>
   )
 }

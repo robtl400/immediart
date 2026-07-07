@@ -1,0 +1,87 @@
+/* Launch splash — one flying machine flies a full counter-clockwise loop and
+   lands as the logo.
+   Timeline (flight 2.8s):
+     - ascends from off the bottom-left, up through the middle, to the top-right;
+     - exits the top-right and loops over the top of the frame (hidden) from right
+       to left — this is where most of the CCW spin happens;
+     - re-enters at the top-left and travels left-to-right, finishing its spin,
+       and lands upright in the banner logo slot (a full -360°, so it ends level).
+   The "ImmediArt" wordmark fades in EARLY (as the ascending flyer passes the
+   middle, ~0.55–1.35s), so it's already there when the flyer lands beside it.
+   The overlay then fades (3.0–3.5s) to reveal the feed. */
+
+.splash-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  background: var(--color-bg);
+  overflow: hidden;
+  cursor: pointer;
+  animation: splashFadeOut 0.5s ease 3s forwards;
+}
+
+@keyframes splashFadeOut {
+  from { opacity: 1; }
+  to   { opacity: 0; visibility: hidden; }
+}
+
+/* Crest = the banner's layout, reused so the landed logo + wordmark line up with
+   the real banner exactly. It has no animation of its own. */
+.splash-crest {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  padding: 15px 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+
+/* Desktop shows the app in a centred phone frame with 20px top padding — match it
+   so the crest lines up with the real banner on fade-out. */
+@media (min-width: 481px) {
+  .splash-crest { top: 20px; }
+}
+
+/* The flyer carries .banner-logo, so its resting orientation/size == the landed
+   logo. It flies a full CCW loop and settles level (-360°). Its layout box stays
+   put (transforms don't reflow), so the wordmark beside it never moves. */
+.splash-flier {
+  transition: none;
+  transform-origin: center center;
+  filter: drop-shadow(0 5px 14px rgba(0, 0, 0, 0.55));
+  will-change: transform, opacity;
+  animation: splashJourney 2.8s cubic-bezier(0.42, 0.02, 0.35, 1) forwards;
+}
+
+@keyframes splashJourney {
+  0%   { transform: translate(-46vw, 82vh) scale(4.6) rotate(0deg); opacity: 0; }
+  8%   { opacity: 1; }
+  20%  { transform: translate(-8vw, 42vh) scale(3.5) rotate(-12deg); opacity: 1; }    /* rising through the middle */
+  38%  { transform: translate(30vw, 6vh) scale(2.4) rotate(-45deg); opacity: 1; }     /* upper-right, still visible */
+  48%  { transform: translate(72vw, -30vh) scale(2) rotate(-80deg); opacity: 1; }     /* exit off top-right */
+  58%  { transform: translate(20vw, -70vh) scale(1.8) rotate(-180deg); opacity: 1; }  /* hidden loop, over the top */
+  70%  { transform: translate(-42vw, -60vh) scale(1.7) rotate(-285deg); opacity: 1; } /* hidden, above top-left */
+  80%  { transform: translate(-30vw, 8vh) scale(1.5) rotate(-330deg); opacity: 1; }   /* re-enter top-left, visible */
+  90%  {
+    transform: translate(-12vw, 3vh) scale(1.18) rotate(-350deg);
+    opacity: 1;
+    animation-timing-function: cubic-bezier(0.2, 0.8, 0.25, 1.1); /* settle on landing */
+  }
+  100% { transform: translate(0, 0) scale(1) rotate(-360deg); opacity: 1; }           /* landed, level = the logo */
+}
+
+/* Wordmark: fade in place beside the (eventual) landing spot — no movement —
+   starting as the ascending flyer passes the middle of the screen. */
+.splash-title {
+  opacity: 0;
+  transition: none;
+  animation: splashTitleFade 0.8s ease 0.55s forwards;
+}
+
+@keyframes splashTitleFade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
