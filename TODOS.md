@@ -1,5 +1,11 @@
 # TODOS
 
+## (Low) web-large image URL monitoring — Met CDN dependency
+**What:** C6's carousel substitutes `/web-large/` into `additionalImages` URLs — an undocumented Met CDN convention (same risk class as the objectName filter). If Met restructures image paths, slides silently fall back to multi-MB originals via the onError path.
+**Why:** the fallback hides breakage — the feature degrades to huge downloads without erroring. A periodic check (or a counter on fallback hits logged to console) would surface it.
+**Found by:** /plan-eng-review outside voice, 2026-07-06 (D10 decision). Depends on: C6 shipping.
+
+
 ## (Medium) Grid pagination silently skips unattempted IDs — review 2026-07-06
 **What:** `fetchBatch` advances `currentIndexRef` by `targetCount*2` up front, but `batchFetchArtworks` stops once `targetCount` artworks validate — unattempted IDs in the window are skipped forever, and after a load-more error the retry resumes at the NEXT window, dropping the failed one. The grid's "N artworks found" under-reports.
 **Fix sketch:** have `batchFetchArtworks` return how far it consumed so `fetchBatch` can set `currentIndexRef = start + consumed`; rewind the index to the batch start before `setError` so retry re-attempts the same window.

@@ -53,8 +53,13 @@ const makeRawArtwork = (id) => ({
   objectDate: '',
 });
 
-const makeBatch = (count, startId = 1) =>
-  Array.from({ length: count }, (_, i) => makeRawArtwork(startId + i));
+// batchFetchArtworks now returns { artworks, outcomes, consumedCount }.
+// Default models "the first `count` candidates were all used" (consumedCount = count).
+const makeBatch = (count, startId = 1, consumedCount = count) => ({
+  artworks: Array.from({ length: count }, (_, i) => makeRawArtwork(startId + i)),
+  outcomes: new Map(),
+  consumedCount,
+});
 
 /** Drain all pending timers and promises. */
 const drain = () => act(async () => { await vi.runAllTimersAsync(); });
@@ -143,7 +148,7 @@ describe('ArtworksContext — loadMoreArtworks guard logic', () => {
     // Empty ID list → hasMore goes false after initial load
     // fetchAllObjectIDs is the mock; getCachedIDs is mocked inside it but metAPI is mocked
     fetchAllObjectIDs.mockResolvedValue([]);
-    batchFetchArtworks.mockResolvedValue([]);
+    batchFetchArtworks.mockResolvedValue(makeBatch(0));
 
     const { result } = renderHook(() => useArtworks(), { wrapper });
     await drain();

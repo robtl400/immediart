@@ -67,6 +67,30 @@ export function usePaginatedFetch({
   const prefetchRef          = useRef(null);   // { artworks, nextIndex } | null
   const prefetchControllerRef = useRef(null);  // AbortController for background prefetch
 
+  // ── collectCandidates ──────────────────────────────────────────────────────
+  //
+  // Scan allIDsRef from `fromIndex`, skipping seed IDs (and, when shuffling,
+  // already-shown IDs), until `limit` usable IDs are collected or the array is
+  // exhausted. Returns the IDs alongside srcIdx — their positions in allIDsRef —
+  // so the caller can advance currentIndexRef to just past the LAST id that
+  // produced a kept artwork, rather than a raw count (a filtered/over-fetched
+  // count doesn't map linearly to allIDsRef and would skip unattempted IDs).
+
+  const collectCandidates = useCallback((fromIndex, limit) => {
+    const all = allIDsRef.current;
+    const ids = [];
+    const srcIdx = [];
+    let i = fromIndex;
+    while (ids.length < limit && i < all.length) {
+      const id = all[i];
+      const seedSkip  = seedIDsRef.current.has(String(id));
+      const shownSkip = shuffleIDs && shownIDsRef.current.has(id);
+      if (!seedSkip && !shownSkip) { ids.push(id); srcIdx.push(i); }
+      i++;
+    }
+    return { ids, srcIdx };
+  }, [shuffleIDs]);
+
   // ── startPrefetch ─────────────────────────────────────────────────────────
 
   const startPrefetch = useCallback((fromIndex) => {
@@ -75,35 +99,18 @@ export function usePaginatedFetch({
     prefetchControllerRef.current = new AbortController();
     const signal = prefetchControllerRef.current.signal;
 
-    let idsToTry;
-    let nextIndex;
+    const limit = batchSize * (shuffleIDs ? 3 : 2);
+    const { ids, srcIdx } = collectCandidates(fromIndex, limit);
+    if (ids.length === 0) return;
 
-    if (shuffleIDs) {
-      idsToTry = [];
-      let i = fromIndex;
-      while (idsToTry.length < batchSize * 3 && i < allIDsRef.current.length) {
-        const id = allIDsRef.current[i];
-        if (!shownIDsRef.current.has(id) && !seedIDsRef.current.has(String(id))) idsToTry.push(id);
-        i++;
-      }
-      nextIndex = i;
-    } else {
-      const raw = allIDsRef.current.slice(fromIndex, fromIndex + batchSize * 2);
-      idsToTry  = seedIDsRef.current.size > 0
-        ? raw.filter(id => !seedIDsRef.current.has(String(id)))
-        : raw;
-      nextIndex = fromIndex + batchSize * 2;
-    }
-
-    if (idsToTry.length === 0) return;
-
-    batchFetchArtworks(idsToTry, batchSize, signal, { strict: strictValidation })
-      .then(raw => {
+    batchFetchArtworks(ids, batchSize, signal, { strict: strictValidation })
+      .then(({ artworks: raw, consumedCount }) => {
         if (signal.aborted) return;
+        const nextIndex = consumedCount > 0 ? srcIdx[consumedCount - 1] + 1 : fromIndex;
         prefetchRef.current = { artworks: raw.map(transformAPIToDisplay), nextIndex };
       })
       .catch(() => {}); // prefetch failure is non-fatal
-  }, [shuffleIDs, batchSize, strictValidation]);
+  }, [shuffleIDs, batchSize, strictValidation, collectCandidates]);
 
   // ── fetchBatch ────────────────────────────────────────────────────────────
   //
@@ -124,8 +131,10 @@ export function usePaginatedFetch({
     const signal = abortControllerRef.current.signal;
     const currentFetchId = ++fetchIdRef.current;
 
-    // IDs we attempt in this batch — declared here so the catch block can retry
+    // IDs we attempt in this batch + their allIDsRef positions — declared here
+    // so the catch block can retry the SAME window and derive the resume index.
     let idsToTry = [];
+    let idsSrcIdx = [];
 
     // Use smaller initial batch so first artworks appear sooner
     const targetCount = isInitial && initialBatchSize != null ? initialBatchSize : batchSize;
@@ -147,31 +156,25 @@ export function usePaginatedFetch({
         setLoadingMore(true);
       }
 
-      // Slice next batch of IDs, skipping any already shown via seed
-      if (shuffleIDs) {
-        let i = currentIndexRef.current;
-        while (idsToTry.length < targetCount * 3 && i < allIDsRef.current.length) {
-          const id = allIDsRef.current[i];
-          if (!shownIDsRef.current.has(id) && !seedIDsRef.current.has(String(id))) idsToTry.push(id);
-          i++;
-        }
-        currentIndexRef.current = i;
-      } else {
-        const start = currentIndexRef.current;
-        const raw = allIDsRef.current.slice(start, start + targetCount * 2);
-        idsToTry = seedIDsRef.current.size > 0
-          ? raw.filter(id => !seedIDsRef.current.has(String(id)))
-          : raw;
-        currentIndexRef.current = start + targetCount * 2;
-      }
+      // Collect candidate IDs WITHOUT advancing currentIndexRef — the position
+      // only moves after a successful fetch, so an error leaves this window
+      // intact for retryLoadMore to re-attempt.
+      const start = currentIndexRef.current;
+      const limit = targetCount * (shuffleIDs ? 3 : 2);
+      ({ ids: idsToTry, srcIdx: idsSrcIdx } = collectCandidates(start, limit));
 
       if (idsToTry.length === 0) {
         setHasMore(false);
         return;
       }
 
-      const rawArtworks = await batchFetchArtworks(idsToTry, targetCount, signal, { strict: strictValidation });
+      const { artworks: rawArtworks, consumedCount } =
+        await batchFetchArtworks(idsToTry, targetCount, signal, { strict: strictValidation });
       if (fetchIdRef.current !== currentFetchId) return;
+
+      // Advance past the id that produced the LAST kept artwork; over-fetched or
+      // unattempted candidates stay visitable next round.
+      currentIndexRef.current = consumedCount > 0 ? idsSrcIdx[consumedCount - 1] + 1 : start;
 
       const newArtworks = rawArtworks.map(transformAPIToDisplay);
       if (shuffleIDs) newArtworks.forEach(a => shownIDsRef.current.add(a.id));
@@ -220,8 +223,11 @@ export function usePaginatedFetch({
           return;
         }
 
-        const retryRaw = await batchFetchArtworks(idsToTry, targetCount, signal, { strict: strictValidation });
+        const { artworks: retryRaw, consumedCount: retryConsumed } =
+          await batchFetchArtworks(idsToTry, targetCount, signal, { strict: strictValidation });
         if (fetchIdRef.current !== currentFetchId) return;
+
+        currentIndexRef.current = retryConsumed > 0 ? idsSrcIdx[retryConsumed - 1] + 1 : currentIndexRef.current;
 
         const retryArtworks = retryRaw.map(transformAPIToDisplay);
         if (shuffleIDs) retryArtworks.forEach(a => shownIDsRef.current.add(a.id));
@@ -255,7 +261,7 @@ export function usePaginatedFetch({
         fetchingRef.current = false;
       }
     }
-  }, [shuffleIDs, batchSize, initialBatchSize, maxInMemory, strictValidation, startPrefetch]);
+  }, [shuffleIDs, batchSize, initialBatchSize, maxInMemory, strictValidation, startPrefetch, collectCandidates]);
 
   // ── loadMore ──────────────────────────────────────────────────────────────
 

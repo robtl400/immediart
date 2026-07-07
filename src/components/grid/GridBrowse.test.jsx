@@ -94,6 +94,30 @@ describe('GridBrowse — result count', () => {
   });
 });
 
+describe('GridBrowse — first-frame guard', () => {
+  beforeEach(() => mockNavigate.mockClear());
+
+  it('shows skeleton (not the empty state) when the context has not initialised for this route', () => {
+    // initSearch runs in an effect, so on the first frame the context still
+    // holds the PREVIOUS search — the guard must show skeletons, not a
+    // spurious "No artworks found" or a stale grid.
+    useGridBrowse.mockReturnValue(makeContext({
+      artworks: [], loading: false, searchType: 'artist', searchTerm: 'Monet',
+    }));
+    const { container } = render(<GridBrowse type="artist" />);
+    expect(container.querySelector('.empty-state')).toBeNull();
+    expect(container.querySelector('.thumbnail-grid')).toBeTruthy();
+  });
+
+  it('renders the empty state once the context matches the route term', () => {
+    useGridBrowse.mockReturnValue(makeContext({
+      artworks: [], loading: false, searchType: 'artist', searchTerm: 'Van Gogh',
+    }));
+    render(<GridBrowse type="artist" />);
+    expect(screen.getByText('No artworks found for this search.')).toBeTruthy();
+  });
+});
+
 describe('GridBrowse — empty state', () => {
   beforeEach(() => mockNavigate.mockClear());
 

@@ -51,9 +51,11 @@ describe('GridBrowseContext — ISSUE-001 regression: initSearch stability', () 
     vi.clearAllMocks();
     getCachedIDs.mockResolvedValue(ALL_IDS);
     searchByArtist.mockResolvedValue(ALL_IDS);
-    batchFetchArtworks.mockResolvedValue(
-      Array.from({ length: GRID_BATCH_SIZE }, (_, i) => makeRawArtwork(i + 1))
-    );
+    batchFetchArtworks.mockResolvedValue({
+      artworks: Array.from({ length: GRID_BATCH_SIZE }, (_, i) => makeRawArtwork(i + 1)),
+      outcomes: new Map(),
+      consumedCount: GRID_BATCH_SIZE,
+    });
   });
 
   afterEach(() => vi.useRealTimers());

@@ -52,8 +52,19 @@ const makeRawArtwork = (id) => ({
   objectDate: '',
 });
 
-const makeBatch = (count, startId = 1) =>
-  Array.from({ length: count }, (_, i) => makeRawArtwork(startId + i));
+// Faithful implementation-based mock: responds to the ACTUAL ids/targetCount the
+// hook passes, so the returned artworks use real candidate ids and consumedCount
+// never exceeds the candidate window (a static count could, producing NaN index
+// math). Models "the first `targetCount` candidates were all used".
+const batchImpl = (ids, targetCount = ids.length) => {
+  const take = Math.min(targetCount, ids.length);
+  const used = ids.slice(0, take);
+  return Promise.resolve({
+    artworks: used.map(makeRawArtwork),
+    outcomes: new Map(used.map(id => [id, 'used'])),
+    consumedCount: take,
+  });
+};
 
 /** Drain all pending timers and promises. */
 const drain = () => act(async () => { await vi.runAllTimersAsync(); });
@@ -69,7 +80,7 @@ describe('GridBrowseContext — initSearch', () => {
     getCachedIDs.mockResolvedValue(ALL_IDS); // default: cache hit, no delays
     searchByArtist.mockResolvedValue(ALL_IDS);
     searchByTag.mockResolvedValue(ALL_IDS);
-    batchFetchArtworks.mockResolvedValue(makeBatch(GRID_BATCH_SIZE));
+    batchFetchArtworks.mockImplementation(batchImpl);
   });
 
   afterEach(() => vi.useRealTimers());
@@ -114,7 +125,7 @@ describe('GridBrowseContext — initSearch', () => {
 
     // Advance timers past NAVIGATION_DELAY_MS + SEARCH_COOLDOWN_MS
     resolveSearch(ALL_IDS);
-    batchFetchArtworks.mockResolvedValue(makeBatch(GRID_BATCH_SIZE));
+    batchFetchArtworks.mockImplementation(batchImpl);
     await drain();
 
     expect(searchByArtist).toHaveBeenCalled();
@@ -180,7 +191,7 @@ describe('GridBrowseContext — loadMore guard logic', () => {
     vi.clearAllMocks();
     getCachedIDs.mockResolvedValue(ALL_IDS);
     searchByArtist.mockResolvedValue(ALL_IDS);
-    batchFetchArtworks.mockResolvedValue(makeBatch(GRID_BATCH_SIZE));
+    batchFetchArtworks.mockImplementation(batchImpl);
   });
 
   afterEach(() => vi.useRealTimers());
@@ -210,7 +221,7 @@ describe('GridBrowseContext — loadMore guard logic', () => {
   it('does nothing when fetchingRef is true', async () => {
     // initSearch batch resolves; ALL subsequent calls (startPrefetch + loadMore) hang
     batchFetchArtworks
-      .mockResolvedValueOnce(makeBatch(GRID_BATCH_SIZE)) // initSearch
+      .mockImplementationOnce(batchImpl) // initSearch
       .mockReturnValue(new Promise(() => {}));            // startPrefetch + loadMore hang
 
     const hook = await setup();
@@ -232,7 +243,7 @@ describe('GridBrowseContext — loadMore guard logic', () => {
 
   it('does nothing when loadingMore is true', async () => {
     batchFetchArtworks
-      .mockResolvedValueOnce(makeBatch(GRID_BATCH_SIZE)) // initSearch
+      .mockImplementationOnce(batchImpl) // initSearch
       .mockReturnValue(new Promise(() => {}));            // startPrefetch + first loadMore hang
 
     const hook = await setup();
@@ -270,7 +281,7 @@ describe('GridBrowseContext — prefetch merge', () => {
   afterEach(() => vi.useRealTimers());
 
   it('loadMore merges instantly without entering loading state', async () => {
-    batchFetchArtworks.mockResolvedValue(makeBatch(GRID_BATCH_SIZE));
+    batchFetchArtworks.mockImplementation(batchImpl);
 
     const { result } = renderHook(() => useGridBrowse(), { wrapper });
     act(() => { result.current.initSearch('artist', 'Rembrandt'); });
@@ -288,10 +299,9 @@ describe('GridBrowseContext — prefetch merge', () => {
   });
 
   it('merged artworks appended; hasMore updated from nextIndex', async () => {
-    batchFetchArtworks
-      .mockResolvedValueOnce(makeBatch(GRID_BATCH_SIZE, 1))   // initSearch
-      .mockResolvedValueOnce(makeBatch(GRID_BATCH_SIZE, 100)) // prefetch #1
-      .mockResolvedValue(makeBatch(GRID_BATCH_SIZE, 200));    // prefetch #2+
+    // Faithful impl: each call returns distinct artworks (real candidate ids),
+    // so no startId hack is needed to tell the batches apart.
+    batchFetchArtworks.mockImplementation(batchImpl);
 
     const { result } = renderHook(() => useGridBrowse(), { wrapper });
     act(() => { result.current.initSearch('artist', 'Rembrandt'); });
@@ -307,10 +317,7 @@ describe('GridBrowseContext — prefetch merge', () => {
   });
 
   it('startPrefetch is triggered again after merge', async () => {
-    batchFetchArtworks
-      .mockResolvedValueOnce(makeBatch(GRID_BATCH_SIZE, 1))   // initSearch
-      .mockResolvedValueOnce(makeBatch(GRID_BATCH_SIZE, 100)) // prefetch #1
-      .mockResolvedValueOnce(makeBatch(GRID_BATCH_SIZE, 200)); // prefetch #2 after merge
+    batchFetchArtworks.mockImplementation(batchImpl);
 
     const { result } = renderHook(() => useGridBrowse(), { wrapper });
     act(() => { result.current.initSearch('artist', 'Rembrandt'); });
@@ -332,7 +339,7 @@ describe('GridBrowseContext — abort', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.clearAllMocks();
-    batchFetchArtworks.mockResolvedValue(makeBatch(GRID_BATCH_SIZE));
+    batchFetchArtworks.mockImplementation(batchImpl);
   });
 
   afterEach(() => vi.useRealTimers());
@@ -388,7 +395,7 @@ describe('GridBrowseContext — initialBatchSize', () => {
     vi.clearAllMocks();
     getCachedIDs.mockResolvedValue(ALL_IDS);
     searchByArtist.mockResolvedValue(ALL_IDS);
-    batchFetchArtworks.mockResolvedValue(makeBatch(GRID_BATCH_SIZE));
+    batchFetchArtworks.mockImplementation(batchImpl);
   });
 
   afterEach(() => vi.useRealTimers());

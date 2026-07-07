@@ -73,16 +73,25 @@ export default function DiscoveryFeed() {
   // in-flow — their commits shift card positions and must refresh the
   // baseline, or the next trim would apply their shift as a spurious jump.
   const cardTopsRef = useRef(new Map());
-  useLayoutEffect(() => {
+
+  // Measure each mounted card's content-relative top (independent of scroll).
+  const measureCardTops = useCallback(() => {
     const feed = feedRef.current;
-    if (!feed) return;
+    if (!feed) return null;
     const feedTop = feed.getBoundingClientRect().top;
     const scrollTop = feed.scrollTop;
-    const cards = Array.from(feed.querySelectorAll('[data-artwork-id]'));
-    const tops = new Map(cards.map(el => [
-      el.dataset.artworkId,
-      el.getBoundingClientRect().top - feedTop + scrollTop,
-    ]));
+    return new Map(
+      Array.from(feed.querySelectorAll('[data-artwork-id]')).map(el => [
+        el.dataset.artworkId,
+        el.getBoundingClientRect().top - feedTop + scrollTop,
+      ])
+    );
+  }, []);
+
+  useLayoutEffect(() => {
+    const feed = feedRef.current;
+    const tops = measureCardTops();
+    if (!feed || !tops) return;
     const prevTops = cardTopsRef.current;
     const prevFirstId = prevTops.keys().next().value;
     const trimmed = prevFirstId !== undefined && !tops.has(prevFirstId);
@@ -97,7 +106,27 @@ export default function DiscoveryFeed() {
       }
     }
     cardTopsRef.current = tops;
-  }, [artworks, showHint, isScrolled]);
+  }, [artworks, showHint, isScrolled, measureCardTops]);
+
+  // A card's image loading flips its container height (portrait ↔ landscape)
+  // WITHOUT a parent re-render, so the layout effect above never re-runs and
+  // its baseline goes stale — a subsequent trim would then apply that height
+  // shift as a spurious jump. A ResizeObserver re-baselines (measure only, no
+  // compensation) whenever a card's box changes, keeping the anchor honest.
+  useEffect(() => {
+    const feed = feedRef.current;
+    if (!feed || typeof ResizeObserver === 'undefined') return;
+    let raf = 0;
+    const observer = new ResizeObserver(() => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        const tops = measureCardTops();
+        if (tops) cardTopsRef.current = tops;
+      });
+    });
+    feed.querySelectorAll('[data-artwork-id]').forEach(el => observer.observe(el));
+    return () => { cancelAnimationFrame(raf); observer.disconnect(); };
+  }, [artworks, measureCardTops]);
 
   // Banner scroll detection
   const handleScroll = useCallback(() => {

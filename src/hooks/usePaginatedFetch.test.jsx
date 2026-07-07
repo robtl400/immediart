@@ -42,8 +42,16 @@ const makeRaw = (id) => ({
   medium: '', culture: '', period: '', tags: [], department: '', objectDate: '',
 });
 
-const makeBatch = (count, startId = 1) =>
+const makeRawList = (count, startId = 1) =>
   Array.from({ length: count }, (_, i) => makeRaw(startId + i));
+
+// batchFetchArtworks now returns { artworks, outcomes, consumedCount }.
+// Default models "the first `count` candidates were all used" (consumedCount = count).
+const makeBatch = (count, startId = 1, consumedCount = count) => ({
+  artworks: makeRawList(count, startId),
+  outcomes: new Map(),
+  consumedCount,
+});
 
 const drain = () => act(async () => { await vi.runAllTimersAsync(); });
 
@@ -87,6 +95,68 @@ describe('usePaginatedFetch — shuffleIDs=false', () => {
     await drain();
 
     expect(result.current.artworks.length).toBeGreaterThan(firstLen);
+  });
+});
+
+// ─── resume-index derivation (per-ID outcome contract) ────────────────────────
+//
+// Regression: batchFetchArtworks over-fetches (2× the target), then discards
+// the surplus. The OLD contract advanced the index by a raw count, permanently
+// skipping the over-fetched-but-discarded and never-attempted candidates. The
+// new contract advances only past the id that produced the LAST kept artwork —
+// consumedCount — so those candidates stay visitable next round.
+
+describe('usePaginatedFetch — resume index respects consumedCount', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.clearAllMocks();
+    fetchIDs.mockResolvedValue(ALL_IDS);
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it('grid: candidates beyond consumedCount are NOT skipped on the next fetch', async () => {
+    // First batch is offered [1..8] (limit = batchSize*2) but reports only the
+    // first 2 candidates consumed. The follow-up call must resume at id 3.
+    batchFetchArtworks.mockResolvedValue({
+      artworks: makeRawList(2, 1),
+      outcomes: new Map(),
+      consumedCount: 2,
+    });
+
+    const { result } = renderHook(() =>
+      usePaginatedFetch({ shuffleIDs: false, batchSize: BATCH })
+    );
+    await act(async () => { result.current.reset(fetchIDs); });
+    await drain();
+
+    // Call 0 = initial fetch on [1..8]; call 1 = the prefetch that follows.
+    // Its first candidate must be id 3 (index 2), proving 3-8 were not skipped.
+    // The buggy raw-count advance would have jumped to id 9.
+    expect(batchFetchArtworks.mock.calls.length).toBeGreaterThanOrEqual(2);
+    expect(batchFetchArtworks.mock.calls[1][0][0]).toBe(3);
+  });
+
+  it('shuffled feed: over-fetched candidates resume; only kept ids are deduped', async () => {
+    // shuffleArray is mocked to identity, so allIDsRef === ALL_IDS = [1..50].
+    batchFetchArtworks.mockResolvedValue({
+      artworks: makeRawList(2, 1), // kept ids 1,2
+      outcomes: new Map(),
+      consumedCount: 2,
+    });
+
+    const { result } = renderHook(() =>
+      usePaginatedFetch({ shuffleIDs: true, batchSize: BATCH })
+    );
+    await act(async () => { result.current.reset(fetchIDs); });
+    await drain();
+
+    // Next candidate window starts at id 3 — candidates 3-12 offered on the
+    // first batch were not consumed, so they are re-offered rather than lost.
+    expect(batchFetchArtworks.mock.calls.length).toBeGreaterThanOrEqual(2);
+    expect(batchFetchArtworks.mock.calls[1][0][0]).toBe(3);
+    // Only the 2 kept ids entered the shown set, so id 3+ is still a candidate
+    // (if all 12 offered ids had been marked shown, call 1 would start past 12).
+    expect(batchFetchArtworks.mock.calls[1][0]).toContain(3);
   });
 });
 
@@ -204,7 +274,7 @@ describe('usePaginatedFetch — reset()', () => {
   it('clears artworks and error state on reset', async () => {
     // First load fails
     const failingFetchIDs = vi.fn(async () => { throw new Error('fail'); });
-    batchFetchArtworks.mockResolvedValue([]);
+    batchFetchArtworks.mockResolvedValue(makeBatch(0));
     const { result } = renderHook(() =>
       usePaginatedFetch({ shuffleIDs: false, batchSize: BATCH })
     );

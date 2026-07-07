@@ -44,7 +44,11 @@ export default function GridBrowse({ type }) {
   const rawTerm = type === 'artist' ? params.artistName : params.tagName;
   const searchTerm = safeDecode(rawTerm);
 
-  const { artworks, loading, loadingMore, error, hasMore, initSearch, loadMore, retryLoadMore, abort } = useGridBrowse();
+  const {
+    artworks, loading, loadingMore, error, hasMore,
+    searchType: ctxType, searchTerm: ctxTerm,
+    initSearch, loadMore, retryLoadMore, abort,
+  } = useGridBrowse();
   const { openModal } = useArtworkModal();
   const navigate = useNavigate();
   const location = useLocation();
@@ -88,8 +92,14 @@ export default function GridBrowse({ type }) {
 
   const header = <GridHeader displayTerm={displayTerm} onBack={() => navigate(-1)} />;
 
+  // initSearch runs in an effect (after paint), so the context still holds the
+  // PREVIOUS search on this render's first frame — showing either a stale grid
+  // or a spurious "No artworks found". Treat "context not yet initialised for
+  // THIS route" as loading so the skeleton covers the gap.
+  const notInitialised = ctxTerm !== searchTerm || ctxType !== type;
+
   // Loading
-  if (loading) {
+  if (loading || notInitialised) {
     return (
       <div className="grid-browse app-frame" ref={gridRef}>
         {header}

@@ -132,19 +132,27 @@ export function validateArtwork(artwork, { strict = false } = {}) {
   );
 }
 
-// Fetch single artwork (with cache + in-flight dedup via requestManager)
-export async function fetchArtworkByID(objectID, signal = null, { strict = false } = {}) {
+// Per-ID fetch outcome (used by batchFetchArtworks + /liked prune logic):
+//   'used'     — fetched (or cache-hit) and passed the caller's strictness
+//   'invalid'  — fetched but failed validation (no image, wrong medium, or a
+//                strict-mismatch like the feed reading a grid-cached print)
+//   'notFound' — definitive HTTP 404 (safe to prune a saved like)
+//   'error'    — network error / non-404 non-ok response (transient; never prune)
+// Abort and circuit-breaker-open are thrown, never reported as an outcome.
+
+// Fetch single artwork with its outcome (cache + in-flight dedup via requestManager)
+export async function fetchArtworkWithStatus(objectID, signal = null, { strict = false } = {}) {
   // 1. Cache check — re-validate on read: the cache is shared between strict (feed)
   // and non-strict (grid) callers, so a hit written by one must still pass the
   // caller's own strictness before being returned.
   const cached = await getCachedArtwork(objectID);
   if (cached) {
-    if (validateArtwork(cached, { strict })) return cached;
-    // Passes baseline but not the caller's strictness (e.g. feed reading a
-    // grid-cached print) — a correct filter, not a cache problem.
-    if (validateArtwork(cached)) return null;
-    // Fails even baseline validation: the entry is corrupt. Evict it and
-    // fall through to a fresh fetch rather than blackholing the ID forever.
+    if (validateArtwork(cached, { strict })) return { artwork: cached, status: 'used' };
+    // Passes baseline but not the caller's strictness — a correct filter, not a
+    // cache problem, and NOT a reason to prune a like (the artwork still exists).
+    if (validateArtwork(cached)) return { artwork: null, status: 'invalid' };
+    // Fails even baseline validation: the entry is corrupt. Evict it and fall
+    // through to a fresh fetch rather than blackholing the ID forever.
     await removeCachedArtwork(objectID);
   }
 
@@ -152,21 +160,40 @@ export async function fetchArtworkByID(objectID, signal = null, { strict = false
   const url = `${API_BASE_URL}/objects/${objectID}`;
   try {
     const response = await requestManager.fetchDeduped(url, signal);
-    if (!response.ok) return null;
+    if (response.status === 404) return { artwork: null, status: 'notFound' };
+    if (!response.ok) return { artwork: null, status: 'error' };
     const artwork = await response.json();
-    const result = validateArtwork(artwork, { strict }) ? artwork : null;
-    if (result) await setCachedArtwork(objectID, result);
-    return result;
+    if (validateArtwork(artwork, { strict })) {
+      await setCachedArtwork(objectID, artwork);
+      return { artwork, status: 'used' };
+    }
+    return { artwork: null, status: 'invalid' };
   } catch (error) {
     if (error.name === 'AbortError') throw error;
     if (error.message === CIRCUIT_BREAKER_OPEN) throw error;
-    return null;
+    return { artwork: null, status: 'error' };
   }
 }
 
-// Batch fetch with parallel requests — uses requestManager.maxConcurrent for dynamic sizing
+// Thin wrapper for callers that only want the artwork (e.g. deep-link resolution)
+export async function fetchArtworkByID(objectID, signal = null, opts = {}) {
+  const { artwork } = await fetchArtworkWithStatus(objectID, signal, opts);
+  return artwork;
+}
+
+// Batch fetch with parallel requests — uses requestManager.maxConcurrent for dynamic sizing.
+//
+// Returns { artworks, outcomes, consumedCount }:
+//   artworks      — up to targetCount valid artworks (in order)
+//   outcomes      — Map<objectID, status> for EVERY id attempted (lets /liked prune 404s)
+//   consumedCount — how many entries of objectIDs the caller should advance past: the
+//                   index just after the id that produced the LAST returned artwork.
+//                   Ids beyond this point were either over-fetched-and-discarded or never
+//                   attempted, so they must remain visitable — advancing by a raw count
+//                   would silently skip them (the bug this contract fixes).
 export async function batchFetchArtworks(objectIDs, targetCount = 4, signal = null, { strict = false } = {}) {
   const artworks = [];
+  const outcomeList = []; // ordered [{ id, status }], processing order === objectIDs order
   let idIndex = 0;
 
   while (artworks.length < targetCount && idIndex < objectIDs.length) {
@@ -183,17 +210,20 @@ export async function batchFetchArtworks(objectIDs, targetCount = 4, signal = nu
     const batchIDs = objectIDs.slice(idIndex, idIndex + batchSize);
     idIndex += batchSize;
 
-    // Parallel fetch — propagate AbortError, swallow everything else
+    // Parallel fetch — propagate AbortError/breaker, treat everything else as 'error'
     const results = await Promise.all(
-      batchIDs.map(id => fetchArtworkByID(id, signal, { strict }).catch(err => {
+      batchIDs.map(id => fetchArtworkWithStatus(id, signal, { strict }).catch(err => {
         if (err.name === 'AbortError') throw err;
         if (err.message === CIRCUIT_BREAKER_OPEN) throw err;
-        return null;
+        return { artwork: null, status: 'error' };
       }))
     );
     if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
 
-    artworks.push(...results.filter(Boolean));
+    for (let k = 0; k < batchIDs.length; k++) {
+      outcomeList.push({ id: batchIDs[k], status: results[k].status });
+      if (results[k].artwork) artworks.push(results[k].artwork);
+    }
 
     // Cooldown between batches — abort-aware, uses dynamic batchCooldownMs
     if (artworks.length < targetCount && idIndex < objectIDs.length) {
@@ -201,7 +231,22 @@ export async function batchFetchArtworks(objectIDs, targetCount = 4, signal = nu
     }
   }
 
-  return artworks.slice(0, targetCount);
+  // consumedCount = position just after the id that produced the LAST kept artwork.
+  const kept = Math.min(artworks.length, targetCount);
+  let usedSeen = 0;
+  let consumedCount = outcomeList.length;
+  for (let k = 0; k < outcomeList.length; k++) {
+    if (outcomeList[k].status === 'used') {
+      usedSeen++;
+      if (usedSeen === kept) { consumedCount = k + 1; break; }
+    }
+  }
+
+  return {
+    artworks: artworks.slice(0, targetCount),
+    outcomes: new Map(outcomeList.map(o => [o.id, o.status])),
+    consumedCount,
+  };
 }
 
 export { API_BASE_URL };

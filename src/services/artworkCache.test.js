@@ -296,11 +296,31 @@ describe('metAPI — batchFetchArtworks error paths', () => {
     }));
 
     const { batchFetchArtworks } = await import('./metAPI.js');
-    const results = await batchFetchArtworks([101, 1], 1);
+    const { artworks, outcomes, consumedCount } = await batchFetchArtworks([101, 1], 1);
 
     // 404 filtered out; valid artwork returned
-    expect(results).toHaveLength(1);
-    expect(results[0].objectID).toBe(1);
+    expect(artworks).toHaveLength(1);
+    expect(artworks[0].objectID).toBe(1);
+    // Per-ID outcome contract: 404 is distinguishable from a network error, and
+    // the valid one is 'used'; consumedCount covers both attempted IDs.
+    expect(outcomes.get(101)).toBe('notFound');
+    expect(outcomes.get(1)).toBe('used');
+    expect(consumedCount).toBe(2);
+
+    vi.unstubAllGlobals();
+  });
+
+  it('a 500 is reported as error, NOT notFound (never prune a like on a transient failure)', async () => {
+    vi.stubGlobal('fetch', vi.fn(() =>
+      Promise.resolve({ ok: false, status: 500, json: async () => ({}) })
+    ));
+
+    const { batchFetchArtworks } = await import('./metAPI.js');
+    const { artworks, outcomes } = await batchFetchArtworks([42], 1);
+
+    expect(artworks).toHaveLength(0);
+    expect(outcomes.get(42)).toBe('error');
+    expect(outcomes.get(42)).not.toBe('notFound');
 
     vi.unstubAllGlobals();
   });
