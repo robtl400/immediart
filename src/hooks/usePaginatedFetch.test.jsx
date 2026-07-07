@@ -478,6 +478,20 @@ describe('usePaginatedFetch — circuit breaker open error', () => {
     expect(batchFetchArtworks).toHaveBeenCalledTimes(1);
   });
 
+  it('surfaces an offline-specific message when navigator reports offline', async () => {
+    const onlineSpy = vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    batchFetchArtworks.mockRejectedValue(new Error('Circuit breaker open'));
+
+    const { result } = renderHook(() =>
+      usePaginatedFetch({ shuffleIDs: false, batchSize: BATCH })
+    );
+    await act(async () => { result.current.reset(fetchIDs); });
+    await drain();
+
+    expect(result.current.error).toBe('You appear to be offline. Reconnect and tap to retry.');
+    onlineSpy.mockRestore();
+  });
+
   // Regression: when the INITIAL fetchIDs call is what failed (e.g. a seeded
   // grid whose search hit the open breaker), retryLoadMore must re-run the
   // initial phase — fetchBatch(false) against the empty ID list would set

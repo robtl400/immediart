@@ -70,6 +70,32 @@ describe('ArtworkCard — artist click', () => {
   });
 });
 
+describe('ArtworkCard — keyboard activation', () => {
+  it('activates the artist button on Space (not just Enter)', () => {
+    const onArtistClick = vi.fn();
+    render(<ArtworkCard artwork={makeArtwork()} isLiked={false} onLike={vi.fn()} onImageClick={vi.fn()} onArtistClick={onArtistClick} />);
+    fireEvent.keyDown(screen.getByRole('button', { name: /vangogh/i }), { key: ' ' });
+    expect(onArtistClick).toHaveBeenCalledWith('Van Gogh', expect.objectContaining({ id: 1 }));
+  });
+
+  it('activates a hashtag on Enter', () => {
+    const onTagClick = vi.fn();
+    render(<ArtworkCard artwork={makeArtwork()} isLiked={false} onLike={vi.fn()} onImageClick={vi.fn()} onTagClick={onTagClick} />);
+    fireEvent.keyDown(screen.getByRole('button', { name: /#impressionism/i }), { key: 'Enter' });
+    expect(onTagClick).toHaveBeenCalledWith('impressionism', expect.objectContaining({ id: 1 }));
+  });
+
+  it('the artwork image is a keyboard-operable button that opens the modal', () => {
+    const onImageClick = vi.fn();
+    const { container } = render(<ArtworkCard artwork={makeArtwork()} isLiked={false} onLike={vi.fn()} onImageClick={onImageClick} />);
+    const img = container.querySelector('.artwork-image');
+    expect(img.getAttribute('role')).toBe('button');
+    expect(img.getAttribute('tabIndex')).toBe('0');
+    fireEvent.keyDown(img, { key: 'Enter' });
+    expect(onImageClick).toHaveBeenCalled();
+  });
+});
+
 describe('ArtworkCard — tag click', () => {
   beforeEach(() => mockNavigate.mockClear());
 

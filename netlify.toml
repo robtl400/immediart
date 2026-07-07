@@ -8,8 +8,8 @@
   status = 200
 
 # Security headers for all routes. CSP is intentionally omitted for now —
-# it needs careful allowlisting (Met API, Met images, Google Fonts) and
-# a report-only trial before enforcing.
+# it needs careful allowlisting (Met API, Met images; fonts are self-hosted)
+# and a report-only trial before enforcing.
 [[headers]]
   for = "/*"
   [headers.values]

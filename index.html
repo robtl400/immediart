@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#121212" />
     <meta name="mobile-web-app-capable" content="yes" />
+    <!-- Deprecated but still honoured by older iOS for standalone launch -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <title>ImmediArt</title>
 
@@ -15,12 +17,8 @@
     <!-- iOS home screen icon -->
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
 
-    <!-- Android/PWA manifest -->
-    <link rel="manifest" href="/manifest.json" />
-
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Allura&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- PWA manifest + service worker are injected by vite-plugin-pwa.
+         Fonts are self-hosted via @fontsource (imported in main.jsx). -->
   </head>
   <body>
     <div id="root"></div>

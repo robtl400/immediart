@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, Fragment } from 'react';
 import flyingMachineIcon from '../../assets/FlyingMachine2_tinted_gold.png';
 import { SHARE_FEEDBACK_MS } from '../../utils/constants';
+import { activateOnKey } from '../../utils/keyboard';
 
 /**
  * ArtworkCard Component
@@ -68,6 +69,10 @@ export default function ArtworkCard({ artwork, isLiked, onLike, onImageClick, on
           className="artwork-image"
           onLoad={handleImageLoad}
           onClick={onImageClick}
+          role="button"
+          tabIndex={0}
+          aria-label={`Open details for ${artwork.title}${hasArtist ? ` by ${artwork.artistName}` : ''}`}
+          onKeyDown={activateOnKey(onImageClick)}
           loading="lazy"
         />
         <div className={`image-placeholder${imageLoaded ? ' loaded' : ''}`} />
@@ -118,7 +123,7 @@ export default function ArtworkCard({ artwork, isLiked, onLike, onImageClick, on
               onFocus={() => onArtistHover?.(artwork.artistName)}
               role="button"
               tabIndex={0}
-              onKeyDown={(e) => e.key === 'Enter' && handleArtistClick()}
+              onKeyDown={activateOnKey(handleArtistClick)}
             >
               {artwork.username}
             </span>
@@ -139,7 +144,7 @@ export default function ArtworkCard({ artwork, isLiked, onLike, onImageClick, on
                 onFocus={() => onTagHover?.(tag)}
                 role="button"
                 tabIndex={0}
-                onKeyDown={(e) => e.key === 'Enter' && handleHashtagClick(tag)}
+                onKeyDown={activateOnKey(() => handleHashtagClick(tag))}
               >
                 #{tag.replace(/\s+/g, '')}
               </span>

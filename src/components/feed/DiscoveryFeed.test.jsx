@@ -20,8 +20,10 @@ vi.mock('../../hooks/useInfiniteScroll', () => ({ default: () => ({ current: nul
 vi.mock('../../context/GridBrowseContext', () => ({
   useGridBrowse: () => ({ initSearch: vi.fn() }),
 }));
+// Mutable modal-open flag so a test can simulate a modal over the feed.
+let modalOpen = false;
 vi.mock('../../context/ArtworkModalContext', () => ({
-  useArtworkModal: () => ({ openModal: vi.fn() }),
+  useArtworkModal: () => ({ openModal: vi.fn(), isOpen: modalOpen }),
 }));
 
 const mockArtwork = {
@@ -165,5 +167,45 @@ describe('DiscoveryFeed — hover prefetch debounce', () => {
     expect(searchByTag).not.toHaveBeenCalled();
     act(() => vi.advanceTimersByTime(150));
     expect(searchByTag).toHaveBeenCalledWith('impressionism');
+  });
+});
+
+describe('DiscoveryFeed — keyboard navigation', () => {
+  let localStorageMock;
+
+  beforeEach(() => {
+    localStorageMock = makeLocalStorageMock();
+    vi.stubGlobal('localStorage', localStorageMock);
+    useArtworks.mockReturnValue(makeArtworksContext());
+  });
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('l likes the current card and persists it', () => {
+    render(<DiscoveryFeed />);
+    // mount effect wrote the empty set
+    expect(localStorageMock.getItem('immediart_liked_artworks')).toBe('[]');
+    act(() => { fireEvent.keyDown(document.body, { key: 'l' }); });
+    expect(localStorageMock.getItem('immediart_liked_artworks')).toBe('[1]');
+  });
+
+  it('does not hijack keys while the user is typing in an input', () => {
+    render(<DiscoveryFeed />);
+    const input = document.createElement('input');
+    document.body.appendChild(input);
+    input.focus();
+    act(() => { fireEvent.keyDown(input, { key: 'l' }); });
+    // still the empty mount value — the like shortcut was suppressed
+    expect(localStorageMock.getItem('immediart_liked_artworks')).toBe('[]');
+    input.remove();
+  });
+
+  it('does not fire feed shortcuts while a modal is open over the feed', () => {
+    // The feed stays mounted under the modal; l must NOT toggle the hidden card.
+    modalOpen = true;
+    render(<DiscoveryFeed />);
+    act(() => { fireEvent.keyDown(document.body, { key: 'l' }); });
+    expect(localStorageMock.getItem('immediart_liked_artworks')).toBe('[]');
+    modalOpen = false;
   });
 });

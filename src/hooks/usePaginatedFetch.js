@@ -29,6 +29,14 @@ import { transformAPIToDisplay } from '../utils/transformers';
 import { delayOrAbort } from '../utils/delay';
 import { RATE_LIMIT_RECOVERY_MS } from '../utils/constants';
 
+const LOAD_ERROR = "Couldn't load more art. Tap to retry.";
+const OFFLINE_ERROR = "You appear to be offline. Reconnect and tap to retry.";
+
+// Surface an offline-specific message when the browser reports no connection,
+// so a network drop reads as "you're offline" rather than a generic failure.
+const loadError = () =>
+  (typeof navigator !== 'undefined' && navigator.onLine === false) ? OFFLINE_ERROR : LOAD_ERROR;
+
 export function usePaginatedFetch({
   shuffleIDs       = false,
   batchSize,
@@ -206,7 +214,7 @@ export function usePaginatedFetch({
       // just hit the open breaker again. Surface the retry affordance instead
       // of dying silently (the feed would otherwise stall with no error UI).
       if (err.message === CIRCUIT_BREAKER_OPEN) {
-        setError("Couldn't load more art. Tap to retry.");
+        setError(loadError());
         return;
       }
 
@@ -219,7 +227,7 @@ export function usePaginatedFetch({
 
         // Only retry if we have IDs from the batch phase (not a fetchIDs failure)
         if (idsToTry.length === 0) {
-          setError("Couldn't load more art. Tap to retry.");
+          setError(loadError());
           return;
         }
 
@@ -250,7 +258,7 @@ export function usePaginatedFetch({
 
       } catch (retryErr) {
         if (retryErr.name !== 'AbortError' && fetchIdRef.current === currentFetchId) {
-          setError("Couldn't load more art. Tap to retry.");
+          setError(loadError());
         }
       }
 

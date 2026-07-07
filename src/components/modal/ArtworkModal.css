@@ -65,7 +65,7 @@
   background: var(--color-gold-a40);
 }
 
-.modal-close-btn:focus {
+.modal-close-btn:focus-visible {
   outline: 2px solid var(--color-gold);
   outline-offset: 2px;
 }

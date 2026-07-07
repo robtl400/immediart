@@ -17,7 +17,7 @@ const HINT_STORAGE_KEY = 'immediart_hint_seen';
 
 export default function DiscoveryFeed() {
   const { artworks, loading, loadingMore, error, hasMore, loadMoreArtworks, retryLoadMore, retry, pause } = useArtworks();
-  const { openModal } = useArtworkModal();
+  const { openModal, isOpen: isModalOpen } = useArtworkModal();
   const navigate = useNavigate();
 
   const feedRef = useRef(null);
@@ -178,6 +178,86 @@ export default function DiscoveryFeed() {
   const artistHover = useMemo(() => debounce((name) => searchByArtist(name).catch(() => {}), 150), []);
   const tagHover = useMemo(() => debounce((tag) => searchByTag(tag).catch(() => {}), 150), []);
   useEffect(() => () => { artistHover.cancel(); tagHover.cancel(); }, [artistHover, tagHover]);
+
+  // Latest artworks + like handler via refs so the keyboard listener below can
+  // stay subscribed once (not re-bind on every feed update). Synced in an
+  // effect (never mutate a ref during render).
+  const artworksRef = useRef(artworks);
+  const handleLikeRef = useRef(handleLike);
+  const isModalOpenRef = useRef(isModalOpen);
+  useEffect(() => {
+    artworksRef.current = artworks;
+    handleLikeRef.current = handleLike;
+    isModalOpenRef.current = isModalOpen;
+  });
+
+  // Feed keyboard navigation: ↑/↓ or j/k move between cards, l likes the current
+  // card, Enter opens its modal, / focuses search (a no-op until search ships).
+  // Typing in an input is never hijacked (Escape excepted). "Current card" is
+  // the one nearest the top of the snap viewport.
+  useEffect(() => {
+    const onKey = (e) => {
+      // The feed stays mounted under an open modal — don't let its shortcuts
+      // (l like, j/k scroll) act on the hidden feed while the modal has focus.
+      if (isModalOpenRef.current) return;
+
+      const t = e.target;
+      if ((t?.tagName === 'INPUT' || t?.tagName === 'TEXTAREA' || t?.isContentEditable) && e.key !== 'Escape') return;
+
+      const feed = feedRef.current;
+      if (!feed) return;
+      const cards = Array.from(feed.querySelectorAll('[data-artwork-id]'));
+      if (cards.length === 0) return;
+
+      const currentIndex = () => {
+        const top = feed.scrollTop;
+        let best = 0, bestDist = Infinity;
+        cards.forEach((el, i) => {
+          const d = Math.abs(el.offsetTop - top);
+          if (d < bestDist) { bestDist = d; best = i; }
+        });
+        return best;
+      };
+
+      // JS scroll behaviour isn't governed by the CSS reduced-motion reset —
+      // honour the preference here too.
+      const behavior = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
+
+      switch (e.key) {
+        case 'ArrowDown':
+        case 'j':
+          e.preventDefault();
+          cards[Math.min(currentIndex() + 1, cards.length - 1)].scrollIntoView({ block: 'start', behavior });
+          break;
+        case 'ArrowUp':
+        case 'k':
+          e.preventDefault();
+          cards[Math.max(currentIndex() - 1, 0)].scrollIntoView({ block: 'start', behavior });
+          break;
+        case 'l':
+          e.preventDefault();
+          handleLikeRef.current(Number(cards[currentIndex()].dataset.artworkId));
+          break;
+        case 'Enter': {
+          // Only when nothing card-level is focused — a focused card element
+          // handles its own Enter, so acting here too would double-open.
+          if (e.target !== document.body) return;
+          const id = Number(cards[currentIndex()].dataset.artworkId);
+          const art = artworksRef.current.find(a => a.id === id);
+          if (art) openModal(art);
+          break;
+        }
+        case '/':
+          e.preventDefault();
+          document.querySelector('[data-search-input]')?.focus();
+          break;
+        default:
+          break;
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [openModal]);
 
   // Loading state
   if (loading) {

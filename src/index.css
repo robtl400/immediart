@@ -30,6 +30,20 @@
   box-sizing: border-box;
 }
 
+/* Respect a user's reduced-motion preference: neutralise the app's infinite
+   animations (flying-machine sweep, image sweep, skeleton shimmer, heart pop,
+   loader bounce, first-visit-hint fade) and long transitions, and disable
+   smooth programmatic scrolling. One universal reset covers every keyframe
+   site so no future animation can slip through. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 html, body {
   margin: 0;
   padding: 0;

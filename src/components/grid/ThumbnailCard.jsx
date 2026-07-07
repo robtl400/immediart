@@ -2,6 +2,8 @@
  * ThumbnailCard Component
  * Displays a single artwork thumbnail in the grid browse view
  */
+import { activateOnKey } from '../../utils/keyboard';
+
 export default function ThumbnailCard({ artwork, onClick }) {
   return (
     <div
@@ -9,7 +11,8 @@ export default function ThumbnailCard({ artwork, onClick }) {
       onClick={onClick}
       role="button"
       tabIndex={0}
-      onKeyDown={(e) => e.key === 'Enter' && onClick()}
+      aria-label={artwork.artistName ? `${artwork.title} by ${artwork.artistName}` : artwork.title}
+      onKeyDown={activateOnKey(onClick)}
     >
       <img
         src={artwork.imageUrl}
