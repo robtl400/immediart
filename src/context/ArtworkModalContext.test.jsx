@@ -1,65 +1,96 @@
 /**
  * ArtworkModalContext tests
  *
- * Covers: the close-delay race — reopening a new artwork during the
- * MODAL_CLOSE_DELAY_MS window must cancel the pending clear so the new
- * artwork isn't wiped — and the normal delayed clear on closeModal.
+ * The modal's open/closed state now lives in the URL. This context only caches
+ * the artwork it was opened with and pushes/pops the /artwork/:id route.
  *
- * Pattern: vi.useFakeTimers() — the close-clear runs on a setTimeout.
+ * Pattern: mock react-router-dom's useNavigate to a spy, keep useLocation real
+ * via a MemoryRouter so location.state (the "background" marker openModal sets)
+ * behaves like the real router. `initialEntries` seeds whether the current
+ * location was opened from a page (state.background present) or is a direct load.
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import { ArtworkModalProvider, useArtworkModal } from './ArtworkModalContext';
-import { MODAL_CLOSE_DELAY_MS } from '../utils/constants';
 
-const wrapper = ({ children }) => (
-  <ArtworkModalProvider>{children}</ArtworkModalProvider>
-);
+const navigate = vi.fn();
+
+vi.mock('react-router-dom', async (importActual) => {
+  const actual = await importActual();
+  return { ...actual, useNavigate: () => navigate };
+});
+
+// Render the provider inside a MemoryRouter seeded at `entry`. useLocation reads
+// the real router state; useNavigate is the spy above.
+function makeWrapper(entry = '/') {
+  return ({ children }) => (
+    <MemoryRouter initialEntries={[entry]}>
+      <ArtworkModalProvider>{children}</ArtworkModalProvider>
+    </MemoryRouter>
+  );
+}
 
 describe('ArtworkModalContext', () => {
-  beforeEach(() => vi.useFakeTimers());
-  afterEach(() => vi.useRealTimers());
+  beforeEach(() => navigate.mockClear());
 
-  it('openModal during the close delay cancels the pending clear (new artwork survives)', () => {
-    const a = { id: 1, title: 'A' };
-    const b = { id: 2, title: 'B' };
-    const { result } = renderHook(() => useArtworkModal(), { wrapper });
+  it('openModal navigates to /artwork/:id with the current location as state.background', () => {
+    const { result } = renderHook(() => useArtworkModal(), { wrapper: makeWrapper('/') });
 
-    act(() => result.current.openModal(a));
-    act(() => result.current.closeModal());
-    act(() => result.current.openModal(b));
+    act(() => result.current.openModal({ id: 42, title: 'A' }));
 
-    // Advance well past the close delay — the stale close timer must not
-    // wipe the newly opened artwork
-    act(() => { vi.advanceTimersByTime(MODAL_CLOSE_DELAY_MS + 100); });
-
-    expect(result.current.selectedArtwork).toBe(b);
-    expect(result.current.isOpen).toBe(true);
+    expect(navigate).toHaveBeenCalledTimes(1);
+    const [path, opts] = navigate.mock.calls[0];
+    expect(path).toBe('/artwork/42');
+    // The background marker carries the page we opened from, so closing returns
+    // to it and the page keeps rendering behind the modal.
+    expect(opts.state.background).toBeTruthy();
+    expect(opts.state.background.pathname).toBe('/');
   });
 
-  it('closeModal clears selectedArtwork only after MODAL_CLOSE_DELAY_MS', () => {
-    const a = { id: 1, title: 'A' };
-    const { result } = renderHook(() => useArtworkModal(), { wrapper });
+  it('openModal caches the artwork it was opened with', () => {
+    const { result } = renderHook(() => useArtworkModal(), { wrapper: makeWrapper('/') });
+    const artwork = { id: 7, title: 'Cached' };
 
-    act(() => result.current.openModal(a));
-    expect(result.current.isOpen).toBe(true);
-    expect(result.current.selectedArtwork).toBe(a);
+    expect(result.current.cachedArtwork).toBeNull();
+    act(() => result.current.openModal(artwork));
+    expect(result.current.cachedArtwork).toBe(artwork);
+  });
+
+  it('closeModal from a background location pops back with navigate(-1)', () => {
+    // Seed a location that carries a background marker — i.e. we arrived here by
+    // opening the modal from a page.
+    const wrapper = ({ children }) => (
+      <MemoryRouter initialEntries={[{ pathname: '/artwork/1', state: { background: { pathname: '/' } } }]}>
+        <ArtworkModalProvider>{children}</ArtworkModalProvider>
+      </MemoryRouter>
+    );
+    const { result } = renderHook(() => useArtworkModal(), { wrapper });
 
     act(() => result.current.closeModal());
 
-    // isOpen flips immediately; artwork stays for the exit animation
-    expect(result.current.isOpen).toBe(false);
-    expect(result.current.selectedArtwork).toBe(a);
+    expect(navigate).toHaveBeenCalledTimes(1);
+    expect(navigate).toHaveBeenCalledWith(-1);
+  });
 
-    act(() => { vi.advanceTimersByTime(MODAL_CLOSE_DELAY_MS); });
-    expect(result.current.selectedArtwork).toBeNull();
+  it('closeModal on a direct load (no background) replaces to the feed', () => {
+    // A shared link / direct load has no background marker — closing must not
+    // eject the visitor off-site, so it replaces to the feed.
+    const { result } = renderHook(() => useArtworkModal(), {
+      wrapper: makeWrapper('/artwork/1'),
+    });
+
+    act(() => result.current.closeModal());
+
+    expect(navigate).toHaveBeenCalledTimes(1);
+    expect(navigate).toHaveBeenCalledWith('/', { replace: true });
   });
 
   it('useArtworkModal throws when used outside the provider', () => {
     // renderHook logs the thrown error via console.error — silence it
     const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    expect(() => renderHook(() => useArtworkModal())).toThrow(
+    expect(() => renderHook(() => useArtworkModal(), { wrapper: MemoryRouter })).toThrow(
       'useArtworkModal must be used within an ArtworkModalProvider'
     );
     spy.mockRestore();

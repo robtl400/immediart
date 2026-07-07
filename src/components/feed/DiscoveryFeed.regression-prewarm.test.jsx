@@ -39,11 +39,23 @@ vi.mock('../../context/ArtworksContext', () => ({
     loading: false, loadingMore: false, error: null, hasMore: true,
     loadMoreArtworks: vi.fn(), retry: vi.fn(),
     pause: mockPause,
+    feedScrollRef: { current: 0 },
   }),
 }));
 
 vi.mock('../../context/ArtworkModalContext', () => ({
   useArtworkModal: () => ({ openModal: vi.fn() }),
+}));
+
+// DiscoveryFeed now reads likes from useLikes(); a no-op stub is enough here —
+// these tests only exercise the seed-artworks navigation, not likes.
+vi.mock('../../context/LikesContext', () => ({
+  useLikes: () => ({
+    likedIds: new Set(),
+    toggleLike: vi.fn(),
+    pruneLike: vi.fn(),
+    isLiked: () => false,
+  }),
 }));
 
 vi.mock('react-router-dom', () => ({

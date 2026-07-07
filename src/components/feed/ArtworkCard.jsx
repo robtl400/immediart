@@ -1,7 +1,7 @@
-import { useState, useRef, useEffect, Fragment } from 'react';
+import { useState, Fragment } from 'react';
 import flyingMachineIcon from '../../assets/FlyingMachine2_tinted_gold.png';
-import { SHARE_FEEDBACK_MS } from '../../utils/constants';
 import { activateOnKey } from '../../utils/keyboard';
+import { useShareArtwork } from '../../hooks/useShareArtwork';
 
 /**
  * ArtworkCard Component
@@ -12,39 +12,12 @@ import { activateOnKey } from '../../utils/keyboard';
 export default function ArtworkCard({ artwork, isLiked, onLike, onImageClick, onArtistClick, onTagClick, onArtistHover, onTagHover }) {
   const [imageLoaded, setImageLoaded] = useState(false);
   const [isLandscape, setIsLandscape] = useState(true);
-  const [shareCopied, setShareCopied] = useState(false);
+  const { copied: shareCopied, share } = useShareArtwork();
 
   const handleImageLoad = (e) => {
     const img = e.target;
     setIsLandscape(img.naturalWidth >= img.naturalHeight);
     setImageLoaded(true);
-  };
-
-  // Feed cards unmount mid-session (maxInMemory trim), so the feedback timer
-  // must be cleared on unmount; re-shares also reset rather than stack it.
-  const shareTimerRef = useRef(null);
-  useEffect(() => () => clearTimeout(shareTimerRef.current), []);
-
-  const copyLinkWithFeedback = async (url) => {
-    try {
-      await navigator.clipboard?.writeText(url);
-    } catch { /* clipboard unavailable */ }
-    setShareCopied(true);
-    clearTimeout(shareTimerRef.current);
-    shareTimerRef.current = setTimeout(() => setShareCopied(false), SHARE_FEEDBACK_MS);
-  };
-
-  const handleShare = async () => {
-    const url = `${window.location.origin}/artwork/${artwork.id}`;
-    if (navigator.share) {
-      try {
-        await navigator.share({ title: artwork.title, text: `${artwork.title} by ${artwork.artistName}`, url });
-      } catch (err) {
-        if (err.name !== 'AbortError') await copyLinkWithFeedback(url);
-      }
-    } else {
-      await copyLinkWithFeedback(url);
-    }
   };
 
   const handleArtistClick = () => {
@@ -105,7 +78,7 @@ export default function ArtworkCard({ artwork, isLiked, onLike, onImageClick, on
             <span className="btn-label">Like</span>
           </button>
 
-          <button className="action-btn share-btn" onClick={handleShare} aria-label="Share">
+          <button className="action-btn share-btn" onClick={() => share(artwork)} aria-label="Share">
             <img src={flyingMachineIcon} alt="Share" className="icon share-icon" />
             <span className="btn-label">{shareCopied ? 'Copied!' : 'Share'}</span>
           </button>

@@ -4,7 +4,7 @@
 
 /* eslint-disable react-refresh/only-export-components */
 
-import { createContext, useContext, useEffect, useCallback } from 'react';
+import { createContext, useContext, useEffect, useCallback, useRef } from 'react';
 import { fetchAllObjectIDs } from '../services/metAPI';
 import { clearCache } from '../services/artworkCache';
 import { usePaginatedFetch } from '../hooks/usePaginatedFetch';
@@ -20,6 +20,11 @@ export function ArtworksProvider({ children }) {
     maxInMemory:      MAX_ARTWORKS_IN_MEMORY,
     strictValidation: true,
   });
+
+  // Last feed scroll offset, preserved across route changes (the provider
+  // outlives the feed component) so returning from /liked, /search or a grid
+  // lands where the user left off.
+  const feedScrollRef = useRef(0);
 
   // Initialize on mount
   useEffect(() => {
@@ -54,6 +59,7 @@ export function ArtworksProvider({ children }) {
     retry,
     refresh,
     pause:          feed.pause,
+    feedScrollRef,
   };
 
   return (

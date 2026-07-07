@@ -1,42 +1,44 @@
 /**
  * Artwork Modal Context
- * Manages state for the artwork detail modal overlay
+ *
+ * The modal's open/closed state lives in the URL (a /artwork/:id route rendered
+ * over the current page — see App.jsx). This context only:
+ *   - caches the artwork object openModal() was called with, so the modal can
+ *     render instantly when opened from a card (no refetch); a direct load
+ *     fetches by id itself.
+ *   - provides navigation helpers that push/pop that route.
  */
 
 /* eslint-disable react-refresh/only-export-components */
 
-import { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
-import { MODAL_CLOSE_DELAY_MS } from '../utils/constants';
+import { createContext, useContext, useState, useCallback } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 
 const ArtworkModalContext = createContext(null);
 
 export function ArtworkModalProvider({ children }) {
-  const [selectedArtwork, setSelectedArtwork] = useState(null);
-  const [isOpen, setIsOpen] = useState(false);
-  const closeTimerRef = useRef(null);
+  const [cachedArtwork, setCachedArtwork] = useState(null);
+  const navigate = useNavigate();
+  const location = useLocation();
 
   const openModal = useCallback((artwork) => {
-    // Cancel a pending close-clear so it can't wipe the newly opened artwork
-    clearTimeout(closeTimerRef.current);
-    setSelectedArtwork(artwork);
-    setIsOpen(true);
-  }, []);
+    setCachedArtwork(artwork);
+    // Remember the page we opened from so closing returns to it (and the page
+    // routes keep rendering it behind the modal).
+    navigate(`/artwork/${artwork.id}`, { state: { background: location } });
+  }, [navigate, location]);
 
   const closeModal = useCallback(() => {
-    setIsOpen(false);
-    // Delay clearing artwork to allow for exit animation if needed
-    clearTimeout(closeTimerRef.current);
-    closeTimerRef.current = setTimeout(() => setSelectedArtwork(null), MODAL_CLOSE_DELAY_MS);
-  }, []);
+    // Opened from a page → pop back to it. Direct load / shared link (no
+    // background) → replace to the feed so we never eject the visitor off-site.
+    if (location.state?.background) {
+      navigate(-1);
+    } else {
+      navigate('/', { replace: true });
+    }
+  }, [navigate, location]);
 
-  useEffect(() => () => clearTimeout(closeTimerRef.current), []);
-
-  const value = {
-    selectedArtwork,
-    isOpen,
-    openModal,
-    closeModal
-  };
+  const value = { cachedArtwork, openModal, closeModal };
 
   return (
     <ArtworkModalContext.Provider value={value}>

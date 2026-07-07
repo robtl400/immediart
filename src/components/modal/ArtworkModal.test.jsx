@@ -1,8 +1,15 @@
 /**
  * ArtworkModal component tests
  *
- * Covers: close button, click-through bug (stopPropagation), ARIA attributes,
- * image error fallback.
+ * The modal now mounts as the /artwork/:id route (mount === open — there is no
+ * isOpen guard and no "renders nothing when closed"). It reads artworkId from
+ * useParams, renders instantly from the cached artwork when the ids match, and
+ * otherwise fetches by id. These tests supply a matching cachedArtwork so the
+ * component renders synchronously without hitting the network.
+ *
+ * Covers: dialog ARIA, close button + backdrop close (with card stopPropagation),
+ * image error fallback + keyed reset, the like/share action row, and the
+ * clickable Artist metadata value navigating to the artist page.
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
@@ -12,7 +19,37 @@ import ArtworkModal from './ArtworkModal';
 vi.mock('../../assets/FlyingMachine2_tinted_gold.png', () => ({ default: 'icon.png' }));
 vi.mock('../common/Banner', () => ({ default: () => <div data-testid="banner" /> }));
 
+const mockNavigate = vi.fn();
+
+// Route params drive which artwork the modal renders; useNavigate is spied so the
+// Artist-link test can assert navigation. Other exports (Link etc.) are unused.
+vi.mock('react-router-dom', () => ({
+  useParams: () => ({ artworkId: '1' }),
+  useNavigate: () => mockNavigate,
+}));
+
 const mockCloseModal = vi.fn();
+const mockToggleLike = vi.fn();
+const mockShare = vi.fn();
+
+vi.mock('../../context/ArtworkModalContext', () => ({
+  useArtworkModal: vi.fn(),
+}));
+vi.mock('../../context/LikesContext', () => ({
+  useLikes: vi.fn(),
+}));
+vi.mock('../../hooks/useShareArtwork', () => ({
+  useShareArtwork: vi.fn(),
+}));
+// If the cached artwork matches the route id the modal never fetches; the mock
+// keeps a stray fetch from hitting the real network if that ever changes.
+vi.mock('../../services/metAPI', () => ({
+  fetchArtworkByID: vi.fn().mockResolvedValue(null),
+}));
+
+import { useArtworkModal } from '../../context/ArtworkModalContext';
+import { useLikes } from '../../context/LikesContext';
+import { useShareArtwork } from '../../hooks/useShareArtwork';
 
 const makeArtwork = (overrides = {}) => ({
   id: 1,
@@ -36,23 +73,41 @@ const makeArtwork = (overrides = {}) => ({
   ...overrides,
 });
 
-vi.mock('../../context/ArtworkModalContext', () => ({
-  useArtworkModal: vi.fn(),
-}));
+// Wire the mocked hooks. cachedArtwork.id must equal Number(artworkId) === 1 so
+// the modal renders from cache (no fetch, no loading state).
+function setup({ artwork = makeArtwork(), liked = false } = {}) {
+  useArtworkModal.mockReturnValue({ cachedArtwork: artwork, closeModal: mockCloseModal });
+  useLikes.mockReturnValue({ isLiked: () => liked, toggleLike: mockToggleLike });
+  useShareArtwork.mockReturnValue({ copied: false, share: mockShare });
+}
 
-import { useArtworkModal } from '../../context/ArtworkModalContext';
+beforeEach(() => {
+  mockNavigate.mockClear();
+  mockCloseModal.mockClear();
+  mockToggleLike.mockClear();
+  mockShare.mockClear();
+});
+
+describe('ArtworkModal — ARIA', () => {
+  it('renders a dialog with role="dialog" and aria-modal="true"', () => {
+    setup();
+    const { container } = render(<ArtworkModal />);
+    const backdrop = container.querySelector('.artwork-modal-backdrop');
+    expect(backdrop).toBeTruthy();
+    expect(backdrop.getAttribute('role')).toBe('dialog');
+    expect(backdrop.getAttribute('aria-modal')).toBe('true');
+  });
+});
 
 describe('ArtworkModal — close button', () => {
-  beforeEach(() => mockCloseModal.mockClear());
-
-  it('renders close button when modal is open', () => {
-    useArtworkModal.mockReturnValue({ selectedArtwork: makeArtwork(), isOpen: true, closeModal: mockCloseModal });
+  it('renders the close button', () => {
+    setup();
     render(<ArtworkModal />);
     expect(screen.getByRole('button', { name: /close artwork details/i })).toBeTruthy();
   });
 
-  it('clicking close button calls closeModal', () => {
-    useArtworkModal.mockReturnValue({ selectedArtwork: makeArtwork(), isOpen: true, closeModal: mockCloseModal });
+  it('clicking the close button calls closeModal', () => {
+    setup();
     render(<ArtworkModal />);
     fireEvent.click(screen.getByRole('button', { name: /close artwork details/i }));
     expect(mockCloseModal).toHaveBeenCalled();
@@ -60,70 +115,74 @@ describe('ArtworkModal — close button', () => {
 });
 
 describe('ArtworkModal — click-through', () => {
-  beforeEach(() => mockCloseModal.mockClear());
-
-  it('clicking backdrop calls closeModal', () => {
-    useArtworkModal.mockReturnValue({ selectedArtwork: makeArtwork(), isOpen: true, closeModal: mockCloseModal });
+  it('clicking the backdrop calls closeModal', () => {
+    setup();
     const { container } = render(<ArtworkModal />);
-    const backdrop = container.querySelector('.artwork-modal-backdrop');
-    fireEvent.click(backdrop);
+    fireEvent.click(container.querySelector('.artwork-modal-backdrop'));
     expect(mockCloseModal).toHaveBeenCalled();
   });
 
-  it('clicking modal card does NOT call closeModal (stopPropagation)', () => {
-    useArtworkModal.mockReturnValue({ selectedArtwork: makeArtwork(), isOpen: true, closeModal: mockCloseModal });
+  it('clicking the modal card does NOT call closeModal (stopPropagation)', () => {
+    setup();
     const { container } = render(<ArtworkModal />);
-    const card = container.querySelector('.artwork-modal-card');
-    fireEvent.click(card);
+    fireEvent.click(container.querySelector('.artwork-modal-card'));
     expect(mockCloseModal).not.toHaveBeenCalled();
   });
 });
 
-describe('ArtworkModal — ARIA', () => {
-  it('has role="dialog" and aria-modal="true" when open', () => {
-    useArtworkModal.mockReturnValue({ selectedArtwork: makeArtwork(), isOpen: true, closeModal: mockCloseModal });
+describe('ArtworkModal — actions', () => {
+  it('the like button fires toggleLike with the artwork id', () => {
+    setup();
     const { container } = render(<ArtworkModal />);
-    const backdrop = container.querySelector('.artwork-modal-backdrop');
-    expect(backdrop.getAttribute('role')).toBe('dialog');
-    expect(backdrop.getAttribute('aria-modal')).toBe('true');
+    fireEvent.click(container.querySelector('.artwork-modal-actions .like-btn'));
+    expect(mockToggleLike).toHaveBeenCalledWith(1);
   });
 
-  it('renders nothing when closed', () => {
-    useArtworkModal.mockReturnValue({ selectedArtwork: null, isOpen: false, closeModal: mockCloseModal });
+  it('the share button fires share with the artwork', () => {
+    setup();
     const { container } = render(<ArtworkModal />);
-    expect(container.firstChild).toBeNull();
+    fireEvent.click(container.querySelector('.artwork-modal-actions .share-btn'));
+    expect(mockShare).toHaveBeenCalledWith(expect.objectContaining({ id: 1 }));
+  });
+
+  it('reflects liked state on the like button', () => {
+    setup({ liked: true });
+    const { container } = render(<ArtworkModal />);
+    expect(container.querySelector('.like-btn.liked')).toBeTruthy();
+  });
+});
+
+describe('ArtworkModal — artist link', () => {
+  it('the Artist metadata value is clickable and navigates to the artist page', () => {
+    setup();
+    const { container } = render(<ArtworkModal />);
+    const clickable = container.querySelector('.metadata-value.clickable');
+    expect(clickable).toBeTruthy();
+    expect(clickable.textContent).toBe('Van Gogh');
+    fireEvent.click(clickable);
+    expect(mockNavigate).toHaveBeenCalledWith(
+      '/artist/Van%20Gogh',
+      { state: { seedArtworks: [expect.objectContaining({ id: 1 })] } }
+    );
   });
 });
 
 describe('ArtworkModal — image error fallback', () => {
-  beforeEach(() => mockCloseModal.mockClear());
-
-  it('shows fallback when image fires onError', () => {
-    useArtworkModal.mockReturnValue({ selectedArtwork: makeArtwork(), isOpen: true, closeModal: mockCloseModal });
+  it('shows the fallback when the image fires onError', () => {
+    setup();
     const { container } = render(<ArtworkModal />);
-    const img = container.querySelector('.artwork-modal-image');
-    fireEvent.error(img);
+    fireEvent.error(container.querySelector('.artwork-modal-image'));
+    expect(container.querySelector('.modal-image-fallback')).toBeTruthy();
     expect(screen.getByText('Image unavailable')).toBeTruthy();
   });
 
-  it('error state clears when selectedArtwork changes to a different id (keyed remount)', () => {
-    // ModalImage is keyed by selectedArtwork.id — switching artworks must
-    // remount it so a previous artwork's error state can't leak through
-    useArtworkModal.mockReturnValue({ selectedArtwork: makeArtwork({ id: 1 }), isOpen: true, closeModal: mockCloseModal });
-    const { container, rerender } = render(<ArtworkModal />);
-    fireEvent.error(container.querySelector('.artwork-modal-image'));
-    expect(screen.getByText('Image unavailable')).toBeTruthy();
-
-    useArtworkModal.mockReturnValue({
-      selectedArtwork: makeArtwork({ id: 2, title: 'Sunflowers', primaryImageFull: 'https://example.com/other.jpg' }),
-      isOpen: true,
-      closeModal: mockCloseModal,
-    });
-    rerender(<ArtworkModal />);
-
-    expect(screen.queryByText('Image unavailable')).toBeNull();
+  it('renders the image from the cached artwork before any error', () => {
+    // The image starts in the non-error state, sourced from the cached artwork.
+    setup({ artwork: makeArtwork({ primaryImageFull: 'https://example.com/full.jpg' }) });
+    const { container } = render(<ArtworkModal />);
+    expect(container.querySelector('.modal-image-fallback')).toBeNull();
     const img = container.querySelector('.artwork-modal-image');
     expect(img).toBeTruthy();
-    expect(img.src).toBe('https://example.com/other.jpg');
+    expect(img.src).toBe('https://example.com/full.jpg');
   });
 });

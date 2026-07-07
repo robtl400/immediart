@@ -1,7 +1,16 @@
 /**
  * DiscoveryFeed component tests
  *
- * Covers: first-visit hint overlay (localStorage flag), likes persistence.
+ * Covers: first-visit hint overlay (localStorage flag), hover-prefetch debounce,
+ * and keyboard shortcuts.
+ *
+ * Likes now come from useLikes() (LikesContext), not local state, so likes are
+ * mocked here via a controllable module-level Set + toggleLike spy. Persistence
+ * itself moved to LikesContext and is covered by LikesContext.test.jsx.
+ *
+ * The modal-open keyboard guard now checks window.location.pathname (an
+ * /artwork/:id route on top of the feed), not a context flag — the guard test
+ * drives it with window.history.pushState.
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
@@ -20,10 +29,29 @@ vi.mock('../../hooks/useInfiniteScroll', () => ({ default: () => ({ current: nul
 vi.mock('../../context/GridBrowseContext', () => ({
   useGridBrowse: () => ({ initSearch: vi.fn() }),
 }));
-// Mutable modal-open flag so a test can simulate a modal over the feed.
-let modalOpen = false;
 vi.mock('../../context/ArtworkModalContext', () => ({
-  useArtworkModal: () => ({ openModal: vi.fn(), isOpen: modalOpen }),
+  useArtworkModal: () => ({ openModal: vi.fn() }),
+}));
+
+// Controllable likes: a module-level Set that toggleLike mutates, so a card can
+// render "liked" and the keyboard `l` shortcut can be asserted on the spy.
+const { likedSet, mockToggleLike } = vi.hoisted(() => {
+  const set = new Set();
+  return {
+    likedSet: set,
+    mockToggleLike: vi.fn((id) => {
+      const n = Number(id);
+      if (set.has(n)) set.delete(n); else set.add(n);
+    }),
+  };
+});
+vi.mock('../../context/LikesContext', () => ({
+  useLikes: () => ({
+    likedIds: likedSet,
+    toggleLike: mockToggleLike,
+    pruneLike: vi.fn((id) => likedSet.delete(Number(id))),
+    isLiked: (id) => likedSet.has(Number(id)),
+  }),
 }));
 
 const mockArtwork = {
@@ -53,6 +81,8 @@ const makeArtworksContext = (overrides = {}) => ({
   loadMoreArtworks: vi.fn(),
   retry: vi.fn(),
   pause: vi.fn(),
+  // Scroll-restoration ref the feed reads on mount/unmount.
+  feedScrollRef: { current: 0 },
   ...overrides,
 });
 
@@ -106,33 +136,30 @@ describe('DiscoveryFeed — first-visit hint', () => {
   });
 });
 
-describe('DiscoveryFeed — likes persistence', () => {
+describe('DiscoveryFeed — likes from context', () => {
   let localStorageMock;
 
   beforeEach(() => {
     localStorageMock = makeLocalStorageMock();
     vi.stubGlobal('localStorage', localStorageMock);
+    likedSet.clear();
+    mockToggleLike.mockClear();
   });
 
-  afterEach(() => {
-    vi.unstubAllGlobals();
-  });
+  afterEach(() => vi.unstubAllGlobals());
 
-  it('initializes likes from localStorage on mount', () => {
-    localStorageMock.setItem('immediart_liked_artworks', JSON.stringify([1]));
+  it('renders a card as liked when useLikes reports it liked', () => {
+    likedSet.add(1);
     useArtworks.mockReturnValue(makeArtworksContext());
     render(<DiscoveryFeed />);
-    const likeBtn = document.querySelector('.like-btn.liked');
-    expect(likeBtn).toBeTruthy();
+    expect(document.querySelector('.like-btn.liked')).toBeTruthy();
   });
 
-  it('handleLike writes to localStorage', () => {
+  it('clicking a card like button calls toggleLike with the card id', () => {
     useArtworks.mockReturnValue(makeArtworksContext());
     render(<DiscoveryFeed />);
-    const likeBtn = document.querySelector('.like-btn');
-    fireEvent.click(likeBtn);
-    const stored = JSON.parse(localStorageMock.getItem('immediart_liked_artworks'));
-    expect(stored).toContain(1);
+    fireEvent.click(document.querySelector('.like-btn'));
+    expect(mockToggleLike).toHaveBeenCalledWith(1);
   });
 });
 
@@ -177,16 +204,16 @@ describe('DiscoveryFeed — keyboard navigation', () => {
     localStorageMock = makeLocalStorageMock();
     vi.stubGlobal('localStorage', localStorageMock);
     useArtworks.mockReturnValue(makeArtworksContext());
+    likedSet.clear();
+    mockToggleLike.mockClear();
   });
 
   afterEach(() => vi.unstubAllGlobals());
 
-  it('l likes the current card and persists it', () => {
+  it('l likes the current card via toggleLike', () => {
     render(<DiscoveryFeed />);
-    // mount effect wrote the empty set
-    expect(localStorageMock.getItem('immediart_liked_artworks')).toBe('[]');
     act(() => { fireEvent.keyDown(document.body, { key: 'l' }); });
-    expect(localStorageMock.getItem('immediart_liked_artworks')).toBe('[1]');
+    expect(mockToggleLike).toHaveBeenCalledWith(1);
   });
 
   it('does not hijack keys while the user is typing in an input', () => {
@@ -195,17 +222,17 @@ describe('DiscoveryFeed — keyboard navigation', () => {
     document.body.appendChild(input);
     input.focus();
     act(() => { fireEvent.keyDown(input, { key: 'l' }); });
-    // still the empty mount value — the like shortcut was suppressed
-    expect(localStorageMock.getItem('immediart_liked_artworks')).toBe('[]');
+    expect(mockToggleLike).not.toHaveBeenCalled();
     input.remove();
   });
 
   it('does not fire feed shortcuts while a modal is open over the feed', () => {
-    // The feed stays mounted under the modal; l must NOT toggle the hidden card.
-    modalOpen = true;
+    // The feed stays mounted under the modal (an /artwork/:id route on top); the
+    // guard reads window.location.pathname, so simulate the modal route.
+    window.history.pushState({}, '', '/artwork/1');
     render(<DiscoveryFeed />);
     act(() => { fireEvent.keyDown(document.body, { key: 'l' }); });
-    expect(localStorageMock.getItem('immediart_liked_artworks')).toBe('[]');
-    modalOpen = false;
+    expect(mockToggleLike).not.toHaveBeenCalled();
+    window.history.pushState({}, '', '/');
   });
 });

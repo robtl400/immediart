@@ -4,6 +4,7 @@ import flyingMachineIcon from '../../assets/FlyingMachine2_tinted_gold.png';
 import './DiscoveryFeed.css';
 import { useArtworks } from '../../context/ArtworksContext';
 import { useArtworkModal } from '../../context/ArtworkModalContext';
+import { useLikes } from '../../context/LikesContext';
 import LoadingSpinner, { InlineLoader } from '../common/LoadingSpinner';
 import Banner from '../common/Banner';
 import ArtworkCard from './ArtworkCard';
@@ -12,25 +13,28 @@ import { FEED_ROOT_MARGIN, BANNER_SCROLL_THRESHOLD } from '../../utils/constants
 import { searchByArtist, searchByTag } from '../../services/metAPI';
 import { debounce } from '../../utils/delay';
 
-const LIKES_STORAGE_KEY = 'immediart_liked_artworks';
 const HINT_STORAGE_KEY = 'immediart_hint_seen';
 
 export default function DiscoveryFeed() {
-  const { artworks, loading, loadingMore, error, hasMore, loadMoreArtworks, retryLoadMore, retry, pause } = useArtworks();
-  const { openModal, isOpen: isModalOpen } = useArtworkModal();
+  const { artworks, loading, loadingMore, error, hasMore, loadMoreArtworks, retryLoadMore, retry, pause, feedScrollRef } = useArtworks();
+  const { openModal } = useArtworkModal();
+  const { isLiked, toggleLike } = useLikes();
   const navigate = useNavigate();
 
   const feedRef = useRef(null);
-
-  const [likedArtworks, setLikedArtworks] = useState(() => {
-    try {
-      const stored = localStorage.getItem(LIKES_STORAGE_KEY);
-      return stored ? new Set(JSON.parse(stored)) : new Set();
-    } catch {
-      return new Set();
-    }
-  });
   const [isScrolled, setIsScrolled] = useState(false);
+
+  // Scroll restoration: the scroll handler below keeps feedScrollRef current, so
+  // navigating to /liked, /search or a grid (which unmounts the feed) leaves the
+  // last offset in the ref. Restore it on the next mount. Modal trips keep the
+  // feed mounted (background route), so they preserve scroll for free.
+  useLayoutEffect(() => {
+    if (feedRef.current && feedScrollRef.current) {
+      feedRef.current.scrollTop = feedScrollRef.current;
+    }
+    // Restore once per mount after the persisted artworks have rendered.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const [showHint, setShowHint] = useState(() => {
     try {
@@ -128,12 +132,15 @@ export default function DiscoveryFeed() {
     return () => { cancelAnimationFrame(raf); observer.disconnect(); };
   }, [artworks, measureCardTops]);
 
-  // Banner scroll detection
+  // Banner scroll detection + scroll-restoration bookkeeping (keep the offset
+  // current so it survives the feed unmounting on navigation).
   const handleScroll = useCallback(() => {
-    if (feedRef.current) {
-      setIsScrolled(feedRef.current.scrollTop > BANNER_SCROLL_THRESHOLD);
+    const feed = feedRef.current;
+    if (feed) {
+      setIsScrolled(feed.scrollTop > BANNER_SCROLL_THRESHOLD);
+      feedScrollRef.current = feed.scrollTop;
     }
-  }, []);
+  }, [feedScrollRef]);
 
   useEffect(() => {
     const el = feedRef.current;
@@ -142,23 +149,6 @@ export default function DiscoveryFeed() {
       return () => el.removeEventListener('scroll', handleScroll);
     }
   }, [handleScroll]);
-
-  // Like toggle — persistence lives in an effect so the state updater stays
-  // pure (StrictMode double-invokes updaters)
-  const handleLike = (id) => {
-    setLikedArtworks(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(LIKES_STORAGE_KEY, JSON.stringify([...likedArtworks]));
-    } catch { /* ignore quota errors */ }
-  }, [likedArtworks]);
 
   const handleArtistClick = useCallback((artistName, artwork) => {
     pause();
@@ -179,17 +169,11 @@ export default function DiscoveryFeed() {
   const tagHover = useMemo(() => debounce((tag) => searchByTag(tag).catch(() => {}), 150), []);
   useEffect(() => () => { artistHover.cancel(); tagHover.cancel(); }, [artistHover, tagHover]);
 
-  // Latest artworks + like handler via refs so the keyboard listener below can
-  // stay subscribed once (not re-bind on every feed update). Synced in an
-  // effect (never mutate a ref during render).
+  // Latest artworks via a ref so the keyboard listener below can stay subscribed
+  // once (not re-bind on every feed update). Synced in an effect (never mutate
+  // a ref during render).
   const artworksRef = useRef(artworks);
-  const handleLikeRef = useRef(handleLike);
-  const isModalOpenRef = useRef(isModalOpen);
-  useEffect(() => {
-    artworksRef.current = artworks;
-    handleLikeRef.current = handleLike;
-    isModalOpenRef.current = isModalOpen;
-  });
+  useEffect(() => { artworksRef.current = artworks; });
 
   // Feed keyboard navigation: ↑/↓ or j/k move between cards, l likes the current
   // card, Enter opens its modal, / focuses search (a no-op until search ships).
@@ -197,9 +181,9 @@ export default function DiscoveryFeed() {
   // the one nearest the top of the snap viewport.
   useEffect(() => {
     const onKey = (e) => {
-      // The feed stays mounted under an open modal — don't let its shortcuts
-      // (l like, j/k scroll) act on the hidden feed while the modal has focus.
-      if (isModalOpenRef.current) return;
+      // The feed stays mounted under an open modal (a /artwork/:id route on top)
+      // — don't let its shortcuts act on the hidden feed while the modal is up.
+      if (window.location.pathname.startsWith('/artwork/')) return;
 
       const t = e.target;
       if ((t?.tagName === 'INPUT' || t?.tagName === 'TEXTAREA' || t?.isContentEditable) && e.key !== 'Escape') return;
@@ -236,7 +220,7 @@ export default function DiscoveryFeed() {
           break;
         case 'l':
           e.preventDefault();
-          handleLikeRef.current(Number(cards[currentIndex()].dataset.artworkId));
+          toggleLike(Number(cards[currentIndex()].dataset.artworkId));
           break;
         case 'Enter': {
           // Only when nothing card-level is focused — a focused card element
@@ -257,7 +241,7 @@ export default function DiscoveryFeed() {
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [openModal]);
+  }, [openModal, toggleLike]);
 
   // Loading state
   if (loading) {
@@ -299,8 +283,8 @@ export default function DiscoveryFeed() {
         <ArtworkCard
           key={artwork.id}
           artwork={artwork}
-          isLiked={likedArtworks.has(artwork.id)}
-          onLike={() => handleLike(artwork.id)}
+          isLiked={isLiked(artwork.id)}
+          onLike={() => toggleLike(artwork.id)}
           onImageClick={() => openModal(artwork)}
           onArtistClick={handleArtistClick}
           onTagClick={handleTagClick}

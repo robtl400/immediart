@@ -72,6 +72,25 @@
   grid-template-columns: repeat(2, 1fr);
 }
 
+/* Liked-grid tile wrapper — dims in place when unliked this session */
+.liked-tile {
+  position: relative;
+}
+
+.liked-tile--dimmed .thumbnail-card {
+  opacity: 0.35;
+}
+
+.liked-tile-badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  font-size: 20px;
+  color: var(--color-gold);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+  pointer-events: none;
+}
+
 /* Thumbnail Card */
 .thumbnail-card {
   aspect-ratio: 1;

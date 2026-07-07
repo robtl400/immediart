@@ -112,10 +112,10 @@ export function usePaginatedFetch({
     if (ids.length === 0) return;
 
     batchFetchArtworks(ids, batchSize, signal, { strict: strictValidation })
-      .then(({ artworks: raw, consumedCount }) => {
+      .then(({ artworks: raw, outcomes, consumedCount }) => {
         if (signal.aborted) return;
         const nextIndex = consumedCount > 0 ? srcIdx[consumedCount - 1] + 1 : fromIndex;
-        prefetchRef.current = { artworks: raw.map(transformAPIToDisplay), nextIndex };
+        prefetchRef.current = { artworks: raw.map(transformAPIToDisplay), nextIndex, outcomes };
       })
       .catch(() => {}); // prefetch failure is non-fatal
   }, [shuffleIDs, batchSize, strictValidation, collectCandidates]);
@@ -176,7 +176,7 @@ export function usePaginatedFetch({
         return;
       }
 
-      const { artworks: rawArtworks, consumedCount } =
+      const { artworks: rawArtworks, outcomes, consumedCount } =
         await batchFetchArtworks(idsToTry, targetCount, signal, { strict: strictValidation });
       if (fetchIdRef.current !== currentFetchId) return;
 
@@ -197,7 +197,7 @@ export function usePaginatedFetch({
       setError(null);
 
       if (onBatchReadyRef.current) {
-        try { await onBatchReadyRef.current(newArtworks, signal); }
+        try { await onBatchReadyRef.current(newArtworks, signal, outcomes); }
         catch (e) { console.warn('[ImmediArt] onBatchReady error:', e.message); }
       }
 
@@ -231,7 +231,7 @@ export function usePaginatedFetch({
           return;
         }
 
-        const { artworks: retryRaw, consumedCount: retryConsumed } =
+        const { artworks: retryRaw, outcomes: retryOutcomes, consumedCount: retryConsumed } =
           await batchFetchArtworks(idsToTry, targetCount, signal, { strict: strictValidation });
         if (fetchIdRef.current !== currentFetchId) return;
 
@@ -250,7 +250,7 @@ export function usePaginatedFetch({
         setError(null);
 
         if (onBatchReadyRef.current) {
-          try { await onBatchReadyRef.current(retryArtworks, signal); }
+          try { await onBatchReadyRef.current(retryArtworks, signal, retryOutcomes); }
           catch (e) { console.warn('[ImmediArt] onBatchReady error:', e.message); }
         }
 
@@ -281,7 +281,7 @@ export function usePaginatedFetch({
 
     // Instant merge from prefetch if ready
     if (prefetchRef.current) {
-      const { artworks: prefetched, nextIndex } = prefetchRef.current;
+      const { artworks: prefetched, nextIndex, outcomes } = prefetchRef.current;
       prefetchRef.current = null;
       if (shuffleIDs) prefetched.forEach(a => shownIDsRef.current.add(a.id));
       currentIndexRef.current = nextIndex;
@@ -294,9 +294,9 @@ export function usePaginatedFetch({
       setHasMore(nextIndex < allIDsRef.current.length);
 
       // Prefetch-merged batches get the same onBatchReady treatment as
-      // fetched ones (e.g. the grid's image warm-up) — fire and forget.
+      // fetched ones (e.g. the grid's image warm-up, /liked's 404 prune).
       if (onBatchReadyRef.current) {
-        Promise.resolve(onBatchReadyRef.current(prefetched, undefined))
+        Promise.resolve(onBatchReadyRef.current(prefetched, undefined, outcomes))
           .catch(e => console.warn('[ImmediArt] onBatchReady error:', e.message));
       }
 

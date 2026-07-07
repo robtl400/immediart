@@ -1,11 +1,17 @@
 import { useEffect, useCallback, useRef, useState } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import { useArtworkModal } from '../../context/ArtworkModalContext';
+import { useLikes } from '../../context/LikesContext';
+import { useShareArtwork } from '../../hooks/useShareArtwork';
+import { fetchArtworkByID } from '../../services/metAPI';
+import { transformAPIToDisplay } from '../../utils/transformers';
+import { activateOnKey } from '../../utils/keyboard';
 import Banner from '../common/Banner';
+import LoadingSpinner from '../common/LoadingSpinner';
 import flyingMachineIcon from '../../assets/FlyingMachine2_tinted_gold.png';
 import './ArtworkModal.css';
 
-// Keyed per artwork by the parent, so load/error state resets naturally when
-// the artwork changes — no effect-driven state reset needed.
+// Keyed per artwork by the parent, so load/error state resets on artwork change.
 function ModalImage({ artwork }) {
   const [imageError, setImageError] = useState(false);
   const [imageLoaded, setImageLoaded] = useState(false);
@@ -26,9 +32,7 @@ function ModalImage({ artwork }) {
       </div>
       <img
         src={artwork.primaryImageFull || artwork.imageUrl}
-        alt={artwork.artistName
-          ? `${artwork.title} by ${artwork.artistName}`
-          : artwork.title}
+        alt={artwork.artistName ? `${artwork.title} by ${artwork.artistName}` : artwork.title}
         className="artwork-modal-image"
         onLoad={() => setImageLoaded(true)}
         onError={() => setImageError(true)}
@@ -38,112 +42,173 @@ function ModalImage({ artwork }) {
 }
 
 export default function ArtworkModal() {
-  const { selectedArtwork, isOpen, closeModal } = useArtworkModal();
+  const { artworkId } = useParams();
+  const id = Number(artworkId);
+  const { cachedArtwork, closeModal } = useArtworkModal();
+  const { isLiked, toggleLike } = useLikes();
+  const { copied, share } = useShareArtwork();
+  const navigate = useNavigate();
   const modalRef = useRef(null);
 
-  // Handle ESC key and Tab trapping
+  // Render instantly from cache when opened from a card; a direct load / shared
+  // link fetches by id.
+  const [artwork, setArtwork] = useState(() => (cachedArtwork?.id === id ? cachedArtwork : null));
+  const [loadError, setLoadError] = useState(false);
+
+  useEffect(() => {
+    if (cachedArtwork?.id === id) { setArtwork(cachedArtwork); setLoadError(false); return; }
+    setLoadError(false);
+    const controller = new AbortController();
+    fetchArtworkByID(id, controller.signal)
+      .then(api => { if (!api) setLoadError(true); else setArtwork(transformAPIToDisplay(api)); })
+      .catch(err => { if (err.name !== 'AbortError') setLoadError(true); });
+    return () => controller.abort();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
+
+  // Escape closes; Tab is trapped inside the dialog.
   const handleKeyDown = useCallback((e) => {
-    if (e.key === 'Escape') {
-      closeModal();
-      return;
-    }
-    // Trap Tab focus inside modal
+    if (e.key === 'Escape') { closeModal(); return; }
     if (e.key === 'Tab' && modalRef.current) {
       const focusable = modalRef.current.querySelectorAll(
         'button, [href], input, [tabIndex]:not([tabIndex="-1"])'
       );
       const first = focusable[0];
       const last = focusable[focusable.length - 1];
-      if (e.shiftKey) {
-        if (document.activeElement === first) {
-          e.preventDefault();
-          last?.focus();
-        }
-      } else {
-        if (document.activeElement === last) {
-          e.preventDefault();
-          first?.focus();
-        }
-      }
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last?.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first?.focus(); }
     }
   }, [closeModal]);
 
-  // Add/remove keydown listener and manage focus
+  // Lock body scroll, trap keys, and restore focus to the opener on close
+  // (a direct load has no opener, so focus falls to the modal itself).
   useEffect(() => {
-    if (isOpen) {
-      document.addEventListener('keydown', handleKeyDown);
-      document.body.style.overflow = 'hidden';
-      // Move focus into modal
-      const firstFocusable = modalRef.current?.querySelector(
-        'button, [href], input, [tabIndex]:not([tabIndex="-1"])'
-      );
-      firstFocusable?.focus();
-    }
+    const opener = document.activeElement;
+    document.addEventListener('keydown', handleKeyDown);
+    document.body.style.overflow = 'hidden';
+    const firstFocusable = modalRef.current?.querySelector(
+      'button, [href], input, [tabIndex]:not([tabIndex="-1"])'
+    );
+    firstFocusable?.focus();
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
       document.body.style.overflow = '';
+      if (opener instanceof HTMLElement && document.contains(opener)) opener.focus();
     };
-  }, [isOpen, handleKeyDown]);
+  }, [handleKeyDown]);
 
-  if (!isOpen || !selectedArtwork) {
-    return null;
+  const backdropProps = {
+    className: 'artwork-modal-backdrop',
+    onClick: closeModal,
+    role: 'dialog',
+    'aria-modal': 'true',
+    'aria-label': 'Artwork details',
+    ref: modalRef,
+  };
+
+  if (loadError) {
+    return (
+      <div {...backdropProps}>
+        <div className="artwork-modal-container">
+          <Banner isScrolled={true} showActions={false} interactive={false} />
+          <div className="artwork-modal-card" onClick={e => e.stopPropagation()}>
+            <button className="modal-close-btn" onClick={closeModal} aria-label="Close artwork details">‹</button>
+            <div className="modal-image-fallback">
+              <img src={flyingMachineIcon} alt="" className="modal-image-fallback-icon" />
+              <p className="modal-image-fallback-text">Artwork not found</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
   }
 
-  // Build location string from available parts
-  const locationParts = [
-    selectedArtwork.city,
-    selectedArtwork.state,
-    selectedArtwork.country
-  ].filter(Boolean);
-  const location = locationParts.join(', ');
+  if (!artwork) {
+    return (
+      <div {...backdropProps}>
+        <div className="artwork-modal-container">
+          <Banner isScrolled={true} showActions={false} interactive={false} />
+          <div className="artwork-modal-card" onClick={e => e.stopPropagation()}>
+            <button className="modal-close-btn" onClick={closeModal} aria-label="Close artwork details">‹</button>
+            <LoadingSpinner />
+          </div>
+        </div>
+      </div>
+    );
+  }
 
-  // Build metadata lines
+  const locationParts = [artwork.city, artwork.state, artwork.country].filter(Boolean);
+  const locationStr = locationParts.join(', ');
+  const hasArtist = Boolean(artwork.artistName);
+  const liked = isLiked(artwork.id);
+
+  const goToArtist = () => {
+    if (!hasArtist) return;
+    // Navigating away from /artwork/:id unmounts the modal — no explicit close.
+    navigate(`/artist/${encodeURIComponent(artwork.artistName)}`, { state: { seedArtworks: [artwork] } });
+  };
+
   const metadataLines = [
-    { label: 'Title', value: selectedArtwork.title },
-    { label: 'Artist', value: selectedArtwork.artistName },
-    { label: 'Date', value: selectedArtwork.date },
-    { label: 'Medium', value: selectedArtwork.medium },
-    { label: 'Dimensions', value: selectedArtwork.dimensions },
-    { label: 'Culture', value: selectedArtwork.culture },
-    { label: 'Period', value: selectedArtwork.period },
-    { label: 'Dynasty', value: selectedArtwork.dynasty },
-    { label: 'Portfolio', value: selectedArtwork.portfolio },
-    { label: 'Location', value: location },
-    { label: 'Department', value: selectedArtwork.department },
-    { label: 'Gallery', value: selectedArtwork.gallery ? `Gallery ${selectedArtwork.gallery}` : null },
-    { label: 'Credit', value: selectedArtwork.creditLine },
-  ].filter(item => item.value); // Only show fields with values
+    { label: 'Title', value: artwork.title },
+    { label: 'Artist', value: artwork.artistName, artist: true },
+    { label: 'Date', value: artwork.date },
+    { label: 'Medium', value: artwork.medium },
+    { label: 'Dimensions', value: artwork.dimensions },
+    { label: 'Culture', value: artwork.culture },
+    { label: 'Period', value: artwork.period },
+    { label: 'Dynasty', value: artwork.dynasty },
+    { label: 'Portfolio', value: artwork.portfolio },
+    { label: 'Location', value: locationStr },
+    { label: 'Department', value: artwork.department },
+    { label: 'Gallery', value: artwork.gallery ? `Gallery ${artwork.gallery}` : null },
+    { label: 'Credit', value: artwork.creditLine },
+  ].filter(item => item.value);
 
   return (
-    <div
-      className="artwork-modal-backdrop"
-      onClick={closeModal}
-      role="dialog"
-      aria-modal="true"
-      aria-label="Artwork details"
-      ref={modalRef}
-    >
+    <div {...backdropProps}>
       <div className="artwork-modal-container">
-        <Banner isScrolled={true} />
+        <Banner isScrolled={true} showActions={false} interactive={false} />
 
         <div className="artwork-modal-card" onClick={e => e.stopPropagation()}>
-          <button
-            className="modal-close-btn"
-            onClick={closeModal}
-            aria-label="Close artwork details"
-          >
-            ‹
-          </button>
+          <button className="modal-close-btn" onClick={closeModal} aria-label="Close artwork details">‹</button>
           <div className="artwork-modal-content">
             <div className="artwork-modal-image-container">
-              <ModalImage key={selectedArtwork.id} artwork={selectedArtwork} />
+              <ModalImage key={artwork.id} artwork={artwork} />
+            </div>
+
+            {/* Action row — mirrors the feed card's image → actions → text rhythm */}
+            <div className="artwork-modal-actions">
+              <button
+                className={`action-btn like-btn ${liked ? 'liked' : ''}`}
+                onClick={() => toggleLike(artwork.id)}
+                aria-label={liked ? 'Unlike' : 'Like'}
+              >
+                <span className="icon heart-icon">{liked ? '♥' : '♡'}</span>
+                <span className="btn-label">Like</span>
+              </button>
+              <button className="action-btn share-btn" onClick={() => share(artwork)} aria-label="Share">
+                <img src={flyingMachineIcon} alt="" className="icon share-icon" />
+                <span className="btn-label">{copied ? 'Copied!' : 'Share'}</span>
+              </button>
             </div>
 
             <div className="artwork-modal-metadata">
               {metadataLines.map((item, index) => (
                 <div key={index} className="metadata-line">
                   <span className="metadata-label">{item.label}:</span>
-                  <span className="metadata-value">{item.value}</span>
+                  {item.artist && hasArtist ? (
+                    <span
+                      className="metadata-value clickable"
+                      onClick={goToArtist}
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={activateOnKey(goToArtist)}
+                    >
+                      {item.value}
+                    </span>
+                  ) : (
+                    <span className="metadata-value">{item.value}</span>
+                  )}
                 </div>
               ))}
             </div>

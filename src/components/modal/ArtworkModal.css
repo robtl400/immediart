@@ -158,10 +158,32 @@
 }
 
 /* Metadata section - dark grey background */
+/* Action row — between image and metadata, mirroring the feed card's rhythm */
+.artwork-modal-actions {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  padding: 8px 20px;
+  background-color: var(--color-modal);
+  flex-shrink: 0;
+}
+
 .artwork-modal-metadata {
   flex-shrink: 0;
   padding: 20px;
   background-color: var(--color-modal);
+}
+
+/* The Artist metadata value doubles as a link to that artist's grid */
+.metadata-value.clickable {
+  color: var(--color-gold);
+  cursor: pointer;
+  transition: opacity 0.2s ease;
+}
+
+.metadata-value.clickable:hover,
+.metadata-value.clickable:focus-visible {
+  opacity: 0.8;
 }
 
 .metadata-line {
