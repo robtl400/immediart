@@ -12,7 +12,7 @@
 /* Search Heading */
 .search-heading {
   position: relative;
-  padding: 10px 15px 14px;
+  padding: 10px var(--feed-gutter) 14px;
   background-color: var(--color-bg);
   display: flex;
   align-items: center;
@@ -37,7 +37,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background-color 0.2s ease;
+  transition: background-color var(--dur-base) ease;
 }
 
 .grid-back-btn:hover,
@@ -52,7 +52,7 @@
 
 .search-term {
   color: var(--color-gold);
-  font-family: 'Allura', cursive;
+  font-family: var(--font-display);
   font-size: 2.25rem;
   font-weight: 400;
   margin: 0;
@@ -64,8 +64,8 @@
    than the decorative script, and constrained so a long query stays on one
    readable line between the back button and the edge. */
 .search-term--query {
-  font-family: 'Outfit', sans-serif;
-  font-size: 1.25rem;
+  font-family: var(--font-sans);
+  font-size: var(--text-lg);
   font-weight: 600;
   letter-spacing: 0;
   max-width: calc(100% - 100px);
@@ -97,9 +97,9 @@
 
 .liked-tile-badge {
   position: absolute;
-  top: 8px;
-  right: 8px;
-  font-size: 20px;
+  top: var(--space-2);
+  right: var(--space-2);
+  font-size: var(--text-lg);
   color: var(--color-gold);
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
   pointer-events: none;
@@ -112,7 +112,7 @@
   cursor: pointer;
   position: relative;
   background-color: var(--color-surface);
-  transition: opacity 0.2s ease;
+  transition: opacity var(--dur-base) ease;
 }
 
 .thumbnail-card:hover {
@@ -143,7 +143,7 @@
   align-items: center;
   justify-content: center;
   min-height: 50vh;
-  padding: 20px;
+  padding: var(--space-5);
   text-align: center;
 }
 
@@ -151,25 +151,25 @@
   width: 64px;
   height: 64px;
   opacity: 0.7;
-  margin-bottom: 16px;
+  margin-bottom: var(--space-4);
 }
 
 .empty-state-message {
   color: var(--color-text-muted);
-  font-size: 15px;
-  margin: 0 0 20px 0;
+  font-size: var(--text-base);
+  margin: 0 0 var(--space-5) 0;
 }
 
 .empty-state-cta {
   background: none;
   border: 1px solid var(--color-gold);
   color: var(--color-gold);
-  padding: 10px 20px;
-  border-radius: 8px;
-  font-size: 14px;
+  padding: 10px var(--space-5);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
   font-weight: 500;
   cursor: pointer;
-  transition: background-color 0.2s ease, color 0.2s ease;
+  transition: background-color var(--dur-base) ease, color var(--dur-base) ease;
 }
 
 .empty-state-cta:hover {
@@ -183,7 +183,7 @@
 
 /* End message — base styles shared in App.css; grid is more compact */
 .grid-browse .end-message {
-  padding: 20px;
+  padding: var(--space-5);
 }
 
 .grid-browse .end-message p {
@@ -194,7 +194,7 @@
 
 /* Artist Profile Header */
 .artist-profile-header {
-  padding: 16px 15px 12px;
+  padding: var(--space-4) var(--feed-gutter) var(--space-3);
   border-bottom: 1px solid var(--color-gold-muted-a20);
   min-height: 60px;
 }
@@ -202,30 +202,30 @@
 .profile-identity {
   display: flex;
   align-items: center;
-  gap: 4px;
-  margin-bottom: 4px;
+  gap: var(--space-1);
+  margin-bottom: var(--space-1);
 }
 
 .profile-username {
   color: var(--color-text);
   font-weight: 700;
-  font-size: 15px;
+  font-size: var(--text-base);
 }
 
 .profile-verified {
-  font-size: 10px;
+  font-size: var(--text-2xs);
   color: var(--color-gold);
   vertical-align: middle;
 }
 
 .profile-display-name {
   color: var(--color-gold-muted);
-  font-size: 15px;
-  margin: 0 0 4px 0;
+  font-size: var(--text-base);
+  margin: 0 0 var(--space-1) 0;
 }
 
 .profile-bio {
-  font-size: 14px;
+  font-size: var(--text-sm);
   color: var(--color-text-body);
   font-style: italic;
   margin: 0 0 6px 0;
@@ -238,7 +238,7 @@
 
 .profile-link-in-bio {
   display: inline-block;
-  font-size: 12px;
+  font-size: var(--text-xs);
   color: var(--color-gold);
   text-decoration: underline;
   margin-bottom: 10px;
@@ -246,14 +246,14 @@
 
 .profile-stats {
   display: flex;
-  gap: 16px;
+  gap: var(--space-4);
   border-top: 1px solid var(--color-gold-muted-a15);
-  padding-top: 8px;
-  margin-top: 8px;
+  padding-top: var(--space-2);
+  margin-top: var(--space-2);
 }
 
 .profile-stat {
-  font-size: 13px;
+  font-size: var(--text-sm);
   color: var(--color-text-secondary);
 }
 

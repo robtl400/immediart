@@ -1,9 +1,43 @@
 /* Global Styles - Dark Theme */
 :root {
-  font-family: 'Outfit', system-ui, sans-serif;
+  font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   color-scheme: dark;
+
+  /* ── Type ───────────────────────────────────────────────── */
+  --font-sans:    'Outfit', system-ui, sans-serif;
+  --font-display: 'Allura', cursive;
+  --text-2xs:  10px;  /* uppercase labels (sponsored, verified) */
+  --text-xs:   12px;  /* meta: date, location, hints */
+  --text-sm:   14px;  /* comments, modal metadata */
+  --text-base: 15px;  /* body: caption, artist, hashtags, action labels */
+  --text-lg:   20px;  /* section headings (query results) */
+
+  /* ── Spacing (4px base) ─────────────────────────────────── */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  /* One shared feed-column gutter so the date row, caption, actions and
+     comments land on the same left edge (widened at 414px, below). */
+  --feed-gutter: 16px;
+
+  /* ── Radius ─────────────────────────────────────────────── */
+  --radius-sm:   8px;
+  --radius-md:   12px;
+  --radius-pill: 999px;
+
+  /* ── Scrims (overlays on artwork) ───────────────────────── */
+  --scrim-chip:     rgba(0, 0, 0, 0.7);
+  --scrim-backdrop: rgba(0, 0, 0, 0.85);
+
+  /* ── Motion ─────────────────────────────────────────────── */
+  --dur-fast: 0.15s;
+  --dur-base: 0.25s;
+  --dur-slow: 0.4s;
 
   --color-bg:             #121212;
   --color-surface:        #1a1a1a;
@@ -24,6 +58,11 @@
   --color-gold-muted-a20: rgba(163, 125, 0, 0.2);
   --color-gold-muted-a15: rgba(163, 125, 0, 0.15);
   --color-text-faint:     rgba(255, 255, 255, 0.35);
+}
+
+/* Wider phones and the desktop phone-frame get a roomier feed gutter */
+@media (min-width: 414px) {
+  :root { --feed-gutter: 20px; }
 }
 
 * {

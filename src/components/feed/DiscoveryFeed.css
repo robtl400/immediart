@@ -20,7 +20,7 @@
   position: sticky;
   top: 0;
   z-index: 100;
-  transition: padding 0.4s ease;
+  transition: padding var(--dur-slow) ease;
   text-align: center; /* centres the inline-block logo button */
 }
 
@@ -37,7 +37,7 @@
 
 .banner-logo-btn:hover {
   opacity: 0.85;
-  transition: opacity 0.2s ease;
+  transition: opacity var(--dur-base) ease;
 }
 
 .banner-logo-btn:focus-visible {
@@ -87,12 +87,12 @@
   right: 1px;
   min-width: 16px;
   height: 16px;
-  padding: 0 4px;
-  border-radius: 8px;
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-pill);
   background: var(--color-gold);
   color: var(--color-bg);
-  font-family: 'Outfit', sans-serif;
-  font-size: 10px;
+  font-family: var(--font-sans);
+  font-size: var(--text-2xs);
   font-weight: 700;
   line-height: 16px;
   text-align: center;
@@ -104,11 +104,11 @@
   top: 50%;
   transform: translateY(-50%);
   white-space: nowrap;
-  font-size: 12px;
+  font-size: var(--text-xs);
   color: var(--color-gold);
-  background: rgba(0, 0, 0, 0.75);
-  padding: 4px 8px;
-  border-radius: 6px;
+  background: var(--scrim-chip);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
   pointer-events: none;
   animation: hintFadeOut 0.5s ease 2s forwards;
 }
@@ -125,7 +125,7 @@
   gap: 6px;
   padding: 0 10px;
   background: var(--color-bg);
-  animation: searchSlideIn 0.18s ease;
+  animation: searchSlideIn var(--dur-fast) ease;
 }
 
 @keyframes searchSlideIn {
@@ -148,7 +148,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background-color 0.2s ease;
+  transition: background-color var(--dur-base) ease;
 }
 
 .banner-search-back:hover,
@@ -167,15 +167,15 @@
   height: 40px;
   background: var(--color-surface);
   border: 1px solid var(--color-gold-muted);
-  border-radius: 20px;
-  padding: 0 16px;
+  border-radius: var(--radius-pill);
+  padding: 0 var(--space-4);
   color: var(--color-text);
-  font-family: 'Outfit', sans-serif;
+  font-family: var(--font-sans);
   /* 16px, not smaller: iOS Safari auto-zooms the viewport when focusing an input
      under 16px, and this field autofocuses on open — that would jolt the page. */
   font-size: 16px;
   outline: none;
-  transition: border-color 0.2s ease;
+  transition: border-color var(--dur-base) ease;
 }
 
 .banner-search-input:focus {
@@ -217,18 +217,19 @@
   height: 2.4rem;
   width: auto;
   opacity: 1;
-  transition: transform 0.4s ease, opacity 0.4s ease;
+  transition: transform var(--dur-slow) ease, opacity var(--dur-slow) ease;
 }
 
 .banner-title {
-  font-family: 'Allura', cursive;
+  font-family: var(--font-display);
   color: var(--color-gold);
   font-size: 2.5rem;
   text-align: center;
   margin: 0;
   font-weight: 400;
   letter-spacing: 1px;
-  transition: opacity 0.6s ease, max-width 0.4s ease;
+  /* Both properties on the same duration so the title and logo settle together */
+  transition: opacity var(--dur-slow) ease, max-width var(--dur-slow) ease;
 }
 
 .banner-content {
@@ -236,7 +237,7 @@
   align-items: center;
   justify-content: center;
   gap: 12px;
-  transition: gap 0.4s ease;
+  transition: gap var(--dur-slow) ease;
 }
 
 /* Scrolled state - text fades slowly, logo centers and shrinks. Keep a 44px
@@ -292,9 +293,11 @@
    landscape/portrait frame as single-image cards. touch-action:pan-x lets
    vertical swipes fall through to the feed's snap scroll; overscroll-behavior
    stops a horizontal swipe from chaining into the feed. Slides are letterboxed
-   (contain) so mixed aspect ratios all show the whole work. */
+   (contain) so mixed aspect ratios all show the whole work; the darker frame
+   background lets the letterbox recede instead of glowing. */
 .image-container.carousel {
   overflow: hidden;
+  background-color: var(--color-bg);
 }
 
 .carousel-track {
@@ -333,13 +336,13 @@
   position: absolute;
   top: 10px;
   right: 12px;
-  background: rgba(0, 0, 0, 0.6);
-  color: #fff;
-  font-family: 'Outfit', sans-serif;
-  font-size: 11px;
+  background: var(--scrim-chip);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  font-size: var(--text-xs);
   font-weight: 600;
-  padding: 2px 8px;
-  border-radius: 10px;
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-pill);
   pointer-events: none;
   z-index: 2;
 }
@@ -349,8 +352,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 4px;
-  padding: 8px 0 2px;
+  gap: var(--space-1);
+  padding: var(--space-2) 0 2px;
   background-color: var(--color-bg);
   flex-shrink: 0;
 }
@@ -373,7 +376,7 @@
   height: 7px;
   border-radius: 50%;
   background: var(--color-gold-muted);
-  transition: background-color 0.2s ease, transform 0.2s ease;
+  transition: background-color var(--dur-base) ease, transform var(--dur-base) ease;
 }
 
 .carousel-dot.active::before {
@@ -420,8 +423,8 @@
   display: flex;
   flex-direction: row;
   align-items: center;
-  gap: 15px;
-  padding: 0 15px;
+  gap: var(--space-4);
+  padding: 0 var(--feed-gutter);
   background-color: var(--color-bg);
   flex-shrink: 0;
 }
@@ -433,10 +436,11 @@
   background: none;
   border: none;
   cursor: pointer;
-  padding: 8px;
-  border-radius: 8px;
-  transition: transform 0.2s ease, opacity 0.2s ease;
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+  transition: transform var(--dur-base) ease, opacity var(--dur-base) ease;
   min-width: 44px;
+  min-height: 44px;
 }
 
 .action-btn:hover {
@@ -475,7 +479,7 @@
 
 .like-btn .btn-label {
   color: var(--color-gold-muted);
-  font-size: 15px;
+  font-size: var(--text-base);
   font-weight: 500;
 }
 
@@ -498,33 +502,33 @@
 }
 
 .share-btn .btn-label {
-  font-size: 15px;
+  font-size: var(--text-base);
   font-weight: 500;
 }
 
 /* Text Information Box */
 .text-info {
-  padding: 0 15px 8px;
+  padding: 0 var(--feed-gutter) var(--space-2);
   background-color: var(--color-bg);
   flex-shrink: 0;
 }
 
 .artwork-description {
   color: var(--color-text-body);
-  font-size: 15px;
+  font-size: var(--text-base);
   line-height: 1.6;
-  margin: 0 0 8px 0;
+  margin: 0 0 var(--space-2) 0;
 }
 
 .artist-name {
   color: var(--color-text);
   font-weight: 700;
-  font-size: 15px;
+  font-size: var(--text-base);
 }
 
 .artist-name.clickable {
   cursor: pointer;
-  transition: opacity 0.2s ease;
+  transition: opacity var(--dur-base) ease;
 }
 
 .artist-name.clickable:hover,
@@ -534,12 +538,12 @@
 
 .hashtag {
   color: var(--color-gold);
-  font-size: 15px;
+  font-size: var(--text-base);
   font-weight: 600;
   cursor: pointer;
-  transition: opacity 0.2s ease;
+  transition: opacity var(--dur-base) ease;
   text-decoration: underline;
-  margin-left: 4px;
+  margin-left: var(--space-1);
 }
 
 .hashtag:hover,
@@ -549,18 +553,18 @@
 
 /* Comment Section */
 .comment-section {
-  padding: 4px 15px 16px;
+  padding: var(--space-1) var(--feed-gutter) var(--space-4);
   background-color: var(--color-bg);
   flex-shrink: 0;
 }
 
 .comment {
   margin-bottom: 6px;
-  font-size: 14px;
+  font-size: var(--text-sm);
   line-height: 1.5;
   border-left: 2px solid var(--color-text-faint);
   padding-left: 10px;
-  margin-left: 4px;
+  margin-left: var(--space-1);
 }
 
 .comment:last-child {
@@ -594,11 +598,13 @@
   }
 
   .comment {
-    font-size: 12px;
+    font-size: var(--text-xs);
   }
 }
 
-/* Responsive adjustments for larger mobile screens */
+/* Larger mobile screens: only the banner display type scales up — the feed
+   gutter is handled once by --feed-gutter (see index.css), so the metadata row,
+   caption, actions and comments stay on a single shared left edge. */
 @media (min-width: 414px) {
   .banner-title {
     font-size: 2.25rem;
@@ -606,22 +612,6 @@
 
   .banner-logo {
     height: 2.25rem;
-  }
-
-  .action-buttons {
-    padding: 0 20px;
-  }
-
-  .meta-left {
-    padding-left: 22px;
-  }
-
-  .text-info {
-    padding: 0 20px 8px;
-  }
-
-  .comment-section {
-    padding: 6px 20px 20px;
   }
 }
 
@@ -640,7 +630,7 @@
 
 /* First artwork card - add top margin to push first image down */
 .artwork-card:first-of-type .image-container {
-  margin-top: 23px;
+  margin-top: var(--space-6);
 }
 
 /* Error and end-message styles are shared — see App.css */
@@ -661,15 +651,15 @@
   left: 0;
   right: 0;
   z-index: 50;
-  background: rgba(0, 0, 0, 0.75);
+  background: var(--scrim-chip);
   color: var(--color-text-body);
-  font-size: 12px;
+  font-size: var(--text-xs);
   text-align: center;
-  padding: 8px 16px;
+  padding: var(--space-2) var(--space-4);
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: var(--space-2);
   animation: hintFadeOut 0.5s ease 2.5s forwards;
   pointer-events: none;
 }
@@ -696,21 +686,22 @@
   flex-direction: column;
   justify-content: center;
   gap: 1px;
-  padding: 10px 0 10px 17px;
+  /* Left edge shared with the caption/actions/comments via --feed-gutter */
+  padding: 10px 0 10px var(--feed-gutter);
 }
 
 .post-date,
 .post-location {
   color: var(--color-gold-muted);
-  font-size: 11px;
+  font-size: var(--text-xs);
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 /* Verified badge — inline after @handle */
 .verified-badge {
-  font-size: 10px;
+  font-size: var(--text-2xs);
   color: var(--color-gold);
   margin-left: 3px;
   vertical-align: middle;
@@ -718,12 +709,12 @@
 
 /* Sponsored post */
 .sponsored-post {
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--color-text-faint);
   margin: 2px 0;
 }
 .sponsored-label {
-  font-size: 10px;
+  font-size: var(--text-2xs);
   color: var(--color-text-faint);
   text-transform: uppercase;
   letter-spacing: 0.08em;
