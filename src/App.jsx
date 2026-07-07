@@ -33,10 +33,14 @@ function AppRoutes() {
         <Route path="*" element={<NotFound />} />
       </Routes>
 
-      {/* Matches only when the real URL is /artwork/:id — mount IS "open". */}
-      <Routes>
-        <Route path="/artwork/:artworkId" element={<ArtworkModal />} />
-      </Routes>
+      {/* Mount the modal route only when the URL is /artwork/:id — mount IS
+          "open". Rendering this <Routes> on other paths would log a spurious
+          "No routes matched" warning (it has no catch-all by design). */}
+      {isArtworkRoute && (
+        <Routes>
+          <Route path="/artwork/:artworkId" element={<ArtworkModal />} />
+        </Routes>
+      )}
     </>
   )
 }
