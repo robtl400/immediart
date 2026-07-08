@@ -112,7 +112,7 @@ describe('RequestManager — OPEN → HALF_OPEN → CLOSED', () => {
     vi.unstubAllGlobals();
   });
 
-  it('transitions OPEN → HALF_OPEN after 5s', async () => {
+  it('transitions OPEN → HALF_OPEN after the open duration (60s base)', async () => {
     globalThis.fetch.mockImplementation(err403);
     const rm = makeManager();
     for (let i = 0; i < 5; i++) {
@@ -120,7 +120,11 @@ describe('RequestManager — OPEN → HALF_OPEN → CLOSED', () => {
     }
     expect(rm.state).toBe('OPEN');
 
-    await vi.runAllTimersAsync();
+    // Grounded by API-FINDINGS.md: the measured penalty is ~56-62s, so the
+    // breaker must NOT probe early (a 59s probe is a guaranteed 403).
+    await vi.advanceTimersByTimeAsync(59_000);
+    expect(rm.state).toBe('OPEN');
+    await vi.advanceTimersByTimeAsync(1_000);
     expect(rm.state).toBe('HALF_OPEN');
   });
 
@@ -416,5 +420,196 @@ describe('RequestManager — in-flight dedup (fetchDeduped)', () => {
     await rm.fetchDeduped('http://same', null);
 
     expect(globalThis.fetch).toHaveBeenCalledTimes(2);
+  });
+});
+
+// ─── circuit breaker: OPEN duration escalation ────────────────────────────────
+//
+// Grounded by scripts/API-FINDINGS.md: the measured Imperva penalty is ~56-62s.
+// Each failed HALF_OPEN probe means the ban outlasted the wait, so the OPEN
+// period doubles (capped at 240s); a successful close resets it to base.
+
+describe('RequestManager — OPEN duration escalation', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.stubGlobal('fetch', vi.fn());
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  const tripBreaker = async (rm) => {
+    for (let i = 0; i < 5; i++) {
+      try { await rm.fetch(`http://trip-${i}`, null); } catch { /* expected */ }
+    }
+    expect(rm.state).toBe('OPEN');
+  };
+
+  it('doubles the OPEN period after a failed probe, and resets on close', async () => {
+    globalThis.fetch.mockImplementation(err403);
+    const rm = makeManager();
+    await tripBreaker(rm);
+
+    // Base period: 60s → HALF_OPEN
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(rm.state).toBe('HALF_OPEN');
+
+    // Failed probe → OPEN again, now for 120s
+    await rm.fetch('http://probe-1', null);
+    expect(rm.state).toBe('OPEN');
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(rm.state).toBe('OPEN'); // 60s is no longer enough
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(rm.state).toBe('HALF_OPEN');
+
+    // Successful probe closes AND resets the escalation
+    globalThis.fetch.mockImplementation(ok200);
+    await rm.fetch('http://probe-2', null);
+    expect(rm.state).toBe('CLOSED');
+
+    // A fresh trip is back to the 60s base
+    globalThis.fetch.mockImplementation(err403);
+    await tripBreaker(rm);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(rm.state).toBe('HALF_OPEN');
+  });
+
+  it('escalation caps at 240s', async () => {
+    globalThis.fetch.mockImplementation(err403);
+    const rm = makeManager();
+    await tripBreaker(rm);
+
+    await vi.advanceTimersByTimeAsync(60_000);   // → HALF_OPEN
+    await rm.fetch('http://p1', null);           // fail → OPEN @ 120s
+    await vi.advanceTimersByTimeAsync(120_000);  // → HALF_OPEN
+    await rm.fetch('http://p2', null);           // fail → OPEN @ 240s
+    await vi.advanceTimersByTimeAsync(240_000);  // → HALF_OPEN
+    await rm.fetch('http://p3', null);           // fail → OPEN, capped @ 240s
+    expect(rm.state).toBe('OPEN');
+    await vi.advanceTimersByTimeAsync(240_000);
+    expect(rm.state).toBe('HALF_OPEN');          // not 480s
+  });
+});
+
+// ─── rolling request budget (token bucket) ────────────────────────────────────
+//
+// The Met's Imperva layer bans on cumulative volume (~100 requests/window
+// measured). The budget queues dispatches past the limit until the oldest
+// request ages out of the window, instead of walking into a ~60s ban.
+
+describe('RequestManager — rolling request budget', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.stubGlobal('fetch', vi.fn());
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it('dispatches up to the budget, then queues until the window slides', async () => {
+    globalThis.fetch.mockImplementation(ok200);
+    const rm = makeManager({ requestBudget: 3, requestBudgetWindowMs: 1000 });
+
+    await rm.fetch('http://a', null);
+    await rm.fetch('http://b', null);
+    await rm.fetch('http://c', null);
+    expect(globalThis.fetch).toHaveBeenCalledTimes(3);
+
+    // 4th exceeds the budget — must wait for the window to slide
+    let done = false;
+    const fourth = rm.fetch('http://d', null).then(() => { done = true; });
+    await vi.advanceTimersByTimeAsync(500);
+    expect(done).toBe(false);
+    expect(globalThis.fetch).toHaveBeenCalledTimes(3);
+
+    await vi.advanceTimersByTimeAsync(600);
+    await fourth;
+    expect(done).toBe(true);
+    expect(globalThis.fetch).toHaveBeenCalledTimes(4);
+  });
+
+  it('default budget (Infinity) never queues', async () => {
+    globalThis.fetch.mockImplementation(ok200);
+    const rm = makeManager();
+    for (let i = 0; i < 10; i++) {
+      await rm.fetch(`http://u${i}`, null);
+    }
+    expect(globalThis.fetch).toHaveBeenCalledTimes(10);
+  });
+});
+
+// ─── reportBlockPage ──────────────────────────────────────────────────────────
+//
+// A 200-status Imperva block page is definitive ban evidence, but the
+// transport layer records the 200 as a success (resetting the consecutive
+// counter — and in HALF_OPEN, closing the breaker). reportBlockPage must trip
+// the breaker immediately, from any non-OPEN state.
+
+describe('RequestManager — reportBlockPage', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.stubGlobal('fetch', vi.fn());
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it('trips the breaker from CLOSED on a single block page', () => {
+    const rm = makeManager();
+    expect(rm.state).toBe('CLOSED');
+    rm.reportBlockPage();
+    expect(rm.state).toBe('OPEN');
+  });
+
+  it('re-trips after a block-page probe wrongly closed the breaker (bounce)', async () => {
+    globalThis.fetch.mockImplementation(err403);
+    const rm = makeManager();
+    for (let i = 0; i < 5; i++) {
+      try { await rm.fetch('http://x', null); } catch { /* expected */ }
+    }
+    await vi.runAllTimersAsync(); // → HALF_OPEN
+
+    // The probe returns a 200-status block page: transport sees a success and
+    // closes the breaker...
+    globalThis.fetch.mockImplementationOnce(ok200);
+    await rm.fetch('http://probe', null);
+    expect(rm.state).toBe('CLOSED');
+
+    // ...then the body parse (metAPI layer) discovers the block page
+    rm.reportBlockPage();
+    expect(rm.state).toBe('OPEN');
+  });
+});
+
+// ─── budget: aborted callers ──────────────────────────────────────────────────
+
+describe('RequestManager — budget ignores aborted callers', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.stubGlobal('fetch', vi.fn());
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it('an already-aborted caller spends no budget token and does not wait', async () => {
+    globalThis.fetch.mockImplementation((url, { signal } = {}) => {
+      if (signal?.aborted) return Promise.reject(new DOMException('Aborted', 'AbortError'));
+      return ok200();
+    });
+    const rm = makeManager({ requestBudget: 1, requestBudgetWindowMs: 60_000 });
+
+    await rm.fetch('http://a', null); // spends the only token
+
+    // Aborted caller: with a token spent it would otherwise queue for 60s —
+    // it must instead reject immediately without consuming budget.
+    const controller = new AbortController();
+    controller.abort();
+    await expect(rm.fetch('http://b', controller.signal)).rejects.toMatchObject({ name: 'AbortError' });
+    expect(globalThis.fetch).toHaveBeenCalledTimes(2); // a + b's immediate rejection
   });
 });

@@ -17,18 +17,17 @@ import {
 import { addJitter, delayOrAbort } from '../utils/delay';
 import { requestManager, CIRCUIT_BREAKER_OPEN } from './requestManager';
 
-// Fetch with retry and rate limit handling — delegates throttle to requestManager
+// Fetch with retry for transient NETWORK errors — delegates throttle to
+// requestManager. A 403 is returned immediately, never retried: the Imperva
+// penalty lasts ~60s (measured — scripts/API-FINDINGS.md), so a 1s/2s/4s
+// ladder would burn every retry inside the block and possibly extend it.
+// The circuit breaker owns 403 recovery.
 async function fetchWithRetry(url, signal = null) {
   for (let i = 0; i < MAX_RETRIES; i++) {
     if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
 
     try {
-      const response = await requestManager.fetch(url, signal);
-      if (response.status === 403 && i < MAX_RETRIES - 1) {
-        await delayOrAbort(addJitter(RATE_LIMIT_DELAYS[i] || RATE_LIMIT_DELAYS.at(-1)), signal);
-        continue;
-      }
-      return response;
+      return await requestManager.fetch(url, signal);
     } catch (error) {
       if (error.name === 'AbortError') throw error;
       if (error.message === CIRCUIT_BREAKER_OPEN) throw error;
@@ -54,7 +53,18 @@ export async function search(query, { artistMode = false, medium = null, signal 
 
   const response = await fetchWithRetry(url, signal);
   if (response.ok) {
-    const data = await response.json();
+    let data;
+    try {
+      data = await response.json();
+    } catch (err) {
+      if (err.name === 'AbortError') throw err;
+      // A 200 whose body isn't JSON is an Imperva block page served with a
+      // success status — definitive ban evidence; trips the breaker (the
+      // transport layer recorded the 200 as a success, so counting alone
+      // would never reach the threshold).
+      requestManager.reportBlockPage();
+      throw new Error('Search failed: non-JSON response (block page)');
+    }
     return data.objectIDs || [];
   }
   throw new Error(`Search failed: ${response.status}`);
@@ -176,7 +186,17 @@ export async function fetchArtworkWithStatus(objectID, signal = null, { strict =
     const response = await requestManager.fetchDeduped(url, signal);
     if (response.status === 404) return { artwork: null, status: 'notFound' };
     if (!response.ok) return { artwork: null, status: 'error' };
-    const artwork = await response.json();
+    let artwork;
+    try {
+      artwork = await response.json();
+    } catch (err) {
+      if (err.name === 'AbortError') throw err;
+      // 200-status Imperva block page (HTML body) — definitive ban evidence
+      // the status-based accounting in requestManager.fetch can't see; trips
+      // the breaker immediately (see reportBlockPage).
+      requestManager.reportBlockPage();
+      return { artwork: null, status: 'error' };
+    }
     if (validateArtwork(artwork, { strict })) {
       await setCachedArtwork(objectID, artwork);
       return { artwork, status: 'used' };
@@ -205,10 +225,22 @@ export async function fetchArtworkByID(objectID, signal = null, opts = {}) {
 //                   Ids beyond this point were either over-fetched-and-discarded or never
 //                   attempted, so they must remain visitable — advancing by a raw count
 //                   would silently skip them (the bug this contract fixes).
-export async function batchFetchArtworks(objectIDs, targetCount = 4, signal = null, { strict = false } = {}) {
+//
+// onArtwork(artwork, idIndex) — optional progressive-render hook. Fired for
+// EXACTLY the artworks the call will return, in return order, as soon as each
+// is knowable: artwork k emits once ids 0..k have all settled (in-order gating,
+// so the feed never reorders or leaves holes). idIndex is the artwork's
+// position in objectIDs, letting the caller map back to its own indices.
+// Measured wave spread is 157-340ms — that's how much sooner the first card
+// paints versus waiting for the whole batch (scripts/API-FINDINGS.md).
+export async function batchFetchArtworks(objectIDs, targetCount = 4, signal = null, { strict = false, onArtwork = null } = {}) {
   const artworks = [];
   const outcomeList = []; // ordered [{ id, status }], processing order === objectIDs order
   let idIndex = 0;
+  // Once the batch is failing (abort/breaker rejection in flight), stop
+  // emitting: a late-settling sibling promise must not announce cards after
+  // the caller's catch block has started reasoning about what was emitted.
+  let stopEmitting = false;
 
   while (artworks.length < targetCount && idIndex < objectIDs.length) {
     if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
@@ -222,22 +254,48 @@ export async function batchFetchArtworks(objectIDs, targetCount = 4, signal = nu
     );
 
     const batchIDs = objectIDs.slice(idIndex, idIndex + batchSize);
+    const baseIndex = idIndex; // absolute position of batchIDs[0] in objectIDs
     idIndex += batchSize;
 
-    // Parallel fetch — propagate AbortError/breaker, treat everything else as 'error'
-    const results = await Promise.all(
-      batchIDs.map(id => fetchArtworkWithStatus(id, signal, { strict }).catch(err => {
-        if (err.name === 'AbortError') throw err;
-        if (err.message === CIRCUIT_BREAKER_OPEN) throw err;
-        return { artwork: null, status: 'error' };
-      }))
-    );
-    if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+    // Parallel fetch with an in-order drain: each settled result lands in its
+    // slot, then the drain walks forward over the contiguous settled prefix,
+    // recording outcomes and emitting kept artworks. Out-of-order arrivals
+    // just wait in their slot until their predecessors settle.
+    const results = new Array(batchIDs.length);
+    let drained = 0;
+    const drain = () => {
+      while (drained < results.length && results[drained] !== undefined) {
+        const r = results[drained];
+        outcomeList.push({ id: batchIDs[drained], status: r.status });
+        if (r.artwork) {
+          artworks.push(r.artwork);
+          if (artworks.length <= targetCount && !stopEmitting) {
+            // A throwing consumer must not read as a batch failure
+            try { onArtwork?.(r.artwork, baseIndex + drained); }
+            catch (e) { console.warn('[metAPI] onArtwork error:', e.message); }
+          }
+        }
+        drained++;
+      }
+    };
 
-    for (let k = 0; k < batchIDs.length; k++) {
-      outcomeList.push({ id: batchIDs[k], status: results[k].status });
-      if (results[k].artwork) artworks.push(results[k].artwork);
+    try {
+      await Promise.all(
+        batchIDs.map((id, k) =>
+          fetchArtworkWithStatus(id, signal, { strict })
+            .catch(err => {
+              if (err.name === 'AbortError') throw err;
+              if (err.message === CIRCUIT_BREAKER_OPEN) throw err;
+              return { artwork: null, status: 'error' };
+            })
+            .then(res => { results[k] = res; drain(); })
+        )
+      );
+    } catch (err) {
+      stopEmitting = true;
+      throw err;
     }
+    if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
 
     // Cooldown between batches — abort-aware, uses dynamic batchCooldownMs
     if (artworks.length < targetCount && idIndex < objectIDs.length) {

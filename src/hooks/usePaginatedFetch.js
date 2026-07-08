@@ -147,6 +147,35 @@ export function usePaginatedFetch({
     // Use smaller initial batch so first artworks appear sooner
     const targetCount = isInitial && initialBatchSize != null ? initialBatchSize : batchSize;
 
+    // ── Progressive render ─────────────────────────────────────────────────
+    // Cards are appended to state the moment batchFetchArtworks emits them
+    // (in order), instead of waiting for the whole batch. `streamed` mirrors
+    // exactly what was appended so (a) the post-await code doesn't re-add,
+    // (b) a mid-batch failure can retry ONLY the un-kept ids, and (c)
+    // onBatchReady still receives the full batch it always did.
+    const streamed        = [];        // transformed artworks already in state
+    const streamedIdSet   = new Set(); // their raw ids — excluded from retry
+    let lastStreamedSrcIdx = -1;       // allIDsRef position of the last emission
+
+    const appendArtwork = (display) => {
+      setArtworks(prev => {
+        const combined = [...prev, display];
+        return isFinite(maxInMemory) && combined.length > maxInMemory
+          ? combined.slice(-maxInMemory)
+          : combined;
+      });
+    };
+
+    const onArtwork = (raw, idIdx) => {
+      if (signal.aborted || fetchIdRef.current !== currentFetchId) return;
+      const display = transformAPIToDisplay(raw);
+      streamed.push(display);
+      streamedIdSet.add(display.id);
+      lastStreamedSrcIdx = idsSrcIdx[idIdx];
+      if (shuffleIDs) shownIDsRef.current.add(display.id);
+      appendArtwork(display);
+    };
+
     try {
       if (isInitial) {
         // Skip the full-screen skeleton when seed artworks are already visible
@@ -177,22 +206,31 @@ export function usePaginatedFetch({
       }
 
       const { artworks: rawArtworks, outcomes, consumedCount } =
-        await batchFetchArtworks(idsToTry, targetCount, signal, { strict: strictValidation });
+        await batchFetchArtworks(idsToTry, targetCount, signal, { strict: strictValidation, onArtwork });
       if (fetchIdRef.current !== currentFetchId) return;
 
       // Advance past the id that produced the LAST kept artwork; over-fetched or
       // unattempted candidates stay visitable next round.
       currentIndexRef.current = consumedCount > 0 ? idsSrcIdx[consumedCount - 1] + 1 : start;
 
-      const newArtworks = rawArtworks.map(transformAPIToDisplay);
-      if (shuffleIDs) newArtworks.forEach(a => shownIDsRef.current.add(a.id));
+      // Every returned artwork was normally already appended (and
+      // shownIDs-recorded) by onArtwork as it emitted. The filter is a safety
+      // net for any source that returns without emitting — those artworks are
+      // appended now, in batch order, exactly like the pre-streaming behavior.
+      const missed = rawArtworks
+        .filter(a => !streamedIdSet.has(a.objectID))
+        .map(transformAPIToDisplay);
+      if (missed.length > 0) {
+        if (shuffleIDs) missed.forEach(a => shownIDsRef.current.add(a.id));
+        setArtworks(prev => {
+          const combined = [...prev, ...missed];
+          return isFinite(maxInMemory) && combined.length > maxInMemory
+            ? combined.slice(-maxInMemory)
+            : combined;
+        });
+      }
+      const newArtworks = [...streamed, ...missed];
 
-      setArtworks(prev => {
-        const combined = [...prev, ...newArtworks];
-        return isFinite(maxInMemory) && combined.length > maxInMemory
-          ? combined.slice(-maxInMemory)
-          : combined;
-      });
       setHasMore(currentIndexRef.current < allIDsRef.current.length);
       setError(null);
 
@@ -207,6 +245,13 @@ export function usePaginatedFetch({
       startPrefetch(currentIndexRef.current);
 
     } catch (err) {
+      // Whatever the failure mode, cards already streamed stay on screen —
+      // their ids must never be revisited (grids have no shownIDs dedup, so a
+      // re-fetch of the same window would render duplicate cards). In-order
+      // emission guarantees everything before lastStreamedSrcIdx settled.
+      if (lastStreamedSrcIdx >= 0) {
+        currentIndexRef.current = Math.max(currentIndexRef.current, lastStreamedSrcIdx + 1);
+      }
       if (err.name === 'AbortError') return;
       if (fetchIdRef.current !== currentFetchId) return;
 
@@ -231,32 +276,79 @@ export function usePaginatedFetch({
           return;
         }
 
-        const { artworks: retryRaw, outcomes: retryOutcomes, consumedCount: retryConsumed } =
-          await batchFetchArtworks(idsToTry, targetCount, signal, { strict: strictValidation });
-        if (fetchIdRef.current !== currentFetchId) return;
+        // Cards streamed before the failure are already on screen and stay
+        // there. Retry ONLY the ids that were never kept, for the remaining
+        // target — re-running the full window would duplicate streamed cards.
+        const retryIds = [];
+        const retrySrc = [];
+        for (let k = 0; k < idsToTry.length; k++) {
+          if (!streamedIdSet.has(idsToTry[k])) {
+            retryIds.push(idsToTry[k]);
+            retrySrc.push(idsSrcIdx[k]);
+          }
+        }
+        const retryTarget = targetCount - streamed.length;
 
-        currentIndexRef.current = retryConsumed > 0 ? idsSrcIdx[retryConsumed - 1] + 1 : currentIndexRef.current;
+        let retryOutcomes = new Map();
+        let retryConsumedSrc = -1; // allIDsRef position after the last retry-kept id
+        if (retryTarget > 0 && retryIds.length > 0) {
+          const { artworks: retryRaw, outcomes, consumedCount: retryConsumed } =
+            await batchFetchArtworks(retryIds, retryTarget, signal, { strict: strictValidation, onArtwork: (raw, idIdx) => {
+              // Map emission indices through the FILTERED list's src positions
+              if (signal.aborted || fetchIdRef.current !== currentFetchId) return;
+              const display = transformAPIToDisplay(raw);
+              streamed.push(display);
+              streamedIdSet.add(display.id);
+              lastStreamedSrcIdx = Math.max(lastStreamedSrcIdx, retrySrc[idIdx]);
+              if (shuffleIDs) shownIDsRef.current.add(display.id);
+              appendArtwork(display);
+            } });
+          if (fetchIdRef.current !== currentFetchId) return;
+          retryOutcomes = outcomes;
+          if (retryConsumed > 0) retryConsumedSrc = retrySrc[retryConsumed - 1];
 
-        const retryArtworks = retryRaw.map(transformAPIToDisplay);
-        if (shuffleIDs) retryArtworks.forEach(a => shownIDsRef.current.add(a.id));
+          // Same returned-but-not-streamed safety net as the primary path
+          const retryMissed = retryRaw
+            .filter(a => !streamedIdSet.has(a.objectID))
+            .map(transformAPIToDisplay);
+          if (retryMissed.length > 0) {
+            if (shuffleIDs) retryMissed.forEach(a => shownIDsRef.current.add(a.id));
+            streamed.push(...retryMissed);
+            setArtworks(prev => {
+              const combined = [...prev, ...retryMissed];
+              return isFinite(maxInMemory) && combined.length > maxInMemory
+                ? combined.slice(-maxInMemory)
+                : combined;
+            });
+          }
+        }
 
-        setArtworks(prev => {
-          const combined = [...prev, ...retryArtworks];
-          return isFinite(maxInMemory) && combined.length > maxInMemory
-            ? combined.slice(-maxInMemory)
-            : combined;
-        });
+        // Advance past the last kept artwork across BOTH attempts. Ids between
+        // kept ones were attempted (in-order emission guarantees every id
+        // before an emission settled) — same skip semantics as consumedCount.
+        currentIndexRef.current = Math.max(
+          currentIndexRef.current,
+          retryConsumedSrc + 1,
+          lastStreamedSrcIdx + 1
+        );
+
         setHasMore(currentIndexRef.current < allIDsRef.current.length);
         setError(null);
 
+        // Always fires (even with zero cards): /liked's prune reads outcomes
+        // regardless of how many artworks the retry kept.
         if (onBatchReadyRef.current) {
-          try { await onBatchReadyRef.current(retryArtworks, signal, retryOutcomes); }
+          try { await onBatchReadyRef.current(streamed, signal, retryOutcomes); }
           catch (e) { console.warn('[ImmediArt] onBatchReady error:', e.message); }
         }
 
         startPrefetch(currentIndexRef.current);
 
       } catch (retryErr) {
+        // Same never-revisit rule for cards the RETRY streamed before failing
+        if (lastStreamedSrcIdx >= 0) {
+          currentIndexRef.current = Math.max(currentIndexRef.current, lastStreamedSrcIdx + 1);
+        }
         if (retryErr.name !== 'AbortError' && fetchIdRef.current === currentFetchId) {
           setError(loadError());
         }

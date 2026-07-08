@@ -7,14 +7,22 @@
 export const API_BASE_URL = 'https://collectionapi.metmuseum.org/public/collection/v1';
 
 // Parallel Fetching Configuration
-// Tuned 2026-03-20 via scripts/testAPILimits.js:
-//   - 100% success at all gap sizes (10–160ms) and batch sizes (2–8)
-//   - No 403s triggered at any tested concurrency level
-//   - Constants set conservatively below the observed limits
-export const MAX_CONCURRENT_REQUESTS = 6; // was 4 — 8 concurrent tested clean; 6 is the conservative floor
-export const BATCH_COOLDOWN_MS = 80;      // was 250→150 — between-batch pause; dynamic concurrency handles real stress
-export const RATE_LIMIT_RECOVERY_MS = 1000; // 1 second after errors (no 403 recovery data — keep default)
-export const MIN_REQUEST_GAP_MS = 50;    // was 20 — raised to reduce burst density and avoid circuit breaker trips
+// Re-measured 2026-07-07 via scripts/api-probe.mjs (see scripts/API-FINDINGS.md):
+//   - The throttle is Imperva bot protection: it bans on CUMULATIVE volume
+//     (~100 requests per rolling window), not concurrency (12 simultaneous
+//     from calm passed clean) or rate (10 req/s sustained passed clean).
+//   - The penalty lasts ~56-62s and returns instant HTML 403s.
+export const MAX_CONCURRENT_REQUESTS = 6; // concurrency is NOT the throttle trigger; 6 stays comfortable
+export const BATCH_COOLDOWN_MS = 80;      // between-batch pause; dynamic concurrency handles real stress
+export const RATE_LIMIT_RECOVERY_MS = 1000; // delay before the ONE auto-retry after a transient batch error
+export const MIN_REQUEST_GAP_MS = 50;    // dispatch pacing — keeps bursts smooth
+
+// Rolling request budget (requestManager token bucket) — keeps a fast scroller
+// below the measured ~100-requests-per-window ban threshold. 60 per 30s leaves
+// ~40% headroom under the measured floor; when spent, dispatches queue until
+// the oldest request ages out instead of triggering a ~60s dead feed.
+export const REQUEST_BUDGET = 60;
+export const REQUEST_BUDGET_WINDOW_MS = 30000;
 
 // Batch Sizes
 export const FEED_BATCH_SIZE = 4;         // Artworks to fetch per subsequent load in discovery feed
@@ -36,6 +44,9 @@ export const BANNER_SCROLL_THRESHOLD = 500; // Pixels scrolled before banner col
 export const FEED_ROOT_MARGIN = '1200px'; // Trigger ~2 artworks before sentinel visible
 export const GRID_ROOT_MARGIN = '1200px'; // Root margin for grid infinite scroll — matches feed
 
-// Retry Configuration
-export const MAX_RETRIES = 3; // Retry up to 3x on 403/network errors with exponential backoff
+// Retry Configuration — NETWORK errors only. A 403 is never retried: it means
+// the Imperva penalty window (~60s measured) is active, so an in-penalty retry
+// is a guaranteed 403 that may extend the ban. The circuit breaker owns 403
+// recovery (see requestManager.js).
+export const MAX_RETRIES = 3;
 export const RATE_LIMIT_DELAYS = [1000, 2000, 4000];

@@ -9,13 +9,13 @@
  *
  *   CLOSED ──(5 consecutive failures)──► OPEN
  *     ▲                                    │
- *     │                                  (5s)
+ *     │                             (60s, escalating)
  *     │                                    ▼
  *   (probe ok) ◄── HALF_OPEN ◄─────────── (timer)
  *                     │
  *               (probe fails)
  *                     │
- *                     └──► OPEN (reset 5s timer)
+ *                     └──► OPEN (doubled timer, capped)
  */
 
 import { delay } from '../utils/delay';
@@ -26,8 +26,15 @@ import { delay } from '../utils/delay';
 export const CIRCUIT_BREAKER_OPEN = 'Circuit breaker open';
 
 // Circuit breaker constants
-const CB_FAILURE_THRESHOLD = 5;   // consecutive failures to trip breaker
-const CB_OPEN_DURATION_MS  = 5000; // time OPEN before moving to HALF_OPEN
+//
+// OPEN duration is grounded by scripts/API-FINDINGS.md (measured 2026-07-07):
+// the Met's Imperva throttle penalty lasts ~56-62s. The previous 5s value sent
+// ~12 doomed probes into every real block; 60s lands the first probe roughly
+// when the penalty lifts. A failed probe doubles the wait (120s, then 240s cap)
+// in case the ban was extended; a successful close resets to the base.
+const CB_FAILURE_THRESHOLD = 5;      // consecutive failures to trip breaker
+const CB_OPEN_BASE_MS      = 60000;  // first OPEN period ≈ measured penalty
+const CB_OPEN_MAX_MS       = 240000; // escalation ceiling
 
 // Dynamic concurrency constants
 const DC_WINDOW_SIZE       = 10;  // sliding window size (requests)
@@ -37,7 +44,7 @@ const DC_COOLDOWN_STEP_MS  = 50;  // ms added to batchCooldownMs on step-down
 const DC_MAX_COOLDOWN_MS   = 1000;
 
 export class RequestManager {
-  constructor({ minGapMs, maxConcurrent, batchCooldownMs }) {
+  constructor({ minGapMs, maxConcurrent, batchCooldownMs, requestBudget = Infinity, requestBudgetWindowMs = 30000 }) {
     this._minGapMs        = minGapMs;
     this._maxConcurrent   = maxConcurrent;
     this._configuredMax   = maxConcurrent;
@@ -47,6 +54,15 @@ export class RequestManager {
     this._lastRequestTime = 0;
     this._requestQueue    = Promise.resolve();
 
+    // Rolling request budget — the Met's Imperva layer bans on CUMULATIVE
+    // volume in a window (~100 requests measured), not on concurrency or
+    // instantaneous rate. Dispatch timestamps inside the window are tracked;
+    // when the budget is spent, further dispatches wait for the oldest to
+    // age out instead of walking into a ~60s ban.
+    this._budget          = requestBudget;
+    this._budgetWindowMs  = requestBudgetWindowMs;
+    this._dispatchTimes   = [];
+
     // In-flight dedup (keyed by URL)
     this._pendingFetches  = new Map();
 
@@ -54,6 +70,7 @@ export class RequestManager {
     this._cbState              = 'CLOSED'; // 'CLOSED' | 'OPEN' | 'HALF_OPEN'
     this._cbConsecutiveFails   = 0;
     this._cbOpenTimer          = null;
+    this._cbOpenDurationMs     = CB_OPEN_BASE_MS; // escalates on failed probes
     this._cbProbeInFlight      = false;
     this._cbPendingResolvers   = []; // { resolve, reject, url, signal }[]
 
@@ -128,6 +145,20 @@ export class RequestManager {
     }
   }
 
+  // ── reportBlockPage ───────────────────────────────────────────────────────
+  //
+  // A 200-status Imperva block page (HTML body on a "successful" response) is
+  // DEFINITIVE evidence of an active ban — it never happens in healthy
+  // operation. It must trip the breaker immediately: the transport layer
+  // already recorded the 200 as a success (resetting the consecutive-failure
+  // counter, and in HALF_OPEN even closing the breaker), so waiting for
+  // CB_FAILURE_THRESHOLD would never fire.
+
+  reportBlockPage() {
+    this.recordResult(false);
+    if (this._cbState !== 'OPEN') this._tripBreaker();
+  }
+
   // ── Throttled fetch with circuit breaker ──────────────────────────────────
 
   async fetch(url, signal) {
@@ -168,6 +199,27 @@ export class RequestManager {
     // _requestQueue resolves as soon as the gap elapses so the next request
     // can be dispatched concurrently rather than waiting for the HTTP response.
     const dispatchReady = this._requestQueue.then(async () => {
+      // An already-aborted caller must not spend a budget token or hold the
+      // serial queue through a budget wait — fall through; the fetch() below
+      // rejects with AbortError on its own.
+      if (signal?.aborted) return;
+
+      // Budget gate first: this runs serially inside the dispatch queue, so a
+      // waiter here blocks everything behind it — which is the point: once the
+      // window's budget is spent, NOTHING dispatches until the oldest request
+      // ages out. Callers whose signal aborts during the wait reject at the
+      // fetch() below, immediately after their turn arrives.
+      if (this._budget !== Infinity) {
+        let now = Date.now();
+        this._dispatchTimes = this._dispatchTimes.filter(t => now - t < this._budgetWindowMs);
+        while (this._dispatchTimes.length >= this._budget) {
+          await delay(Math.max(1, this._dispatchTimes[0] + this._budgetWindowMs - now));
+          now = Date.now();
+          this._dispatchTimes = this._dispatchTimes.filter(t => now - t < this._budgetWindowMs);
+        }
+        this._dispatchTimes.push(Date.now());
+      }
+
       const now     = Date.now();
       const elapsed = now - this._lastRequestTime;
       if (elapsed < this._minGapMs) {
@@ -249,13 +301,14 @@ export class RequestManager {
     this._cbOpenTimer = setTimeout(() => {
       this._cbState         = 'HALF_OPEN';
       this._cbProbeInFlight = false;
-    }, CB_OPEN_DURATION_MS);
+    }, this._cbOpenDurationMs);
   }
 
   _closeBreaker() {
     this._cbState             = 'CLOSED';
     this._cbProbeInFlight     = false;
     this._cbConsecutiveFails  = 0;
+    this._cbOpenDurationMs    = CB_OPEN_BASE_MS; // healthy again — reset escalation
     clearTimeout(this._cbOpenTimer);
 
     // Release all queued callers — they retry now that the breaker is CLOSED
@@ -270,10 +323,13 @@ export class RequestManager {
   }
 
   _reopenBreaker() {
-    // HALF_OPEN probe failed — go back to OPEN, reject all queued callers
+    // HALF_OPEN probe failed — the penalty outlasted the wait, so the ban may
+    // have been extended. Double the OPEN period (capped) before re-probing,
+    // go back to OPEN, and reject all queued callers.
     clearTimeout(this._cbOpenTimer);
-    this._cbState         = 'OPEN';
-    this._cbProbeInFlight = false;
+    this._cbState          = 'OPEN';
+    this._cbProbeInFlight  = false;
+    this._cbOpenDurationMs = Math.min(CB_OPEN_MAX_MS, this._cbOpenDurationMs * 2);
 
     const pending = this._cbPendingResolvers.splice(0);
     for (const { reject } of pending) {
@@ -283,7 +339,7 @@ export class RequestManager {
     this._cbOpenTimer = setTimeout(() => {
       this._cbState         = 'HALF_OPEN';
       this._cbProbeInFlight = false;
-    }, CB_OPEN_DURATION_MS);
+    }, this._cbOpenDurationMs);
   }
 }
 
@@ -292,10 +348,14 @@ import {
   MIN_REQUEST_GAP_MS,
   MAX_CONCURRENT_REQUESTS,
   BATCH_COOLDOWN_MS,
+  REQUEST_BUDGET,
+  REQUEST_BUDGET_WINDOW_MS,
 } from '../utils/constants';
 
 export const requestManager = new RequestManager({
-  minGapMs:       MIN_REQUEST_GAP_MS,
-  maxConcurrent:  MAX_CONCURRENT_REQUESTS,
+  minGapMs:        MIN_REQUEST_GAP_MS,
+  maxConcurrent:   MAX_CONCURRENT_REQUESTS,
   batchCooldownMs: BATCH_COOLDOWN_MS,
+  requestBudget:         REQUEST_BUDGET,
+  requestBudgetWindowMs: REQUEST_BUDGET_WINDOW_MS,
 });

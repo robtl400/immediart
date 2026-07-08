@@ -10,6 +10,14 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <title>ImmediArt</title>
 
+    <!-- Warm DNS+TCP+TLS to both Met origins before the first fetch/image
+         (~100-300ms each off the cold-start waterfall — scripts/API-FINDINGS.md).
+         crossorigin on the API host: fetch() uses the CORS connection pool.
+         NO crossorigin on the image host: <img> uses the no-cors pool, and a
+         mismatched hint would warm a connection the images never use. -->
+    <link rel="preconnect" href="https://collectionapi.metmuseum.org" crossorigin />
+    <link rel="preconnect" href="https://images.metmuseum.org" />
+
     <!-- Favicon -->
     <link rel="icon" type="image/x-icon" href="/favicon.ico" />
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon.png" />

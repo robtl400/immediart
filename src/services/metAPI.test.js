@@ -281,6 +281,8 @@ vi.mock('./requestManager', () => ({
       json: async () => ({ objectIDs: [10, 20, 30] }),
     }),
     fetchDeduped: vi.fn(),
+    recordResult: vi.fn(),
+    reportBlockPage: vi.fn(),
     maxConcurrent: 6,
     batchCooldownMs: 150,
   },
@@ -528,5 +530,172 @@ describe('searchByQuery — free-text banner search', () => {
     const { searchByQuery } = await import('./metAPI');
     expect(await searchByQuery('zzzznotarealthing')).toEqual([]);
     expect(setCachedIDs).not.toHaveBeenCalled();
+  });
+});
+
+// ─── throttle-correct guardrails ──────────────────────────────────────────────
+//
+// Grounded by scripts/API-FINDINGS.md: a 403 means the ~60s Imperva penalty is
+// active — retrying inside it is a guaranteed 403 that may extend the ban. And
+// Imperva can serve 200-status HTML block pages, which status-based accounting
+// in requestManager.fetch cannot see.
+
+describe('search() — 403 and block-page handling', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('does NOT retry a 403 — one request, immediate failure', async () => {
+    const { requestManager } = await import('./requestManager');
+    requestManager.fetch.mockResolvedValueOnce({ ok: false, status: 403 });
+    await expect(metAPI.search('anything')).rejects.toThrow('Search failed: 403');
+    expect(requestManager.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('treats a non-JSON 200 body as a throttle signal (Imperva block page)', async () => {
+    const { requestManager } = await import('./requestManager');
+    requestManager.fetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => { throw new SyntaxError('Unexpected token < in JSON'); },
+    });
+    await expect(metAPI.search('anything')).rejects.toThrow('block page');
+    expect(requestManager.reportBlockPage).toHaveBeenCalled();
+  });
+});
+
+describe('fetchArtworkWithStatus — 200-status block page', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('returns status error and records a throttle failure', async () => {
+    getCachedArtwork.mockResolvedValue(null);
+    const { requestManager } = await import('./requestManager');
+    requestManager.fetchDeduped.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => { throw new SyntaxError('<html>Incapsula incident ID</html>'); },
+    });
+    const { fetchArtworkWithStatus } = await import('./metAPI');
+    const result = await fetchArtworkWithStatus(123);
+    expect(result).toEqual({ artwork: null, status: 'error' });
+    expect(requestManager.reportBlockPage).toHaveBeenCalled();
+  });
+});
+
+// ─── batchFetchArtworks — progressive onArtwork emission ──────────────────────
+//
+// The onArtwork contract: fired for EXACTLY the artworks the call returns, in
+// return order, gated in id order (artwork k emits once ids 0..k settled) so
+// the feed never reorders or leaves holes.
+
+describe('batchFetchArtworks — progressive onArtwork emission', () => {
+  const makeArt = (id) => ({
+    objectID: id,
+    title: `Artwork ${id}`,
+    primaryImage: `https://images.example/${id}.jpg`,
+    primaryImageSmall: `https://images.example/${id}-sm.jpg`,
+  });
+  const okRes = (id) => ({ ok: true, status: 200, json: async () => makeArt(id) });
+  const deferred = () => {
+    let resolve, reject;
+    const p = new Promise((res, rej) => { resolve = res; reject = rej; });
+    return { p, resolve, reject };
+  };
+  const flush = () => new Promise((r) => setTimeout(r, 0));
+  const idFromUrl = (url) => Number(url.split('/').pop());
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    getCachedArtwork.mockResolvedValue(null);
+  });
+
+  it('emits in id order even when later ids resolve first — exactly the returned set', async () => {
+    const { requestManager } = await import('./requestManager');
+    const defers = { 1: deferred(), 2: deferred(), 3: deferred(), 4: deferred() };
+    requestManager.fetchDeduped.mockImplementation((url) => defers[idFromUrl(url)].p);
+    const { batchFetchArtworks } = await import('./metAPI');
+
+    const emitted = [];
+    const promise = batchFetchArtworks([1, 2, 3, 4], 4, null, {
+      onArtwork: (a, idx) => emitted.push([a.objectID, idx]),
+    });
+
+    defers[2].resolve(okRes(2));
+    await flush();
+    expect(emitted).toEqual([]); // id 2 settled, but id 1 hasn't — held back
+
+    defers[1].resolve(okRes(1));
+    await flush();
+    expect(emitted).toEqual([[1, 0], [2, 1]]); // settled prefix drains in order
+
+    defers[4].resolve(okRes(4));
+    await flush();
+    expect(emitted).toEqual([[1, 0], [2, 1]]); // id 3 still pending gates id 4
+
+    defers[3].resolve(okRes(3));
+    const { artworks } = await promise;
+    expect(emitted).toEqual([[1, 0], [2, 1], [3, 2], [4, 3]]);
+    expect(artworks.map((a) => a.objectID)).toEqual([1, 2, 3, 4]);
+  });
+
+  it('caps emission at targetCount, matching the returned slice', async () => {
+    const { requestManager } = await import('./requestManager');
+    requestManager.fetchDeduped.mockImplementation((url) => Promise.resolve(okRes(idFromUrl(url))));
+    const { batchFetchArtworks } = await import('./metAPI');
+
+    const emitted = [];
+    const { artworks } = await batchFetchArtworks([1, 2, 3, 4], 2, null, {
+      onArtwork: (a) => emitted.push(a.objectID),
+    });
+    expect(artworks.map((a) => a.objectID)).toEqual([1, 2]);
+    expect(emitted).toEqual([1, 2]);
+  });
+
+  it('skips invalid artworks in emission and return alike', async () => {
+    const { requestManager } = await import('./requestManager');
+    requestManager.fetchDeduped.mockImplementation((url) => {
+      const id = idFromUrl(url);
+      if (id === 2) {
+        return Promise.resolve({
+          ok: true, status: 200,
+          json: async () => ({ objectID: 2, title: 'imageless', primaryImage: '' }),
+        });
+      }
+      return Promise.resolve(okRes(id));
+    });
+    const { batchFetchArtworks } = await import('./metAPI');
+
+    const emitted = [];
+    const { artworks } = await batchFetchArtworks([1, 2, 3], 3, null, {
+      onArtwork: (a, idx) => emitted.push([a.objectID, idx]),
+    });
+    expect(artworks.map((a) => a.objectID)).toEqual([1, 3]);
+    expect(emitted).toEqual([[1, 0], [3, 2]]);
+  });
+
+  it('a breaker rejection mid-wave stops emission and rejects the batch', async () => {
+    const { requestManager } = await import('./requestManager');
+    const defers = { 1: deferred(), 2: deferred(), 3: deferred(), 4: deferred() };
+    requestManager.fetchDeduped.mockImplementation((url) => defers[idFromUrl(url)].p);
+    const { batchFetchArtworks } = await import('./metAPI');
+
+    const emitted = [];
+    const promise = batchFetchArtworks([1, 2, 3, 4], 4, null, {
+      onArtwork: (a) => emitted.push(a.objectID),
+    });
+
+    defers[1].resolve(okRes(1));
+    await flush();
+    expect(emitted).toEqual([1]);
+
+    defers[2].reject(new Error('Circuit breaker open'));
+    defers[3].resolve(okRes(3));
+    defers[4].resolve(okRes(4));
+
+    await expect(promise).rejects.toThrow('Circuit breaker open');
+    await flush();
+    expect(emitted).toEqual([1]); // nothing emitted after the failure
   });
 });

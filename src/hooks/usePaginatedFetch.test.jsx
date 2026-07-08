@@ -629,3 +629,165 @@ describe('usePaginatedFetch — loadMore error gate & retryLoadMore', () => {
     expect(batchFetchArtworks.mock.calls.length).toBeGreaterThan(1);
   });
 });
+
+// ─── progressive per-card render ──────────────────────────────────────────────
+//
+// batchFetchArtworks emits each kept artwork via onArtwork as soon as it is
+// knowable (in id order); the hook appends it to state immediately instead of
+// waiting for the whole batch. The batch's returned array is a safety net —
+// anything already streamed must NOT be appended twice, and a mid-batch
+// failure must retry only the un-kept ids.
+
+describe('usePaginatedFetch — progressive render (onArtwork streaming)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.clearAllMocks();
+    fetchIDs.mockResolvedValue(ALL_IDS);
+  });
+  afterEach(() => vi.useRealTimers());
+
+  const deferred = () => {
+    let resolve, reject;
+    const p = new Promise((res, rej) => { resolve = res; reject = rej; });
+    return { p, resolve, reject };
+  };
+
+  it('appends each card as it emits, before the batch resolves — no duplicates after', async () => {
+    const gate = deferred();
+    let emit;
+    batchFetchArtworks.mockImplementation(async (ids, target, signal, opts) => {
+      emit = opts.onArtwork;
+      return gate.p; // batch stays pending until the test releases it
+    });
+
+    const { result } = renderHook(() =>
+      usePaginatedFetch({ shuffleIDs: false, batchSize: BATCH })
+    );
+    await act(async () => { result.current.reset(fetchIDs); });
+    await act(async () => { await Promise.resolve(); }); // let fetchIDs settle
+
+    // Batch still pending — stream two cards
+    await act(async () => { emit(makeRaw(1), 0); });
+    expect(result.current.artworks.map(a => a.id)).toEqual([1]);
+    expect(result.current.loading).toBe(true); // batch not done yet
+
+    await act(async () => { emit(makeRaw(2), 1); });
+    expect(result.current.artworks.map(a => a.id)).toEqual([1, 2]);
+
+    // Batch resolves, returning the same artworks it already emitted
+    gate.resolve({ artworks: makeRawList(2, 1), outcomes: new Map(), consumedCount: 2 });
+    await drain();
+
+    expect(result.current.artworks.map(a => a.id)).toEqual([1, 2]); // no re-add
+    expect(result.current.loading).toBe(false);
+  });
+
+  it('mid-batch failure: streamed cards stay, retry excludes them and reduces the target', async () => {
+    const calls = [];
+    batchFetchArtworks
+      // Attempt 1: emits id 1, then dies mid-batch
+      .mockImplementationOnce(async (ids, target, signal, opts) => {
+        calls.push({ ids: [...ids], target });
+        opts.onArtwork(makeRaw(1), 0);
+        throw new Error('network hiccup');
+      })
+      // Retry: must receive the remaining ids and a reduced target
+      .mockImplementationOnce(async (ids, target, signal, opts) => {
+        calls.push({ ids: [...ids], target });
+        ids.slice(0, target).forEach((id, k) => opts.onArtwork(makeRaw(id), k));
+        return { artworks: ids.slice(0, target).map(makeRaw), outcomes: new Map(), consumedCount: target };
+      })
+      // Prefetch after success — never merged in this test
+      .mockImplementation(async () => new Promise(() => {}));
+
+    const { result } = renderHook(() =>
+      usePaginatedFetch({ shuffleIDs: false, batchSize: BATCH })
+    );
+    await act(async () => { result.current.reset(fetchIDs); });
+    await drain(); // runs the failure, the RATE_LIMIT_RECOVERY_MS wait, and the retry
+
+    // Attempt 1 saw the full window [1..8]; retry saw [2..8] with target 3
+    expect(calls[0].ids).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+    expect(calls[0].target).toBe(BATCH);
+    expect(calls[1].ids).toEqual([2, 3, 4, 5, 6, 7, 8]);
+    expect(calls[1].target).toBe(BATCH - 1);
+
+    // Card 1 streamed before the failure + 3 retry cards — no duplicates
+    expect(result.current.artworks.map(a => a.id)).toEqual([1, 2, 3, 4]);
+    expect(result.current.error).toBeNull();
+  });
+
+  it('feed (shuffleIDs=true): streamed ids are recorded so later batches skip them', async () => {
+    batchFetchArtworks
+      .mockImplementationOnce(async (ids, target, signal, opts) => {
+        ids.slice(0, target).forEach((id, k) => opts.onArtwork(makeRaw(id), k));
+        return { artworks: ids.slice(0, target).map(makeRaw), outcomes: new Map(), consumedCount: target };
+      })
+      .mockImplementation(async () => new Promise(() => {})); // park the prefetch
+
+    const { result } = renderHook(() =>
+      usePaginatedFetch({ shuffleIDs: true, batchSize: BATCH })
+    );
+    await act(async () => { result.current.reset(fetchIDs); });
+    await drain();
+
+    const ids = result.current.artworks.map(a => a.id);
+    expect(ids).toEqual([1, 2, 3, 4]);
+    expect(new Set(ids).size).toBe(ids.length); // dedup intact
+  });
+});
+
+// ─── never-revisit streamed ids after a failure (grid duplicate regression) ───
+//
+// Grids (shuffleIDs=false) have no shownIDsRef dedup. If a batch streams cards
+// and THEN fails hard (e.g. breaker opens), the cursor must advance past the
+// streamed ids before the error is surfaced — otherwise retryLoadMore
+// re-collects the same window and renders duplicate cards.
+
+describe('usePaginatedFetch — streamed ids survive a hard failure without duplicates', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.clearAllMocks();
+    fetchIDs.mockResolvedValue(ALL_IDS);
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it('grid: breaker-open after streaming → retryLoadMore does not re-render streamed cards', async () => {
+    const calls = [];
+    batchFetchArtworks
+      // Attempt 1: streams ids 1 and 2, then the breaker opens (no auto-retry path)
+      .mockImplementationOnce(async (ids, target, signal, opts) => {
+        calls.push([...ids]);
+        opts.onArtwork(makeRaw(1), 0);
+        opts.onArtwork(makeRaw(2), 1);
+        throw new Error('Circuit breaker open');
+      })
+      // Manual retry: must NOT be offered ids 1-2 again
+      .mockImplementationOnce(async (ids, target, signal, opts) => {
+        calls.push([...ids]);
+        ids.slice(0, target).forEach((id, k) => opts.onArtwork(makeRaw(id), k));
+        return { artworks: ids.slice(0, target).map(makeRaw), outcomes: new Map(), consumedCount: target };
+      })
+      .mockImplementation(async () => new Promise(() => {})); // park the prefetch
+
+    const { result } = renderHook(() =>
+      usePaginatedFetch({ shuffleIDs: false, batchSize: BATCH })
+    );
+    await act(async () => { result.current.reset(fetchIDs); });
+    await drain();
+
+    // Breaker-open surfaces the error immediately; streamed cards stay
+    expect(result.current.error).not.toBeNull();
+    expect(result.current.artworks.map(a => a.id)).toEqual([1, 2]);
+
+    await act(async () => { result.current.retryLoadMore(); });
+    await drain();
+
+    // Retry window starts AFTER the streamed ids — no duplicates
+    expect(calls[1][0]).toBeGreaterThan(2);
+    const ids = result.current.artworks.map(a => a.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(ids.slice(0, 2)).toEqual([1, 2]);
+    expect(result.current.error).toBeNull();
+  });
+});
