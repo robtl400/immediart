@@ -32,9 +32,7 @@ function ModalImage({ artwork }) {
 
   return (
     <div className={`modal-image-loading-wrapper${imageLoaded ? ' loaded' : ''}`}>
-      <div className="modal-image-spinner" aria-hidden="true">
-        <img src={flyingMachineIcon} alt="" className="modal-fly-icon" />
-      </div>
+      <div className="modal-image-spinner skeleton-shimmer" aria-hidden="true" />
       <div
         className={`zoom-viewport${isZoomed ? ' zoomed' : ''}`}
         ref={containerRef}

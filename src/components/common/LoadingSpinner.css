@@ -1,12 +1,5 @@
-/* Shared sweep animation — used by image placeholders (feed + modal) */
-@keyframes imageSweep {
-  0%     { bottom: -100px; left: -100px; opacity: 1; }
-  66.67% { bottom: calc(100% + 100px); left: calc(100% + 100px); opacity: 1; }
-  66.7%  { opacity: 0; }
-  100%   { bottom: -100px; left: -100px; opacity: 0; }
-}
-
-/* Loading Spinner Styles */
+/* Loading indicators — see LoadingSpinner.jsx. The shimmer keyframe/class is
+   shared from App.css (.skeleton-shimmer). */
 
 .loading-spinner-container {
   display: flex;
@@ -18,62 +11,20 @@
   min-height: 60vh;
 }
 
-/* Sweep container for the flying machine animation */
-.sweep-container {
+/* A calm art-shaped shimmer block standing in for the loading view */
+.loading-skeleton {
   width: 100%;
-  aspect-ratio: 1 / 1;
   max-width: 430px;
-  position: relative;
-  overflow: hidden;
-  background-color: var(--color-bg);
-}
-
-.flying-machine-loader {
-  width: 110px;
-  height: 110px;
-  position: absolute;
-  animation: sweepAcross 15s linear infinite;
-}
-
-/* 5 passes × 3s (2s sweep 66.67% + 1s pause 33.33%) = 15s */
-@keyframes sweepAcross {
-  /* Pass 1 — low */
-  0%     { bottom: 60px;  left: -150px; opacity: 1; animation-timing-function: ease-in-out; }
-  13.33% { bottom: calc(100% + 100px); left: calc(100% + 100px); opacity: 1; }
-  13.34% { opacity: 0; }
-  20%    { bottom: 210px; left: -150px; opacity: 0; }
-
-  /* Pass 2 — medium-high */
-  20.01% { bottom: 210px; left: -150px; opacity: 1; animation-timing-function: ease-in-out; }
-  33.33% { bottom: calc(100% + 100px); left: calc(100% + 100px); opacity: 1; }
-  33.34% { opacity: 0; }
-  40%    { bottom: 20px;  left: -150px; opacity: 0; }
-
-  /* Pass 3 — very low (skimming) */
-  40.01% { bottom: 20px;  left: -150px; opacity: 1; animation-timing-function: ease-in-out; }
-  53.33% { bottom: calc(100% + 100px); left: calc(100% + 100px); opacity: 1; }
-  53.34% { opacity: 0; }
-  60%    { bottom: 290px; left: -150px; opacity: 0; }
-
-  /* Pass 4 — high */
-  60.01% { bottom: 290px; left: -150px; opacity: 1; animation-timing-function: ease-in-out; }
-  73.33% { bottom: calc(100% + 100px); left: calc(100% + 100px); opacity: 1; }
-  73.34% { opacity: 0; }
-  80%    { bottom: 130px; left: -150px; opacity: 0; }
-
-  /* Pass 5 — medium */
-  80.01% { bottom: 130px; left: -150px; opacity: 1; animation-timing-function: ease-in-out; }
-  93.33% { bottom: calc(100% + 100px); left: calc(100% + 100px); opacity: 1; }
-  93.34% { opacity: 0; }
-  100%   { bottom: 60px;  left: -150px; opacity: 0; }
+  aspect-ratio: 3 / 4;
+  border-radius: var(--radius-md);
 }
 
 /* Inline loader for infinite scroll */
 .inline-loader {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
   justify-content: center;
-  padding: 20px;
+  padding: var(--space-5);
 }
 
 .inline-loader .dot {

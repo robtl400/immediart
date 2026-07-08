@@ -390,13 +390,14 @@
   border-radius: 50%;
 }
 
+/* Calm shimmer over each loading image (the .skeleton-shimmer class supplies the
+   gradient + animation); fades out once the image loads. */
 .image-placeholder {
   position: absolute;
   top: 0;
   left: 0;
   width: 100%;
   height: 100%;
-  background-color: var(--color-surface);
   overflow: hidden;
   transition: opacity 0.3s ease;
   pointer-events: none;
@@ -405,17 +406,6 @@
 
 .image-placeholder.loaded {
   opacity: 0;
-}
-
-.image-placeholder::before {
-  content: '';
-  position: absolute;
-  width: 100px;
-  height: 100px;
-  background-image: url('../../assets/FlyingMachine2_tinted_gold.png');
-  background-size: contain;
-  background-repeat: no-repeat;
-  animation: imageSweep 3s ease-in-out infinite;
 }
 
 /* Action Buttons Row */

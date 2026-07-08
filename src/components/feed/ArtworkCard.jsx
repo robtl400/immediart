@@ -68,7 +68,7 @@ export default function ArtworkCard({ artwork, isLiked, onLike, onImageClick, on
             onKeyDown={activateOnKey(() => onImageClick(primaryFull))}
             loading="lazy"
           />
-          <div className={`image-placeholder${imageLoaded ? ' loaded' : ''}`} />
+          <div className={`image-placeholder skeleton-shimmer${imageLoaded ? ' loaded' : ''}`} />
         </div>
       )}
 

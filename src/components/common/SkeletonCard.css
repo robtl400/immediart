@@ -1,21 +1,7 @@
-/* SkeletonCard - Shimmer animation */
-@keyframes shimmer {
-  0%   { background-position:  200% 0; }
-  100% { background-position: -200% 0; }
-}
+/* SkeletonCard — grid thumbnail placeholder. The shimmer itself is shared
+   (.skeleton-shimmer / @keyframes shimmer live in App.css). */
 
-.skeleton-shimmer {
-  background: linear-gradient(
-    90deg,
-    var(--color-surface) 25%,
-    var(--color-gold-a07) 50%,
-    var(--color-surface) 75%
-  );
-  background-size: 200% 100%;
-  animation: shimmer 1.8s infinite linear;
-}
-
-/* Grid variant — mirrors ThumbnailCard layout */
+/* Grid variant — mirrors ThumbnailCard's square layout */
 .skeleton-grid {
   aspect-ratio: 1;
   width: 100%;

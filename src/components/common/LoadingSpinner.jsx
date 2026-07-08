@@ -1,21 +1,21 @@
 /**
- * Loading Spinner Components
- * Full-screen spinner for initial load and inline loader for infinite scroll
+ * Loading indicators.
+ * - LoadingSpinner: a calm skeleton shown while a full view loads (feed initial
+ *   load — usually under the launch splash — and the modal before its artwork
+ *   resolves).
+ * - InlineLoader: three bouncing dots for infinite-scroll "loading more".
+ * The flying machine is no longer a loader; it's the launch splash's signature.
  */
 
 import './LoadingSpinner.css';
-import flyingMachineIcon from '../../assets/FlyingMachine2_tinted_gold.png';
 
 export default function LoadingSpinner() {
   return (
     <div className="loading-spinner-container">
-      <div className="sweep-container">
-        <img
-          src={flyingMachineIcon}
-          alt="Loading"
-          className="flying-machine-loader"
-        />
-      </div>
+      <div className="loading-skeleton skeleton-shimmer" aria-hidden="true" />
+      {/* Real text inside the live region so screen readers announce the wait
+          (an empty role=status named only by aria-label is not reliably read). */}
+      <span className="sr-only" role="status">Loading…</span>
     </div>
   );
 }
