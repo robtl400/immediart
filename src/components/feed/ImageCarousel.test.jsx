@@ -31,7 +31,7 @@ function setup(props = {}) {
     <ImageCarousel
       slides={SLIDES}
       alt="Starry Night by Van Gogh"
-      frameClass="landscape"
+      frameAspect={1.6}
       onPrimaryLoad={props.onPrimaryLoad || vi.fn()}
       onOpen={props.onOpen || vi.fn()}
     />

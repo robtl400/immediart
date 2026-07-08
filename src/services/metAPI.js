@@ -61,8 +61,9 @@ export async function search(query, { artistMode = false, medium = null, signal 
       // A 200 whose body isn't JSON is an Imperva block page served with a
       // success status — definitive ban evidence; trips the breaker (the
       // transport layer recorded the 200 as a success, so counting alone
-      // would never reach the threshold).
-      requestManager.reportBlockPage();
+      // would never reach the threshold). Only a SyntaxError qualifies —
+      // body-stream TypeErrors are local read problems, not ban evidence.
+      if (err instanceof SyntaxError) requestManager.reportBlockPage();
       throw new Error('Search failed: non-JSON response (block page)');
     }
     return data.objectIDs || [];
@@ -188,13 +189,21 @@ export async function fetchArtworkWithStatus(objectID, signal = null, { strict =
     if (!response.ok) return { artwork: null, status: 'error' };
     let artwork;
     try {
-      artwork = await response.json();
+      // fetchDeduped shares ONE Response across concurrent same-URL callers,
+      // so each caller must read its OWN clone — reading the raw body would
+      // throw "body stream already read" for every caller after the first.
+      // (?. keeps unit-test doubles without .clone() working.)
+      artwork = await (response.clone?.() ?? response).json();
     } catch (err) {
       if (err.name === 'AbortError') throw err;
-      // 200-status Imperva block page (HTML body) — definitive ban evidence
-      // the status-based accounting in requestManager.fetch can't see; trips
-      // the breaker immediately (see reportBlockPage).
-      requestManager.reportBlockPage();
+      if (err instanceof SyntaxError) {
+        // 200-status Imperva block page (HTML body) — definitive ban evidence
+        // the status-based accounting in requestManager.fetch can't see; trips
+        // the breaker immediately (see reportBlockPage). ONLY SyntaxError
+        // qualifies: a body-stream TypeError is a local read problem, and
+        // treating it as a ban put the app into a spurious 60s dead feed.
+        requestManager.reportBlockPage();
+      }
       return { artwork: null, status: 'error' };
     }
     if (validateArtwork(artwork, { strict })) {

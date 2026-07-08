@@ -19,6 +19,10 @@
  *                as the throttle trigger. If it trips, measures recovery too.
  *   penalty      Deliberately trips the throttle, then times how long the
  *                penalty lasts (5s polling). Burns a real ban — run sparingly.
+ *   window       Measures the ban window's WIDTH: sustains 2 req/s until the
+ *                first 403 (max 240 requests / 2 min). A 30s-wide window never
+ *                trips at this rate (60 < ~100 budget); a trip at ~N seconds
+ *                implies the window is roughly that wide. May burn a ban.
  *   baseline     Sequential /objects/{id} latency distribution + response
  *                headers (cache/CDN fingerprint).
  *   search       Latency + payload size of the app's real search queries.
@@ -612,6 +616,36 @@ async function phasePenalty(pool) {
   return { tripped: true, statuses, wallMs, bucketDepth: firstThrottleOrd, firstThrottleAtMs: firstThrottleAt, recovery, raw: results };
 }
 
+// ─── Phase: window ────────────────────────────────────────────────────────────
+//
+// The rolling-window budget (~100 requests) is measured, but the WINDOW WIDTH
+// is not — and the app's client budget (60/30s) is only safe if the real
+// window is ~30s. Sustain 2 req/s: over 30s that's 60 requests (under budget,
+// never trips); over 60s it's 120 (over budget — trips ~50-60s in if the
+// window is that wide). Where the first 403 lands bounds the width.
+
+async function phaseWindow(pool) {
+  console.log('\n═══ Phase: window — 2 req/s sustained until first 403 (max 240 req) ═══');
+  const ids = pool.take(240);
+  const start = performance.now();
+  const results = [];
+  for (const id of ids) {
+    const r = await fetchObject(id);
+    const at = Math.round(performance.now() - start);
+    results.push({ id, status: r.status, at });
+    if (r.status === 403 || r.status === 429) {
+      const sent = results.length;
+      console.log(`first 403 at request #${sent}, t+${(at / 1000).toFixed(1)}s → window is at least ~${Math.round(at / 1000)}s wide (budget spent at 2 req/s)`);
+      return { tripped: true, atMs: at, requestsSent: sent, raw: results };
+    }
+    if (results.length % 40 === 0) console.log(`  ${results.length} sent, t+${(at / 1000).toFixed(0)}s, all clean`);
+    await sleep(500);
+  }
+  const wallMs = Math.round(performance.now() - start);
+  console.log(`no trip after ${results.length} requests over ${(wallMs / 1000).toFixed(0)}s — 2 req/s sustained is safe; window ≲30-50s or budget deeper than measured`);
+  return { tripped: false, requestsSent: results.length, wallMs, raw: results };
+}
+
 // ─── Phase: cacheRepeat ───────────────────────────────────────────────────────
 
 async function phaseCacheRepeat(pool) {
@@ -671,6 +705,7 @@ async function main() {
     recovery: () => phaseRecovery(),
     burst12: () => phaseBurst12(pool),
     penalty: () => phasePenalty(pool),
+    window: () => phaseWindow(pool),
   };
 
   for (const phase of phasesQueue) {

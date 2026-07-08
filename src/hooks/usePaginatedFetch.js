@@ -245,15 +245,20 @@ export function usePaginatedFetch({
       startPrefetch(currentIndexRef.current);
 
     } catch (err) {
-      // Whatever the failure mode, cards already streamed stay on screen —
-      // their ids must never be revisited (grids have no shownIDs dedup, so a
-      // re-fetch of the same window would render duplicate cards). In-order
-      // emission guarantees everything before lastStreamedSrcIdx settled.
+      // Staleness FIRST: a superseded fetch (reset() started a new one and
+      // cleared state) must not touch the cursor — its streamed cards are no
+      // longer on screen.
+      if (fetchIdRef.current !== currentFetchId) return;
+
+      // Whatever the failure mode (including pause()-aborts, where cards stay
+      // in state), streamed cards remain on screen — their ids must never be
+      // revisited (grids have no shownIDs dedup, so a re-fetch of the same
+      // window would render duplicate cards). In-order emission guarantees
+      // everything before lastStreamedSrcIdx settled.
       if (lastStreamedSrcIdx >= 0) {
         currentIndexRef.current = Math.max(currentIndexRef.current, lastStreamedSrcIdx + 1);
       }
       if (err.name === 'AbortError') return;
-      if (fetchIdRef.current !== currentFetchId) return;
 
       // Breaker open = the API is known-unhealthy; retrying immediately would
       // just hit the open breaker again. Surface the retry affordance instead

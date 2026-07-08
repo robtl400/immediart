@@ -3,6 +3,7 @@ import flyingMachineIcon from '../../assets/FlyingMachine2_tinted_gold.png';
 import { activateOnKey } from '../../utils/keyboard';
 import { useShareArtwork } from '../../hooks/useShareArtwork';
 import { buildSlides } from '../../utils/slides';
+import { clampFrameAspect } from '../../utils/frameAspect';
 import ImageCarousel from './ImageCarousel';
 
 /**
@@ -13,12 +14,16 @@ import ImageCarousel from './ImageCarousel';
  */
 export default function ArtworkCard({ artwork, isLiked, onLike, onImageClick, onArtistClick, onTagClick, onArtistHover, onTagHover }) {
   const [imageLoaded, setImageLoaded] = useState(false);
-  const [isLandscape, setIsLandscape] = useState(true);
+  // null until the (primary) image reports its natural size; the frame shows
+  // as a square placeholder until then (CSS default aspect-ratio).
+  const [frameAspect, setFrameAspect] = useState(null);
   const { copied: shareCopied, share } = useShareArtwork();
 
   const handleImageLoad = (e) => {
     const img = e.target;
-    setIsLandscape(img.naturalWidth >= img.naturalHeight);
+    if (img.naturalWidth > 0 && img.naturalHeight > 0) {
+      setFrameAspect(clampFrameAspect(img.naturalWidth, img.naturalHeight));
+    }
     setImageLoaded(true);
   };
 
@@ -50,12 +55,16 @@ export default function ArtworkCard({ artwork, isLiked, onLike, onImageClick, on
         <ImageCarousel
           slides={slides}
           alt={altText}
-          frameClass={isLandscape ? 'landscape' : 'portrait'}
+          frameAspect={frameAspect}
           onPrimaryLoad={handleImageLoad}
           onOpen={onImageClick}
         />
       ) : (
-        <div className={`image-container ${isLandscape ? 'landscape' : 'portrait'}`}>
+        <div
+          className="image-container"
+          style={frameAspect ? { aspectRatio: frameAspect } : undefined}
+          data-frame-aspect={frameAspect ?? undefined}
+        >
           <img
             src={artwork.imageUrl}
             alt={altText}

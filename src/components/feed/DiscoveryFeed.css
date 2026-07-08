@@ -264,22 +264,21 @@
 }
 
 /* Image Container */
+/* Adaptive frame: the box follows the image's clamped aspect ratio (set as an
+   inline style by ArtworkCard once the image reports its natural size —
+   16:10 wide cap / 4:5 tall cap; extremes crop edges in via object-fit:cover).
+   Until then, aspect-ratio:1 below is the square placeholder shape.
+   max-height guards short viewports: cover just crops a little more. */
 .image-container {
   width: 100%;
+  aspect-ratio: 1;
+  max-height: 80vh;
   background-color: var(--color-surface);
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
   position: relative;
-}
-
-.image-container.landscape {
-  height: 55vh;
-}
-
-.image-container.portrait {
-  height: 68vh;
 }
 
 .artwork-image {
@@ -290,11 +289,12 @@
 }
 
 /* Multi-image carousel — a horizontal scroll-snap strip inside the same
-   landscape/portrait frame as single-image cards. touch-action:pan-x lets
-   vertical swipes fall through to the feed's snap scroll; overscroll-behavior
-   stops a horizontal swipe from chaining into the feed. Slides are letterboxed
-   (contain) so mixed aspect ratios all show the whole work; the darker frame
-   background lets the letterbox recede instead of glowing. */
+   adaptive frame as single-image cards. touch-action MUST allow BOTH axes:
+   pan-x for the snap strip itself, pan-y so a vertical swipe starting on the
+   carousel scrolls the feed (pan-x alone blocked swipe-up to the next post).
+   overscroll-behavior stops a horizontal swipe from chaining into the feed.
+   Slides are letterboxed (contain) so mixed aspect ratios all show the whole
+   work; the darker frame background lets the letterbox recede. */
 .image-container.carousel {
   overflow: hidden;
   background-color: var(--color-bg);
@@ -308,7 +308,7 @@
   overflow-y: hidden;
   scroll-snap-type: x mandatory;
   overscroll-behavior-x: contain;
-  touch-action: pan-x;
+  touch-action: pan-x pan-y;
   scrollbar-width: none;
 }
 

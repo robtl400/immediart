@@ -15,11 +15,11 @@ const prefersReduced = () =>
  *     full-res URL, so the modal shows what the user was looking at).
  *
  * Dots live in a strip below the frame (outside the image); a small "n/total"
- * counter overlays the top-right corner. The frame height matches single-image
- * cards (landscape/portrait), with slides letterboxed (object-fit: contain) so
- * mixed aspect ratios all show the whole work.
+ * counter overlays the top-right corner. The frame follows the PRIMARY image's
+ * clamped aspect ratio exactly like single-image cards, with slides letterboxed
+ * (object-fit: contain) so mixed aspect ratios all show the whole work.
  */
-export default function ImageCarousel({ slides, alt, frameClass, onPrimaryLoad, onOpen }) {
+export default function ImageCarousel({ slides, alt, frameAspect, onPrimaryLoad, onOpen }) {
   const trackRef = useRef(null);
   const rafRef = useRef(0);
   const [active, setActive] = useState(0);
@@ -54,7 +54,9 @@ export default function ImageCarousel({ slides, alt, frameClass, onPrimaryLoad, 
   return (
     <>
       <div
-        className={`image-container carousel ${frameClass}`}
+        className="image-container carousel"
+        style={frameAspect ? { aspectRatio: frameAspect } : undefined}
+        data-frame-aspect={frameAspect ?? undefined}
         onKeyDown={onKeyDown}
         role="group"
         aria-roledescription="carousel"

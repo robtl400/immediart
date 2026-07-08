@@ -22,12 +22,15 @@ open, assigned to the Met's lead collection developer).
 | 32 requests @ 16 concurrent | clean |
 | 24 pooled @ 8 concurrent (33 req/s) | clean |
 | 40 sustained @ 10 req/s | clean, zero latency drift |
+| 2 req/s sustained (window-width probe) | **first 403 at request #80, t+51.5s** → the rolling window is at least ~52s wide; 2 req/s sustained is NOT safe |
 | **Penalty duration** | **≈ 56–62s** (lifted at the 61.4s poll; 5s polling resolution — community reports "30+s") |
 | Throttled response | instant ~90ms 403, HTML Incapsula body, **no Retry-After**, `cache-control: no-cache, no-store` |
 
 Conclusions:
-- The trigger is **volume in a rolling window (~100 requests)**, not in-flight
-  concurrency and not requests-per-second per se.
+- The trigger is **volume in a rolling window**, not in-flight concurrency and
+  not requests-per-second per se. The budget is ~80–100 requests and the
+  window is **at least ~52s wide** (2 req/s sustained tripped at #80/51.5s),
+  so sustained safe throughput is ≈1 req/s — matching the community datapoint.
 - Blocks are per-client (Imperva cookies + IP). Browsers with established
   `incap_ses_*` cookies get the most lenient treatment.
 - Community datapoint: 1 req/s ran overnight without a block.
@@ -106,7 +109,7 @@ from the seed search, and a real browser also pays DNS+TCP+TLS per origin
 
 | # | Change | Grounding |
 |---|---|---|
-| A | **Throttle-correct guardrails**: breaker opens ~60s (measured ≈56–62s) with escalating re-open; treat non-JSON 200s as throttle; kill in-penalty retries; add a client token bucket (~60 req / 30s) | penalty + bucket measurements |
+| A | **Throttle-correct guardrails**: breaker opens ~60s (measured ≈56–62s) with escalating re-open; treat non-JSON 200s as throttle; kill in-penalty retries; add a client token bucket (60 req / 60s — window probe showed ≥52s window width) | penalty + bucket + window measurements |
 | B | **Progressive per-card render**: skeleton slots from the ID list, each card fills as its object resolves; keep batching only as network pacing | 157–340ms measured spread; standard out-of-order pattern |
 | C | **Preconnect** both origins in `index.html`; consider initial batch targeting first paint (2 slots) with less up-front overfetch | ~100–300ms × 2 origins |
 | D | **Image tiering**: feed keeps web-large; modal shows cached web-large instantly → upgrades to `main-image` (1200px) → fetches `/original/` only on zoom-in | size ladder measurements |

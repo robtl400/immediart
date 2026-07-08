@@ -292,3 +292,47 @@ describe('ArtworkCard — sponsored post', () => {
     expect(container.querySelector('.sponsored-post')).toBeNull();
   });
 });
+
+// ─── adaptive frame aspect ────────────────────────────────────────────────────
+//
+// The card's frame follows the image's own aspect ratio, clamped so extremes
+// crop edges in (16:10 wide cap / 4:5 tall cap) instead of being crammed into
+// a fixed near-square frame and upscaled into pixelation.
+
+import { clampFrameAspect } from '../../utils/frameAspect';
+
+describe('clampFrameAspect', () => {
+  it('passes through aspects inside the caps', () => {
+    expect(clampFrameAspect(1000, 1000)).toBe(1);          // square
+    expect(clampFrameAspect(1500, 1000)).toBe(1.5);        // 3:2 landscape
+    expect(clampFrameAspect(1000, 1200)).toBeCloseTo(0.833, 2); // mild portrait
+  });
+
+  it('caps panoramas at 16:10 (edges crop in)', () => {
+    expect(clampFrameAspect(3000, 1000)).toBe(1.6);
+  });
+
+  it('caps tall scrolls at 4:5 (top/bottom crop in)', () => {
+    expect(clampFrameAspect(1000, 4000)).toBe(0.8);
+  });
+});
+
+describe('ArtworkCard — adaptive frame', () => {
+  it('starts without an inline aspect (square placeholder) and adopts the clamped aspect on load', () => {
+    const artwork = makeArtwork();
+    const { container } = render(
+      <ArtworkCard artwork={artwork} isLiked={false} onLike={vi.fn()} onImageClick={vi.fn()} />
+    );
+    // jsdom drops aspect-ratio inline styles, so the component mirrors the
+    // value into data-frame-aspect — assert on that.
+    const frame = container.querySelector('.image-container');
+    expect(frame.dataset.frameAspect).toBeUndefined();
+
+    const img = container.querySelector('.artwork-image');
+    Object.defineProperty(img, 'naturalWidth', { value: 3200, configurable: true });
+    Object.defineProperty(img, 'naturalHeight', { value: 1000, configurable: true });
+    fireEvent.load(img);
+
+    expect(frame.dataset.frameAspect).toBe('1.6'); // panorama clamped to the wide cap
+  });
+});

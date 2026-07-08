@@ -18,11 +18,15 @@ export const RATE_LIMIT_RECOVERY_MS = 1000; // delay before the ONE auto-retry a
 export const MIN_REQUEST_GAP_MS = 50;    // dispatch pacing — keeps bursts smooth
 
 // Rolling request budget (requestManager token bucket) — keeps a fast scroller
-// below the measured ~100-requests-per-window ban threshold. 60 per 30s leaves
-// ~40% headroom under the measured floor; when spent, dispatches queue until
-// the oldest request ages out instead of triggering a ~60s dead feed.
+// below the measured ban threshold. The window probe (2026-07-07) showed the
+// Imperva window is AT LEAST ~52s wide: 2 req/s sustained tripped at request
+// #80, t+51.5s — so a 30s window was unsafe (it allowed 120/min). 60 per 60s
+// caps sustained usage at 1 req/s, the community's known-safe rate, while
+// still allowing the full 60 as an instant burst (bursts to ~98 measured
+// clean). When spent, dispatches queue until the oldest request ages out
+// instead of triggering a ~60s dead feed.
 export const REQUEST_BUDGET = 60;
-export const REQUEST_BUDGET_WINDOW_MS = 30000;
+export const REQUEST_BUDGET_WINDOW_MS = 60000;
 
 // Batch Sizes
 export const FEED_BATCH_SIZE = 4;         // Artworks to fetch per subsequent load in discovery feed

@@ -699,3 +699,52 @@ describe('batchFetchArtworks — progressive onArtwork emission', () => {
     expect(emitted).toEqual([1]); // nothing emitted after the failure
   });
 });
+
+describe('fetchArtworkWithStatus — shared-response dedup safety', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('reads a clone so concurrent dedup callers never double-read one body', async () => {
+    getCachedArtwork.mockResolvedValue(null);
+    const { requestManager } = await import('./requestManager');
+    // A real Response-like: raw body readable ONCE, clones readable independently
+    let rawReads = 0;
+    const makeReadable = () => ({
+      ok: true, status: 200,
+      json: async () => ({ objectID: 7, title: 'T', primaryImage: 'p', primaryImageSmall: 's' }),
+    });
+    const shared = {
+      ok: true, status: 200,
+      clone: vi.fn(makeReadable),
+      json: async () => {
+        if (++rawReads > 1) throw new TypeError('body stream already read');
+        return { objectID: 7, title: 'T', primaryImage: 'p', primaryImageSmall: 's' };
+      },
+    };
+    requestManager.fetchDeduped.mockResolvedValue(shared);
+    const { fetchArtworkWithStatus } = await import('./metAPI');
+
+    const [a, b] = await Promise.all([fetchArtworkWithStatus(7), fetchArtworkWithStatus(7)]);
+    expect(a.status).toBe('used');
+    expect(b.status).toBe('used');
+    expect(shared.clone).toHaveBeenCalledTimes(2); // each caller read its own clone
+    expect(requestManager.reportBlockPage).not.toHaveBeenCalled();
+  });
+
+  it('a body-stream TypeError is a plain error, NOT a block-page breaker trip', async () => {
+    // Regression: fetchDeduped shares one Response between concurrent callers;
+    // the second reader got "body stream already read" and reportBlockPage
+    // tripped the breaker into a spurious 60s dead feed.
+    getCachedArtwork.mockResolvedValue(null);
+    const { requestManager } = await import('./requestManager');
+    requestManager.fetchDeduped.mockResolvedValueOnce({
+      ok: true, status: 200,
+      json: async () => { throw new TypeError('body stream already read'); },
+    });
+    const { fetchArtworkWithStatus } = await import('./metAPI');
+    const result = await fetchArtworkWithStatus(9);
+    expect(result).toEqual({ artwork: null, status: 'error' });
+    expect(requestManager.reportBlockPage).not.toHaveBeenCalled();
+  });
+});
