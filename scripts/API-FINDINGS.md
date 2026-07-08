@@ -94,6 +94,13 @@ from the seed search, and a real browser also pays DNS+TCP+TLS per origin
 8. `hasImages=true` returns imageless objects (confirmed API bug, issues #52/#57) —
    already handled by `validateArtwork` + overfetch; a persistent negative cache of
    known-bad IDs would stop refetching them every session.
+9. **The search endpoint is parameter-order sensitive: `q` must be serialized
+   last.** `...&q=Rembrandt&artistOrCulture=true` returns `total: 0`;
+   `...&artistOrCulture=true&q=Rembrandt` returns 421 (verified live 2026-07-07,
+   stable across artists/runs; corroborated by TheMetApp's `//IMPORTANT: The API
+   works only if the "q" param goes last` and openaccess#51). Fixed in
+   `metAPI.search()` the same day — cold-cache artist searches had been
+   returning 0 IDs.
 
 ## Grounded improvement plan (ranked)
 

@@ -40,9 +40,14 @@ async function fetchWithRetry(url, signal = null) {
 
 // Search API
 export async function search(query, { artistMode = false, medium = null, signal = null } = {}) {
-  const params = new URLSearchParams({ hasImages: 'true', q: query });
+  // The Met search endpoint is parameter-order sensitive: q must be serialized
+  // LAST. A boolean filter appearing after q is not just ignored — it zeroes
+  // the result set (verified live 2026-07-07: ...&q=Rembrandt&artistOrCulture=true
+  // returns total:0, while ...&artistOrCulture=true&q=Rembrandt returns 421).
+  const params = new URLSearchParams({ hasImages: 'true' });
   if (artistMode) params.set('artistOrCulture', 'true');
   if (medium) params.set('medium', medium);
+  params.set('q', query);
   const url = `${API_BASE_URL}/search?${params}`;
 
   if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
@@ -58,7 +63,9 @@ export async function search(query, { artistMode = false, medium = null, signal 
 // Convenience wrappers — cache result in IndexedDB with named keys
 export async function fetchAllObjectIDs(signal) {
   const cached = await getCachedIDs('ids:feed:paintings-v2');
-  if (cached) return cached;
+  // length guard (not truthy) — a cached empty array must be a miss, same as
+  // cachedSearch below, or a poisoned entry would blank the feed for 24h.
+  if (cached?.length > 0) return cached;
   const ids = await search('painting', { medium: 'Paintings', signal });
   if (ids.length === 0) {
     console.warn('[metAPI] fetchAllObjectIDs returned 0 IDs — skipping cache');

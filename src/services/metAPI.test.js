@@ -232,6 +232,35 @@ describe('search() — medium param', () => {
   });
 });
 
+describe('search() — q param must be serialized last', () => {
+  // Regression: the Met search endpoint zeroes the result set when a boolean
+  // filter appears AFTER q (artistOrCulture after q returns total:0, verified
+  // live 2026-07-07). Every query shape must end with the q param.
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  async function lastParamOf(query, opts) {
+    const { requestManager } = await import('./requestManager');
+    await metAPI.search(query, opts);
+    const url = requestManager.fetch.mock.calls[0][0];
+    const params = [...new URL(url).searchParams.keys()];
+    return params[params.length - 1];
+  }
+
+  it('artist search (artistOrCulture) ends with q', async () => {
+    expect(await lastParamOf('Claude Monet', { artistMode: true })).toBe('q');
+  });
+
+  it('feed search (medium) ends with q', async () => {
+    expect(await lastParamOf('painting', { medium: 'Paintings' })).toBe('q');
+  });
+
+  it('plain search ends with q', async () => {
+    expect(await lastParamOf('landscape')).toBe('q');
+  });
+});
+
 // ─── fetchAllObjectIDs() ─────────────────────────────────────────────────────
 
 import { getCachedIDs, setCachedIDs, getCachedArtwork } from './artworkCache';
