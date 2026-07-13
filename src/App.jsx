@@ -12,7 +12,6 @@ import ArtworkModal from './components/modal/ArtworkModal'
 import NotFound from './components/common/NotFound'
 import ErrorBoundary from './components/common/ErrorBoundary'
 import SplashScreen from './components/common/SplashScreen'
-import { prefersReducedMotion } from './utils/welcome'
 
 // The artwork modal is a route (/artwork/:id) rendered OVER whatever page the
 // user was on — the URL is the single source of truth for whether it's open.
@@ -52,8 +51,9 @@ function AppRoutes() {
 export default function App() {
   // One-time launch animation, plays over the loading feed (also covers the
   // first fetch). App is the SPA root, so this initial state plays it once per
-  // page load; skipped for reduced-motion visitors.
-  const [showWelcome, setShowWelcome] = useState(() => !prefersReducedMotion())
+  // page load. Plays for everyone — including reduced-motion visitors (owner's
+  // call for a personal app); it stays skippable by tapping anywhere.
+  const [showWelcome, setShowWelcome] = useState(true)
 
   return (
     <>

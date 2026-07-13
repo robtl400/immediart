@@ -13,8 +13,10 @@ import './SplashScreen.css';
  * "ImmediArt" wordmark fades in place beside it (no movement), starting early as
  * the ascending flyer passes the middle of the screen.
  *
- * Purely decorative (aria-hidden) and skippable: tap anywhere, and it is not
- * rendered at all under prefers-reduced-motion (gated in App).
+ * Purely decorative (aria-hidden) and skippable: tap anywhere, or press
+ * Escape/Enter/Space (keyboard and switch users can't tap). It plays for
+ * reduced-motion visitors too (owner's call for a personal app) — its
+ * animations are exempted from the global reduced-motion reset in index.css.
  */
 const BACKSTOP_MS = 3900; // finish even if the fade's animationend is missed
 
@@ -29,6 +31,21 @@ export default function SplashScreen({ onDone }) {
   useEffect(() => {
     const t = setTimeout(finish, BACKSTOP_MS);
     return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Keyboard skip — CAPTURE phase + stopPropagation so the same keypress can't
+  // also drive the feed's document-level shortcuts under the overlay (Enter
+  // would otherwise both skip the splash and open the current card's modal).
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key !== 'Escape' && e.key !== 'Enter' && e.key !== ' ') return;
+      e.preventDefault();
+      e.stopPropagation();
+      finish();
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

@@ -11,13 +11,19 @@
    The overlay then fades (3.0–3.5s) to reveal the feed. */
 
 .splash-screen {
+  /* Single source of truth for the three animation durations — referenced by
+     the shorthands below AND re-asserted by the reduced-motion carve-out. */
+  --splash-fade-duration: 0.5s;
+  --splash-flight-duration: 2.8s;
+  --splash-title-fade-duration: 0.8s;
+
   position: fixed;
   inset: 0;
   z-index: 2000;
   background: var(--color-bg);
   overflow: hidden;
   cursor: pointer;
-  animation: splashFadeOut 0.5s ease 3s forwards;
+  animation: splashFadeOut var(--splash-fade-duration) ease 3s forwards;
 }
 
 @keyframes splashFadeOut {
@@ -53,7 +59,7 @@
   transform-origin: center center;
   filter: drop-shadow(0 5px 14px rgba(0, 0, 0, 0.55));
   will-change: transform, opacity;
-  animation: splashJourney 2.8s cubic-bezier(0.42, 0.02, 0.35, 1) forwards;
+  animation: splashJourney var(--splash-flight-duration) cubic-bezier(0.42, 0.02, 0.35, 1) forwards;
 }
 
 @keyframes splashJourney {
@@ -78,10 +84,21 @@
 .splash-title {
   opacity: 0;
   transition: none;
-  animation: splashTitleFade 0.8s ease 0.55s forwards;
+  animation: splashTitleFade var(--splash-title-fade-duration) ease 0.55s forwards;
 }
 
 @keyframes splashTitleFade {
   from { opacity: 0; }
   to   { opacity: 1; }
+}
+
+/* The splash plays for everyone, including reduced-motion visitors (owner's
+   call for a personal app — it's still skippable by tapping). index.css's
+   universal reduced-motion reset flattens every animation-duration to 0.01ms
+   with !important, so re-assert the three splash durations here; the class
+   selectors out-rank its `*` selector. */
+@media (prefers-reduced-motion: reduce) {
+  .splash-screen { animation-duration: var(--splash-fade-duration) !important; }
+  .splash-flier  { animation-duration: var(--splash-flight-duration) !important; }
+  .splash-title  { animation-duration: var(--splash-title-fade-duration) !important; }
 }

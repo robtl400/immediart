@@ -50,6 +50,27 @@ describe('SplashScreen', () => {
     expect(onDone).not.toHaveBeenCalled();
   });
 
+  it('is skippable by keyboard (Escape/Enter/Space) — capture-phase, does not leak to feed shortcuts', () => {
+    const onDone = vi.fn();
+    const feedShortcut = vi.fn();
+    document.addEventListener('keydown', feedShortcut); // stands in for the feed's document-level handler
+    render(<SplashScreen onDone={onDone} />);
+
+    // Dispatch on body — real key events target the focused element and reach
+    // window's capture listener FIRST (capture: window → document → target)
+    fireEvent.keyDown(document.body, { key: 'Escape' });
+    expect(onDone).toHaveBeenCalledTimes(1);
+    // The capture-phase handler stops propagation — the feed never sees it
+    expect(feedShortcut).not.toHaveBeenCalled();
+
+    // Other keys are ignored (and propagate normally)
+    fireEvent.keyDown(document.body, { key: 'j' });
+    expect(onDone).toHaveBeenCalledTimes(1);
+    expect(feedShortcut).toHaveBeenCalledTimes(1);
+
+    document.removeEventListener('keydown', feedShortcut);
+  });
+
   it('calls onDone at most once even if tapped repeatedly', () => {
     const onDone = vi.fn();
     const { container } = render(<SplashScreen onDone={onDone} />);

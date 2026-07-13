@@ -73,7 +73,8 @@
    animations (flying-machine sweep, image sweep, skeleton shimmer, heart pop,
    loader bounce, first-visit-hint fade) and long transitions, and disable
    smooth programmatic scrolling. One universal reset covers every keyframe
-   site so no future animation can slip through. */
+   site so no future animation can slip through. Exception: the launch splash
+   opts back in (see SplashScreen.css) — it plays for everyone. */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
