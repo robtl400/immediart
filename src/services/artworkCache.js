@@ -31,8 +31,13 @@ function openDB() {
 
       request.onsuccess = (event) => {
         const db = event.target.result;
-        // Cleanup expired entries on open (fire and forget)
-        cleanupExpired(db);
+        // Cleanup expired entries after open (fire and forget) — deferred off
+        // the open path: it cursor-walks both stores, and now that validation
+        // rejects are cached too the artworks store can hold thousands of
+        // records; don't compete with the splash and first feed paint.
+        const idle = globalThis.requestIdleCallback ?? ((fn) => setTimeout(fn, 3000));
+        // timeout guarantees the cleanup eventually runs even on a busy page
+        idle(() => cleanupExpired(db), { timeout: 10000 });
         resolve(db);
       };
 

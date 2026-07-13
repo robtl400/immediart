@@ -263,7 +263,7 @@ describe('search() — q param must be serialized last', () => {
 
 // ─── fetchAllObjectIDs() ─────────────────────────────────────────────────────
 
-import { getCachedIDs, setCachedIDs, getCachedArtwork } from './artworkCache';
+import { getCachedIDs, setCachedIDs, getCachedArtwork, setCachedArtwork, removeCachedArtwork } from './artworkCache';
 
 vi.mock('./artworkCache', () => ({
   getCachedIDs: vi.fn(),
@@ -430,6 +430,140 @@ describe('fetchArtworkByID — cache hit re-validation', () => {
   });
 });
 
+// ─── fetchArtworkWithStatus — negative caching of validation rejects ─────────
+//
+// Regression: rejected objects (no open-access image, filtered medium) were
+// never cached, so every scan window that revisited their ids refetched them —
+// measured ~12 API requests per rendered feed card, which exhausted the rolling
+// request budget after a handful of posts and stalled the infinite scroll.
+// Every real API object is now cached, and rejects are answered from cache.
+
+describe('fetchArtworkWithStatus — negative caching of validation rejects', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('caches a fetched object that fails strict validation whole, and reports invalid', async () => {
+    const drawing = {
+      objectID: 77,
+      title: 'Study of Hands',
+      primaryImage: 'https://example.com/drawing.jpg',
+      objectName: 'Drawing',
+    };
+    getCachedArtwork.mockResolvedValueOnce(null);
+    const { requestManager } = await import('./requestManager');
+    requestManager.fetchDeduped.mockResolvedValueOnce({ ok: true, status: 200, json: async () => drawing });
+
+    const { fetchArtworkWithStatus } = await import('./metAPI');
+    const result = await fetchArtworkWithStatus(77, null, { strict: true });
+
+    expect(result).toEqual({ artwork: null, status: 'invalid' });
+    // Baseline-valid reject: stored WHOLE on the default TTL (grid can reuse it)
+    expect(setCachedArtwork).toHaveBeenCalledWith(77, drawing);
+  });
+
+  it('caches a no-image object (fails baseline) as a minimal short-TTL tombstone', async () => {
+    const noImage = {
+      objectID: 88,
+      title: 'Rights-Restricted Portrait',
+      primaryImage: '',
+      objectName: 'Painting',
+      medium: 'Oil on canvas',
+      constituents: [{ name: 'Somebody' }], // bulk that must NOT be stored
+    };
+    getCachedArtwork.mockResolvedValueOnce(null);
+    const { requestManager } = await import('./requestManager');
+    requestManager.fetchDeduped.mockResolvedValueOnce({ ok: true, status: 200, json: async () => noImage });
+
+    const { fetchArtworkWithStatus } = await import('./metAPI');
+    const result = await fetchArtworkWithStatus(88, null, { strict: false });
+
+    expect(result).toEqual({ artwork: null, status: 'invalid' });
+    // Tombstone: only the validation fields, and a TTL shorter than the default
+    expect(setCachedArtwork).toHaveBeenCalledWith(
+      88,
+      { objectID: 88, primaryImage: '', title: 'Rights-Restricted Portrait', objectName: 'Painting' },
+      expect.any(Number)
+    );
+    const ttl = setCachedArtwork.mock.calls[0][2];
+    expect(ttl).toBeLessThan(604800000); // < 7d artwork TTL — transient degradation self-heals
+  });
+
+  it('answers a cached no-image reject from cache — no network, no eviction', async () => {
+    getCachedArtwork.mockResolvedValueOnce({
+      objectID: 88,
+      title: 'Rights-Restricted Portrait',
+      primaryImage: '',
+      objectName: 'Painting',
+    });
+    const { requestManager } = await import('./requestManager');
+    const { fetchArtworkWithStatus } = await import('./metAPI');
+
+    const result = await fetchArtworkWithStatus(88, null, { strict: false });
+
+    expect(result).toEqual({ artwork: null, status: 'invalid', fromCache: true });
+    expect(requestManager.fetchDeduped).not.toHaveBeenCalled();
+    expect(removeCachedArtwork).not.toHaveBeenCalled();
+  });
+
+  it('still evicts and refetches a corrupt cache entry (no objectID)', async () => {
+    const fresh = {
+      objectID: 99,
+      title: 'Recovered Painting',
+      primaryImage: 'https://example.com/p.jpg',
+      objectName: 'Painting',
+    };
+    getCachedArtwork.mockResolvedValueOnce({ garbage: true });
+    const { requestManager } = await import('./requestManager');
+    requestManager.fetchDeduped.mockResolvedValueOnce({ ok: true, status: 200, json: async () => fresh });
+
+    const { fetchArtworkWithStatus } = await import('./metAPI');
+    const result = await fetchArtworkWithStatus(99, null, { strict: false });
+
+    expect(removeCachedArtwork).toHaveBeenCalledWith(99);
+    expect(requestManager.fetchDeduped).toHaveBeenCalled();
+    expect(result).toEqual({ artwork: fresh, status: 'used' });
+  });
+
+  it('evicts a misfiled entry whose objectID does not match its key', async () => {
+    const fresh = {
+      objectID: 56,
+      title: 'The Right Painting',
+      primaryImage: 'https://example.com/right.jpg',
+      objectName: 'Painting',
+    };
+    // Object 55 stored under key 56 (a cache-write bug) — must not be served
+    getCachedArtwork.mockResolvedValueOnce({
+      objectID: 55,
+      title: 'The Wrong Painting',
+      primaryImage: 'https://example.com/wrong.jpg',
+      objectName: 'Painting',
+    });
+    const { requestManager } = await import('./requestManager');
+    requestManager.fetchDeduped.mockResolvedValueOnce({ ok: true, status: 200, json: async () => fresh });
+
+    const { fetchArtworkWithStatus } = await import('./metAPI');
+    const result = await fetchArtworkWithStatus(56, null, { strict: false });
+
+    expect(removeCachedArtwork).toHaveBeenCalledWith(56);
+    expect(result).toEqual({ artwork: fresh, status: 'used' });
+  });
+
+  it('does NOT cache a 200 body that is not a real API object (no objectID)', async () => {
+    getCachedArtwork.mockResolvedValueOnce(null);
+    const { requestManager } = await import('./requestManager');
+    requestManager.fetchDeduped.mockResolvedValueOnce({
+      ok: true, status: 200, json: async () => ({ message: 'ObjectID not found' }),
+    });
+
+    const { fetchArtworkWithStatus } = await import('./metAPI');
+    const result = await fetchArtworkWithStatus(123, null, { strict: false });
+
+    expect(result).toEqual({ artwork: null, status: 'invalid' });
+    expect(setCachedArtwork).not.toHaveBeenCalled();
+  });
+});
+
 // ─── searchByArtist / searchByTag — empty result guard ───────────────────────
 //
 // Regression: an empty search result must not be cached, otherwise a transient
@@ -581,6 +715,42 @@ describe('fetchArtworkWithStatus — 200-status block page', () => {
     const result = await fetchArtworkWithStatus(123);
     expect(result).toEqual({ artwork: null, status: 'error' });
     expect(requestManager.reportBlockPage).toHaveBeenCalled();
+  });
+});
+
+// ─── batchFetchArtworks — cache-only windows skip the cooldown ────────────────
+//
+// The between-window cooldown protects the network budget; a window answered
+// entirely from IndexedDB never touched the network, so warm negative-cached
+// regions must scan past known rejects without paying dead time.
+
+describe('batchFetchArtworks — cache-only windows skip the cooldown', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('scans 12 cached rejects across two windows without sleeping or fetching', async () => {
+    // Every id answers from cache as a baseline-invalid reject
+    getCachedArtwork.mockImplementation(async (id) => ({
+      objectID: Number(id),
+      title: `Reject ${id}`,
+      primaryImage: '',
+      objectName: 'Painting',
+    }));
+    const { requestManager } = await import('./requestManager');
+    const { batchFetchArtworks } = await import('./metAPI');
+
+    const ids = Array.from({ length: 12 }, (_, i) => i + 1);
+    const start = Date.now();
+    const { artworks, consumedCount } = await batchFetchArtworks(ids, 4, null, { strict: true });
+    const elapsed = Date.now() - start;
+
+    expect(artworks).toHaveLength(0);
+    expect(consumedCount).toBe(12); // scanned everything
+    expect(requestManager.fetchDeduped).not.toHaveBeenCalled(); // zero network
+    // Two windows of 6 → one cooldown point; the mocked batchCooldownMs is
+    // 150ms, so anything under 100ms proves the cooldown was skipped.
+    expect(elapsed).toBeLessThan(100);
   });
 });
 

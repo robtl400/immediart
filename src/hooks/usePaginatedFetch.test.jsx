@@ -349,62 +349,205 @@ describe('usePaginatedFetch — duplicate key regression', () => {
   });
   afterEach(() => vi.useRealTimers());
 
-  it('fetchBatch(false) aborts stale prefetch so its result cannot be merged as duplicates', async () => {
-    // Regression: ISSUE-004 — duplicate React key 436536
-    // Found by /qa on 2026-03-21
-    // Report: .gstack/qa-reports/qa-report-localhost-5173-2026-03-21.md
-    //
-    // Race: prefetch in-flight while loadMore triggers fetchBatch(false).
-    // Both read shownIDsRef at the same moment → overlap. Prefetch then completes
-    // and writes stale data to prefetchRef. Next loadMore merges it = duplicate IDs.
-    // Fix: fetchBatch always calls startPrefetch, aborting any in-flight prefetch
-    // and clearing prefetchRef.current before the stale promise can resolve.
+  it('loadMore during an in-flight prefetch JOINS it — one merge, no duplicate batch, no duplicate ids', async () => {
+    // Regression lineage: ISSUE-004 — duplicate React key 436536 (found by /qa
+    // on 2026-03-21; report: .gstack/qa-reports/qa-report-localhost-5173-2026-03-21.md).
+    // The original race was "prefetch in-flight while loadMore runs
+    // fetchBatch(false)" — first fixed by aborting the stale prefetch (wasting
+    // its requests), now fixed structurally: loadMore never races an in-flight
+    // prefetch, it awaits the same promise and merges its result once.
 
     const ALL_IDS_SHORT = Array.from({ length: 40 }, (_, i) => i + 1);
     fetchIDs.mockResolvedValue(ALL_IDS_SHORT);
 
     // Deferred promise simulates a slow in-flight prefetch
-    let resolveStalePrefetch;
-    const stalePrefetchPromise = new Promise(resolve => { resolveStalePrefetch = resolve; });
+    let resolvePrefetch;
+    const slowPrefetchPromise = new Promise(resolve => { resolvePrefetch = resolve; });
 
     batchFetchArtworks
-      .mockResolvedValueOnce(makeBatch(BATCH, 1))     // initial fetch → IDs 1-4
-      .mockReturnValueOnce(stalePrefetchPromise)       // startPrefetch A → stalls
-      .mockResolvedValueOnce(makeBatch(BATCH, 5))      // fetchBatch(false) → IDs 5-8
-      .mockResolvedValue(makeBatch(BATCH, 9));          // fresh prefetch B → IDs 9-12
+      .mockResolvedValueOnce(makeBatch(BATCH, 1))  // initial fetch → IDs 1-4
+      .mockReturnValueOnce(slowPrefetchPromise)     // startPrefetch A → stalls
+      .mockResolvedValue(makeBatch(BATCH, 9));      // follow-up prefetch B → IDs 9-12
 
     const { result } = renderHook(() =>
       usePaginatedFetch({ shuffleIDs: true, batchSize: BATCH })
     );
 
-    // Initial load — stale prefetch A starts but doesn't resolve yet
+    // Initial load — prefetch A starts but doesn't resolve yet
     await act(async () => { result.current.reset(fetchIDs); });
     await drain();
     expect(result.current.artworks).toHaveLength(BATCH);
+    const callsBeforeLoadMore = batchFetchArtworks.mock.calls.length; // initial + prefetch A
 
-    // loadMore: prefetch not ready → fetchBatch(false) runs.
-    // The fix ensures fetchBatch(false) calls startPrefetch, which aborts prefetch A.
+    // loadMore with prefetch A still in flight: joins it — shows the loading
+    // indicator, does NOT start a duplicate batch.
     await act(async () => { result.current.loadMore(); });
-    await drain();
-    expect(result.current.artworks).toHaveLength(BATCH * 2);
+    expect(result.current.loadingMore).toBe(true);
+    expect(batchFetchArtworks.mock.calls.length).toBe(callsBeforeLoadMore);
 
-    const countAfterFetchBatch = result.current.artworks.length;
-
-    // Now the stale prefetch A resolves with IDs that overlap what fetchBatch(false) loaded.
-    // With fix: its AbortController was already signalled → prefetchRef.current stays null.
-    // Without fix: prefetchRef.current is set to stale data; next loadMore merges duplicates.
+    // Prefetch A lands → the join merges its artworks exactly once and kicks
+    // off follow-up prefetch B.
     await act(async () => {
-      resolveStalePrefetch(makeBatch(BATCH, 5)); // same IDs 5-8 already in state
+      resolvePrefetch({
+        artworks: makeRawList(BATCH, 5), // IDs 5-8
+        outcomes: new Map(),
+        consumedCount: BATCH,
+      });
       await vi.runAllTimersAsync();
     });
 
-    // Artworks must NOT grow from the stale prefetch resolving
-    expect(result.current.artworks.length).toBe(countAfterFetchBatch);
+    expect(result.current.loadingMore).toBe(false);
+    expect(result.current.artworks).toHaveLength(BATCH * 2);
 
-    // And no duplicate IDs in whatever is currently in state
+    // No duplicate IDs in state
     const ids = result.current.artworks.map(a => a.id);
-    const uniqueIds = new Set(ids);
-    expect(ids.length).toBe(uniqueIds.size);
+    expect(ids.length).toBe(new Set(ids).size);
+
+    // Exactly one extra call happened (prefetch B) — the join itself fetched nothing
+    expect(batchFetchArtworks.mock.calls.length).toBe(callsBeforeLoadMore + 1);
+  });
+
+  it('pause() during a join clears loadingMore when the prefetch settles — no merge, no fetch', async () => {
+    fetchIDs.mockResolvedValue(ALL_IDS);
+
+    let resolvePrefetch;
+    const slowPrefetchPromise = new Promise(resolve => { resolvePrefetch = resolve; });
+
+    batchFetchArtworks
+      .mockResolvedValueOnce(makeBatch(BATCH, 1))  // initial fetch → IDs 1-4
+      .mockReturnValueOnce(slowPrefetchPromise);    // prefetch A → stalls
+
+    const { result } = renderHook(() =>
+      usePaginatedFetch({ shuffleIDs: true, batchSize: BATCH })
+    );
+    await act(async () => { result.current.reset(fetchIDs); });
+    await drain();
+
+    // Join the stalled prefetch, then navigate away (pause aborts it)
+    await act(async () => { result.current.loadMore(); });
+    expect(result.current.loadingMore).toBe(true);
+    await act(async () => { result.current.pause(); });
+
+    const callsAfterPause = batchFetchArtworks.mock.calls.length;
+
+    // The (aborted) prefetch settles: the join must release the loading flag
+    // without merging anything or starting a new fetch.
+    await act(async () => {
+      resolvePrefetch(makeBatch(BATCH, 5));
+      await vi.runAllTimersAsync();
+    });
+
+    expect(result.current.loadingMore).toBe(false);
+    expect(result.current.artworks).toHaveLength(BATCH); // nothing merged
+    expect(batchFetchArtworks.mock.calls.length).toBe(callsAfterPause); // nothing fetched
+  });
+
+  it('reset() during a join: the stale prefetch settling neither merges nor touches the new fetch', async () => {
+    fetchIDs.mockResolvedValue(ALL_IDS);
+
+    let resolvePrefetch;
+    const slowPrefetchPromise = new Promise(resolve => { resolvePrefetch = resolve; });
+
+    batchFetchArtworks
+      .mockResolvedValueOnce(makeBatch(BATCH, 1))   // initial fetch → IDs 1-4
+      .mockReturnValueOnce(slowPrefetchPromise)      // prefetch A → stalls
+      .mockResolvedValue(makeBatch(BATCH, 101));     // new search's batches → IDs 101+
+
+    const { result } = renderHook(() =>
+      usePaginatedFetch({ shuffleIDs: true, batchSize: BATCH })
+    );
+    await act(async () => { result.current.reset(fetchIDs); });
+    await drain();
+
+    // Join the stalled prefetch, then reset to a new search mid-join
+    await act(async () => { result.current.loadMore(); });
+    expect(result.current.loadingMore).toBe(true);
+    const newFetchIDs = vi.fn(async () => Array.from({ length: 20 }, (_, i) => 101 + i));
+    await act(async () => { result.current.reset(newFetchIDs); });
+    await drain();
+
+    const artworksAfterReset = result.current.artworks.map(a => a.id);
+    const callsAfterReset = batchFetchArtworks.mock.calls.length;
+
+    // The OLD search's prefetch settles: the stale join must not merge its
+    // artworks into the new search's feed, fetch anything, or clear the new
+    // fetch's flags.
+    await act(async () => {
+      resolvePrefetch(makeBatch(BATCH, 5)); // ids 5-8 from the old search
+      await vi.runAllTimersAsync();
+    });
+
+    expect(result.current.artworks.map(a => a.id)).toEqual(artworksAfterReset);
+    expect(batchFetchArtworks.mock.calls.length).toBe(callsAfterReset);
+    expect(result.current.loadingMore).toBe(false);
+  });
+
+  it('prefetch fails while joined: the join falls back to a real fetchBatch(false)', async () => {
+    fetchIDs.mockResolvedValue(ALL_IDS);
+
+    let rejectPrefetch;
+    const slowPrefetchPromise = new Promise((_, reject) => { rejectPrefetch = reject; });
+
+    batchFetchArtworks
+      .mockResolvedValueOnce(makeBatch(BATCH, 1))   // initial fetch → IDs 1-4
+      .mockReturnValueOnce(slowPrefetchPromise)      // prefetch A → stalls, then fails
+      .mockResolvedValue(makeBatch(BATCH, 5));       // fallback fetchBatch + prefetch B
+
+    const { result } = renderHook(() =>
+      usePaginatedFetch({ shuffleIDs: true, batchSize: BATCH })
+    );
+    await act(async () => { result.current.reset(fetchIDs); });
+    await drain();
+
+    await act(async () => { result.current.loadMore(); });
+    expect(result.current.loadingMore).toBe(true);
+    const callsBefore = batchFetchArtworks.mock.calls.length;
+
+    await act(async () => {
+      rejectPrefetch(new Error('network'));
+      await vi.runAllTimersAsync();
+    });
+
+    // The join recovered by fetching for real
+    expect(result.current.artworks).toHaveLength(BATCH * 2);
+    expect(result.current.loadingMore).toBe(false);
+    expect(batchFetchArtworks.mock.calls.length).toBeGreaterThan(callsBefore);
+  });
+
+  it('pause() during the initial ID fetch: a later loadMore re-runs the initial phase (no silent dead feed)', async () => {
+    // Regression (red team): navigate away while the FIRST load is fetching IDs
+    // → pause() aborts with allIDsRef still empty → returning to the feed,
+    // loadMore used to run fetchBatch(false) against zero candidates and set
+    // hasMore=false — no cards, no error, no retry. It must instead re-run the
+    // initial phase, like retryLoadMore does.
+    const abortableFetchIDs = vi.fn((signal) =>
+      new Promise((_, reject) => {
+        signal?.addEventListener('abort', () =>
+          reject(new DOMException('Aborted', 'AbortError')), { once: true });
+      })
+    );
+    batchFetchArtworks.mockResolvedValue(makeBatch(BATCH, 1));
+
+    const { result } = renderHook(() =>
+      usePaginatedFetch({ shuffleIDs: true, batchSize: BATCH })
+    );
+
+    // Initial load starts fetching IDs; user navigates away before they arrive
+    await act(async () => { result.current.reset(abortableFetchIDs); });
+    await act(async () => { result.current.pause(); });
+    await drain();
+    expect(result.current.artworks).toHaveLength(0);
+    expect(result.current.hasMore).toBe(true); // not dead-ended by the abort
+
+    // Back on the feed: the sentinel fires loadMore — IDs load and cards appear
+    abortableFetchIDs.mockResolvedValue(ALL_IDS);
+    await act(async () => { result.current.loadMore(); });
+    await drain();
+
+    expect(abortableFetchIDs.mock.calls.length).toBeGreaterThanOrEqual(2); // initial phase re-ran
+    expect(result.current.artworks).toHaveLength(BATCH);
+    expect(result.current.hasMore).toBe(true);
+    expect(result.current.error).toBeNull();
   });
 });
 

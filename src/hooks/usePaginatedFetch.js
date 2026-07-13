@@ -16,7 +16,8 @@
  *
  * Public API:
  *   artworks, loading, loadingMore, error, hasMore
- *   loadMore()              — instant merge from prefetch, or fetch next batch
+ *   loadMore()              — instant merge from a ready prefetch, join an
+ *                             in-flight prefetch, or fetch the next batch
  *   reset(newFetchIDs)      — abort + install new fetchIDs fn + start fresh
  *   pause()                 — abort all in-flight work without resetting state
  */
@@ -72,8 +73,9 @@ export function usePaginatedFetch({
   useEffect(() => { onBatchReadyRef.current = onBatchReady; }, [onBatchReady]);
 
   // Prefetch state
-  const prefetchRef          = useRef(null);   // { artworks, nextIndex } | null
+  const prefetchRef          = useRef(null);   // { artworks, nextIndex, outcomes } | null
   const prefetchControllerRef = useRef(null);  // AbortController for background prefetch
+  const prefetchPromiseRef   = useRef(null);   // settles when the in-flight prefetch does (never rejects)
 
   // ── collectCandidates ──────────────────────────────────────────────────────
   //
@@ -104,6 +106,7 @@ export function usePaginatedFetch({
   const startPrefetch = useCallback((fromIndex) => {
     prefetchControllerRef.current?.abort();
     prefetchRef.current = null;
+    prefetchPromiseRef.current = null;
     prefetchControllerRef.current = new AbortController();
     const signal = prefetchControllerRef.current.signal;
 
@@ -111,7 +114,9 @@ export function usePaginatedFetch({
     const { ids, srcIdx } = collectCandidates(fromIndex, limit);
     if (ids.length === 0) return;
 
-    batchFetchArtworks(ids, batchSize, signal, { strict: strictValidation })
+    // The promise is kept so loadMore can JOIN an in-flight prefetch instead of
+    // racing it with a duplicate batch. It always resolves (never rejects).
+    prefetchPromiseRef.current = batchFetchArtworks(ids, batchSize, signal, { strict: strictValidation })
       .then(({ artworks: raw, outcomes, consumedCount }) => {
         if (signal.aborted) return;
         const nextIndex = consumedCount > 0 ? srcIdx[consumedCount - 1] + 1 : fromIndex;
@@ -370,6 +375,31 @@ export function usePaginatedFetch({
 
   // ── loadMore ──────────────────────────────────────────────────────────────
 
+  // Instant merge of a completed prefetch into state. Caller must have checked
+  // prefetchRef.current is set.
+  const mergePrefetch = useCallback(() => {
+    const { artworks: prefetched, nextIndex, outcomes } = prefetchRef.current;
+    prefetchRef.current = null;
+    if (shuffleIDs) prefetched.forEach(a => shownIDsRef.current.add(a.id));
+    currentIndexRef.current = nextIndex;
+    setArtworks(prev => {
+      const combined = [...prev, ...prefetched];
+      return isFinite(maxInMemory) && combined.length > maxInMemory
+        ? combined.slice(-maxInMemory)
+        : combined;
+    });
+    setHasMore(nextIndex < allIDsRef.current.length);
+
+    // Prefetch-merged batches get the same onBatchReady treatment as
+    // fetched ones (e.g. the grid's image warm-up, /liked's 404 prune).
+    if (onBatchReadyRef.current) {
+      Promise.resolve(onBatchReadyRef.current(prefetched, undefined, outcomes))
+        .catch(e => console.warn('[ImmediArt] onBatchReady error:', e.message));
+    }
+
+    startPrefetch(nextIndex);
+  }, [shuffleIDs, maxInMemory, startPrefetch]);
+
   const loadMore = useCallback(() => {
     // `error` gates the sentinel-driven loop: while an error is showing, the
     // IntersectionObserver would otherwise re-fire fetchBatch continuously
@@ -378,31 +408,39 @@ export function usePaginatedFetch({
 
     // Instant merge from prefetch if ready
     if (prefetchRef.current) {
-      const { artworks: prefetched, nextIndex, outcomes } = prefetchRef.current;
-      prefetchRef.current = null;
-      if (shuffleIDs) prefetched.forEach(a => shownIDsRef.current.add(a.id));
-      currentIndexRef.current = nextIndex;
-      setArtworks(prev => {
-        const combined = [...prev, ...prefetched];
-        return isFinite(maxInMemory) && combined.length > maxInMemory
-          ? combined.slice(-maxInMemory)
-          : combined;
-      });
-      setHasMore(nextIndex < allIDsRef.current.length);
-
-      // Prefetch-merged batches get the same onBatchReady treatment as
-      // fetched ones (e.g. the grid's image warm-up, /liked's 404 prune).
-      if (onBatchReadyRef.current) {
-        Promise.resolve(onBatchReadyRef.current(prefetched, undefined, outcomes))
-          .catch(e => console.warn('[ImmediArt] onBatchReady error:', e.message));
-      }
-
-      startPrefetch(nextIndex);
+      mergePrefetch();
       return;
     }
 
-    fetchBatch(false);
-  }, [fetchBatch, hasMore, loadingMore, error, shuffleIDs, maxInMemory, startPrefetch]);
+    // A prefetch is in flight (or settled empty-handed): JOIN it rather than
+    // racing it with fetchBatch(false) — the old fallthrough started a full
+    // batch whose completion aborted the prefetch, throwing away its requests
+    // and refetching the same ids later. Under fast scrolling that happened on
+    // nearly every batch and burned the request budget ~2x faster.
+    if (prefetchPromiseRef.current) {
+      const signal = prefetchControllerRef.current?.signal;
+      const joinId = fetchIdRef.current;
+      fetchingRef.current = true; // gate re-entry while waiting
+      setLoadingMore(true);
+      prefetchPromiseRef.current.then(() => {
+        // A reset() during the join started a new fetch that owns the flags now.
+        if (fetchIdRef.current !== joinId) return;
+        fetchingRef.current = false;
+        setLoadingMore(false);
+        if (signal?.aborted) return; // pause() — flags cleared, nothing to merge
+        if (prefetchRef.current) mergePrefetch();
+        else fetchBatch(false); // prefetch came back empty/failed — fetch for real
+      });
+      return;
+    }
+
+    // Mirror retryLoadMore's empty-IDs guard: if the INITIAL fetch was aborted
+    // before IDs loaded (navigate away during first load, then return — the
+    // provider outlives the view and never re-runs its mount reset), a plain
+    // fetchBatch(false) would see zero candidates, set hasMore=false, and
+    // dead-end the feed with no cards, no error, and no retry affordance.
+    fetchBatch(allIDsRef.current.length === 0);
+  }, [fetchBatch, hasMore, loadingMore, error, mergePrefetch]);
 
   // ── retryLoadMore ─────────────────────────────────────────────────────────
   //
@@ -431,6 +469,7 @@ export function usePaginatedFetch({
     prefetchControllerRef.current?.abort();
     fetchIDsRef.current  = newFetchIDs;
     prefetchRef.current  = null;
+    prefetchPromiseRef.current = null;
     allIDsRef.current    = [];
     currentIndexRef.current = 0;
     if (shuffleIDs) shownIDsRef.current = new Set();
@@ -449,7 +488,14 @@ export function usePaginatedFetch({
     abortControllerRef.current?.abort();
     prefetchControllerRef.current?.abort();
     prefetchRef.current  = null;
+    prefetchPromiseRef.current = null;
     fetchingRef.current  = false;
+    // Clear loading flags directly: a joined prefetch's continuation may not
+    // settle for a long time under budget pressure, and the provider outlives
+    // the view — a stranded loadingMore=true would gate loadMore when the user
+    // returns to the feed, dead-ending it on a snapped-to spinner.
+    setLoading(false);
+    setLoadingMore(false);
   }, []);
 
   return {

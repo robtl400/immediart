@@ -625,6 +625,20 @@
 
 /* Error and end-message styles are shared — see App.css */
 
+/* The feed's actionable status tail (load-more error, end message) must be
+   snap targets of their own: in a y-mandatory snap container, content without
+   a snap alignment is unreachable — the viewport bounces back to the last
+   card, so the user sees a dead end instead of WHY the feed stopped.
+   Deliberately NOT the loading dots: browsers re-snap to the most recently
+   snapped target on layout change, so a snapped-to loader being pushed down
+   by streaming cards (and unmounting when the batch lands) could drag the
+   viewport past the whole incoming batch. The loader is transient and
+   self-resolves; only states that need the user's eyes get a snap stop. */
+.discovery-feed .inline-error,
+.discovery-feed .end-message {
+  scroll-snap-align: end;
+}
+
 /* Lazy loading image optimization */
 .artwork-image {
   opacity: 0;

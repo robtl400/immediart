@@ -157,6 +157,19 @@ export function validateArtwork(artwork, { strict = false } = {}) {
   );
 }
 
+// A cached entry is a real API object (vs a corrupt/misfiled write) only when
+// it carries the id it was stored under — this is the negative-cache contract:
+// real-but-invalid objects answer 'invalid' from cache; anything else is
+// evicted and refetched.
+const isRealApiObject = (obj, objectID) => String(obj?.objectID ?? '') === String(objectID);
+
+// Baseline-invalid rejects (no open-access image / no title) may be transient
+// API degradation rather than a permanent property of the object — cache them
+// on a short TTL so a hiccup can't hide a liked artwork or deep link for the
+// full 7-day artwork TTL. Stable rejects (baseline-valid, wrong medium) keep
+// the default TTL.
+const TTL_INVALID_ARTWORK_MS = 86400000; // 24h
+
 // Per-ID fetch outcome (used by batchFetchArtworks + /liked prune logic):
 //   'used'     — fetched (or cache-hit) and passed the caller's strictness
 //   'invalid'  — fetched but failed validation (no image, wrong medium, or a
@@ -168,16 +181,20 @@ export function validateArtwork(artwork, { strict = false } = {}) {
 // Fetch single artwork with its outcome (cache + in-flight dedup via requestManager)
 export async function fetchArtworkWithStatus(objectID, signal = null, { strict = false } = {}) {
   // 1. Cache check — re-validate on read: the cache is shared between strict (feed)
-  // and non-strict (grid) callers, so a hit written by one must still pass the
-  // caller's own strictness before being returned.
+  // and non-strict (grid) callers, and it stores validation REJECTS too (negative
+  // cache), so a hit must be re-validated against the caller's own strictness.
   const cached = await getCachedArtwork(objectID);
   if (cached) {
-    if (validateArtwork(cached, { strict })) return { artwork: cached, status: 'used' };
-    // Passes baseline but not the caller's strictness — a correct filter, not a
-    // cache problem, and NOT a reason to prune a like (the artwork still exists).
-    if (validateArtwork(cached)) return { artwork: null, status: 'invalid' };
-    // Fails even baseline validation: the entry is corrupt. Evict it and fall
-    // through to a fresh fetch rather than blackholing the ID forever.
+    if (isRealApiObject(cached, objectID)) {
+      if (validateArtwork(cached, { strict })) return { artwork: cached, status: 'used', fromCache: true };
+      // A real API object that fails this caller's validation — a correct
+      // filter outcome, not a cache problem, and NOT a reason to prune a like
+      // (the artwork still exists). Answered from cache, no refetch.
+      return { artwork: null, status: 'invalid', fromCache: true };
+    }
+    // Missing or mismatched objectID — the entry is corrupt (not the object
+    // this key names). Evict it and fall through to a fresh fetch rather than
+    // blackholing the ID.
     await removeCachedArtwork(objectID);
   }
 
@@ -206,10 +223,26 @@ export async function fetchArtworkWithStatus(objectID, signal = null, { strict =
       }
       return { artwork: null, status: 'error' };
     }
-    if (validateArtwork(artwork, { strict })) {
-      await setCachedArtwork(objectID, artwork);
-      return { artwork, status: 'used' };
+    // Cache every real API object — including validation rejects. A rejected
+    // object (no open-access image, filtered medium) used to be refetched by
+    // every scan window that revisited its id (measured ~12 requests per
+    // rendered feed card); cached, the reject costs zero network, and the
+    // non-strict grid can reuse objects the strict feed rejected.
+    if (isRealApiObject(artwork, objectID)) {
+      if (validateArtwork(artwork)) {
+        // Baseline-valid: store whole (a non-strict caller can display it).
+        await setCachedArtwork(objectID, artwork);
+      } else {
+        // Baseline-invalid: store a minimal tombstone (nothing can display it,
+        // and rejects are the majority of fetches — full payloads would bloat
+        // IndexedDB severalfold) on the short self-healing TTL.
+        const { objectID: id, primaryImage, title, objectName } = artwork;
+        await setCachedArtwork(objectID, { objectID: id, primaryImage, title, objectName }, TTL_INVALID_ARTWORK_MS);
+      }
     }
+    // No fromCache flag on network-path results — the flag is set (true) only
+    // on cache hits; consumers treat its absence as "the network was touched".
+    if (validateArtwork(artwork, { strict })) return { artwork, status: 'used' };
     return { artwork: null, status: 'invalid' };
   } catch (error) {
     if (error.name === 'AbortError') throw error;
@@ -306,9 +339,14 @@ export async function batchFetchArtworks(objectIDs, targetCount = 4, signal = nu
     }
     if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
 
-    // Cooldown between batches — abort-aware, uses dynamic batchCooldownMs
+    // Cooldown between batches — abort-aware, uses dynamic batchCooldownMs.
+    // Skipped when the whole sub-batch was answered from cache: the cooldown
+    // protects the network budget, which cache hits never touch, and warm
+    // negative-cached regions would otherwise pay 80ms+ of dead time per
+    // window while scanning past known rejects.
     if (artworks.length < targetCount && idIndex < objectIDs.length) {
-      await delayOrAbort(requestManager.batchCooldownMs, signal);
+      const allFromCache = results.every(r => r?.fromCache);
+      if (!allFromCache) await delayOrAbort(requestManager.batchCooldownMs, signal);
     }
   }
 
