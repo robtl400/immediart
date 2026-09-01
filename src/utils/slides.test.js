@@ -7,7 +7,35 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { toWebLarge, buildSlides } from './slides';
+import { toWebLarge, buildSlides, isConservationImage } from './slides';
+
+describe('isConservationImage', () => {
+  const base = 'https://images.metmuseum.org/CRDImages/ep/original/';
+  it.each([
+    'LC-49_7_20a_c-XRAY_det.jpg',
+    'LC-49_7_20a_c-IRR.jpg',
+    'DP-1234-UV.jpg',
+    'sauvage verso.jpg',
+    'DP-1_x-ray.jpg',
+  ])('flags %s', (file) => {
+    expect(isConservationImage(base + encodeURIComponent(file))).toBe(true);
+  });
+
+  it.each([
+    'DP-1234.jpg',
+    'LC-49_7_20a_c-5.jpg',
+    'DP-1234_det.jpg',   // a detail crop is a real view of the work
+    'irrigation-canal.jpg', // "irr" must match a whole token, not a prefix
+    'Curve.jpg',
+  ])('passes %s', (file) => {
+    expect(isConservationImage(base + file)).toBe(false);
+  });
+
+  it('never throws on a malformed percent-escape (one bad Met URL must not take down the feed)', () => {
+    expect(() => isConservationImage(base + 'DP-1%E0%A4%A.jpg')).not.toThrow();
+    expect(isConservationImage(base + 'bad%2-XRAY.jpg')).toBe(true); // still judged on the raw name
+  });
+});
 
 const ORIG = 'https://images.metmuseum.org/CRDImages/ep/original/DP-1.jpg';
 const WEB = 'https://images.metmuseum.org/CRDImages/ep/web-large/DP-1.jpg';
@@ -67,6 +95,14 @@ describe('buildSlides', () => {
     const slides = buildSlides(artwork({ additionalImages: ['', '   ', null, undefined, 'https://x/real.jpg'] }));
     expect(slides).toHaveLength(2);
     expect(slides[1].full).toBe('https://x/real.jpg');
+  });
+
+  it('drops conservation photography (X-ray, IRR, UV, verso) but keeps detail crops', () => {
+    const base = 'https://images.metmuseum.org/CRDImages/ep/original/';
+    const slides = buildSlides(artwork({
+      additionalImages: [`${base}DP-1-XRAY.jpg`, `${base}DP-1-IRR.jpg`, `${base}DP-1_det.jpg`, `${base}DP-1-verso.jpg`],
+    }));
+    expect(slides.map((s) => s.full)).toEqual(['https://x/full.jpg', `${base}DP-1_det.jpg`]);
   });
 
   it('tolerates a missing additionalImages field', () => {

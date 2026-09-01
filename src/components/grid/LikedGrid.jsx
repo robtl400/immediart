@@ -87,7 +87,7 @@ export default function LikedGrid() {
         <div className="error-container">
           <p className="error-message">Unable to load liked artworks</p>
           <p className="error-detail">{grid.error}</p>
-          <button className="retry-button" onClick={grid.retryLoadMore}>Try Again</button>
+          <button className="retry-button" onClick={grid.retryLoadMore}>Try again</button>
         </div>
       </div>
     );
@@ -136,7 +136,7 @@ export default function LikedGrid() {
       {grid.error && (
         <div className="inline-error" role="status">
           <p>{grid.error}</p>
-          <button className="retry-button" onClick={grid.retryLoadMore}>Try Again</button>
+          <button className="retry-button" onClick={grid.retryLoadMore}>Try again</button>
         </div>
       )}
 

@@ -45,15 +45,18 @@
   outline-offset: 2px;
 }
 
-/* Right-aligned action cluster — absolute so it never de-centres the logo */
+/* Right-aligned action cluster — absolute so it never de-centres the logo.
+   Kept tight (two 44px targets, 8px from the edge) so the centred logo +
+   wordmark clears it on a 360px phone; the icons sit centred in their targets,
+   so the visual gap between them stays generous. */
 .banner-actions {
   position: absolute;
-  right: 14px;
+  right: 8px;
   top: 50%;
   transform: translateY(-50%);
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 2px;
 }
 
 .banner-icon-btn {
@@ -66,6 +69,7 @@
   background: none;
   border: none;
   padding: 0;
+  font: inherit;
   cursor: pointer;
   color: var(--color-gold);
 }
@@ -213,8 +217,12 @@
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
 }
 
+/* Logo + wordmark sizes are set for the narrowest phones here and scale UP
+   at 414px: the centred cluster must clear the absolute action cluster on
+   the right (8px + two 44px buttons + 2px gap, mirrored on the left by the
+   centring), which leaves ~164px of clear width on a 360px phone. */
 .banner-logo {
-  height: 2.4rem;
+  height: 1.75rem;
   width: auto;
   opacity: 1;
   transition: transform var(--dur-slow) ease, opacity var(--dur-slow) ease;
@@ -223,7 +231,7 @@
 .banner-title {
   font-family: var(--font-display);
   color: var(--color-gold);
-  font-size: 2.5rem;
+  font-size: 1.75rem;
   text-align: center;
   margin: 0;
   font-weight: 400;
@@ -332,20 +340,6 @@
   object-fit: contain;
 }
 
-.carousel-count {
-  position: absolute;
-  top: 10px;
-  right: 12px;
-  background: var(--scrim-chip);
-  color: var(--color-text);
-  font-family: var(--font-sans);
-  font-size: var(--text-xs);
-  font-weight: 600;
-  padding: 2px var(--space-2);
-  border-radius: var(--radius-pill);
-  pointer-events: none;
-  z-index: 2;
-}
 
 /* Dot strip lives below the frame (outside the image) */
 .carousel-dots {
@@ -521,9 +515,16 @@
   transition: opacity var(--dur-base) ease;
 }
 
-.artist-name.clickable:hover,
-.artist-name.clickable:focus-visible {
+.artist-name.clickable:hover {
   opacity: 0.8;
+}
+
+/* Keyboard focus on the inline chips gets the same gold ring as every button */
+.artist-name.clickable:focus-visible,
+.hashtag:focus-visible {
+  outline: 2px solid var(--color-gold);
+  outline-offset: 2px;
+  border-radius: 2px;
 }
 
 .hashtag {
@@ -536,8 +537,7 @@
   margin-left: var(--space-1);
 }
 
-.hashtag:hover,
-.hashtag:focus-visible {
+.hashtag:hover {
   opacity: 0.8;
 }
 
@@ -573,14 +573,6 @@
 
 /* Responsive adjustments for smaller screens */
 @media (max-width: 360px) {
-  .banner-title {
-    font-size: 1.75rem;
-  }
-
-  .banner-logo {
-    height: 1.75rem;
-  }
-
   .artwork-description,
   .artist-name,
   .hashtag {
@@ -597,11 +589,11 @@
    caption, actions and comments stay on a single shared left edge. */
 @media (min-width: 414px) {
   .banner-title {
-    font-size: 2.25rem;
+    font-size: 2.1rem;
   }
 
   .banner-logo {
-    height: 2.25rem;
+    height: 2.1rem;
   }
 }
 
@@ -712,14 +704,16 @@
 }
 
 /* Sponsored post */
+/* Muted, not faint: this is real content (the Met's credit line) and must
+   stay readable — muted clears AA on the feed ground, faint does not. */
 .sponsored-post {
   font-size: var(--text-xs);
-  color: var(--color-text-faint);
+  color: var(--color-text-muted);
   margin: 2px 0;
 }
 .sponsored-label {
   font-size: var(--text-2xs);
-  color: var(--color-text-faint);
+  color: var(--color-text-muted);
   text-transform: uppercase;
   letter-spacing: 0.08em;
 }

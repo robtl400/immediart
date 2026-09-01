@@ -38,7 +38,8 @@ vi.mock('../../context/ArtworkModalContext', () => ({
 vi.mock('../../context/LikesContext', () => ({
   useLikes: vi.fn(),
 }));
-vi.mock('../../hooks/useShareArtwork', () => ({
+vi.mock('../../hooks/useShareArtwork', async (importOriginal) => ({
+  ...(await importOriginal()), // keep shareLabel
   useShareArtwork: vi.fn(),
 }));
 // If the cached artwork matches the route id the modal never fetches; the mock

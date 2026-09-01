@@ -270,7 +270,7 @@ export default function DiscoveryFeed() {
         <div className="error-container">
           <p className="error-message">Unable to load artworks</p>
           <p className="error-detail">{error}</p>
-          <button className="retry-button" onClick={retry}>Try Again</button>
+          <button className="retry-button" onClick={retry}>Try again</button>
         </div>
       </div>
     );
@@ -309,7 +309,7 @@ export default function DiscoveryFeed() {
       {error && artworks.length > 0 && (
         <div className="inline-error" role="status">
           <p>{error}</p>
-          <button className="retry-button" onClick={retryLoadMore}>Try Again</button>
+          <button className="retry-button" onClick={retryLoadMore}>Try again</button>
         </div>
       )}
 

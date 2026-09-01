@@ -14,8 +14,8 @@ const prefersReduced = () =>
  *   - opens the modal on the *current* image (onOpen receives that slide's
  *     full-res URL, so the modal shows what the user was looking at).
  *
- * Dots live in a strip below the frame (outside the image); a small "n/total"
- * counter overlays the top-right corner. The frame follows the PRIMARY image's
+ * Dots live in a strip below the frame (outside the image) and are the only
+ * position indicator. The frame follows the PRIMARY image's
  * clamped aspect ratio exactly like single-image cards, with slides letterboxed
  * (object-fit: contain) so mixed aspect ratios all show the whole work.
  */
@@ -83,7 +83,6 @@ export default function ImageCarousel({ slides, alt, frameAspect, onPrimaryLoad,
             </div>
           ))}
         </div>
-        <span className="carousel-count" aria-hidden="true">{active + 1}/{slides.length}</span>
       </div>
 
       <div className="carousel-dots">

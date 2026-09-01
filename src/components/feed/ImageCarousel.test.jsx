@@ -45,9 +45,10 @@ describe('ImageCarousel', () => {
     expect(container.querySelectorAll('.carousel-dot')).toHaveLength(3);
   });
 
-  it('shows the current-slide counter', () => {
+  it('marks the current slide with the dots only — no counter over the image', () => {
     const { container } = setup();
-    expect(container.querySelector('.carousel-count').textContent).toBe('1/3');
+    expect(container.querySelector('.carousel-count')).toBeNull();
+    expect(container.querySelector('.carousel-dot.active')).toBeTruthy();
   });
 
   it('opens the modal on a slide with that slide\'s full-res URL (click)', () => {

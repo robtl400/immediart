@@ -112,9 +112,12 @@ html, body {
     padding: 20px 0;
   }
 
-  /* Phone-style frame around every top-level view */
-  .app-frame {
+  /* Phone-style frame around every top-level view. Its height gives back the
+     20px of #root padding above and below, so the page itself never scrolls
+     and the frame's rounded corners stay on screen. */
+  #root .app-frame {
     max-width: 430px;
+    height: calc(100vh - 40px);
     margin: 0 auto;
     border-radius: 40px;
     box-shadow: 0 0 60px rgba(0, 0, 0, 0.5);
@@ -144,13 +147,15 @@ button {
 
 .not-found-content {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: var(--space-5);
   flex: 1;
 }
 
 .not-found-text {
   color: var(--color-text-muted);
-  font-size: 15px;
+  font-size: var(--text-base);
   margin: 0;
 }

@@ -6,7 +6,7 @@ import { shuffleArray } from './shuffle';
 
 // Format artist name as username: "Vincent van Gogh" → "@vincent_van_gogh"
 export function formatArtistUsername(artistName) {
-  if (!artistName) return '@Unknown_Artist';
+  if (!artistName) return '@unknown_artist';
   const formatted = artistName
     .replace(/\s*\(.*?\)\s*/g, '')
     .trim()
@@ -14,7 +14,7 @@ export function formatArtistUsername(artistName) {
     .replace(/[-\s]+/g, '_')
     .replace(/_+$/, '')
     .replace(/^_+/, '');
-  return formatted ? `@${formatted}` : '@Unknown_Artist';
+  return formatted ? `@${formatted}` : '@unknown_artist';
 }
 
 // Extract random tags from API tags array

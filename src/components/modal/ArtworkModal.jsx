@@ -2,7 +2,7 @@ import { useEffect, useCallback, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useArtworkModal } from '../../context/ArtworkModalContext';
 import { useLikes } from '../../context/LikesContext';
-import { useShareArtwork } from '../../hooks/useShareArtwork';
+import { useShareArtwork, shareLabel } from '../../hooks/useShareArtwork';
 import { fetchArtworkByID } from '../../services/metAPI';
 import { transformAPIToDisplay } from '../../utils/transformers';
 import { activateOnKey } from '../../utils/keyboard';
@@ -62,7 +62,7 @@ export default function ArtworkModal() {
   const id = Number(artworkId);
   const { cachedArtwork, closeModal } = useArtworkModal();
   const { isLiked, toggleLike } = useLikes();
-  const { copied, share } = useShareArtwork();
+  const { copied, failed, share } = useShareArtwork();
   const navigate = useNavigate();
   const modalRef = useRef(null);
 
@@ -204,7 +204,7 @@ export default function ArtworkModal() {
               </button>
               <button className="action-btn share-btn" onClick={() => share(artwork)} aria-label="Share">
                 <img src={flyingMachineIcon} alt="" className="icon share-icon" />
-                <span className="btn-label">{copied ? 'Copied!' : 'Share'}</span>
+                <span className="btn-label">{shareLabel({ copied, failed })}</span>
               </button>
             </div>
 

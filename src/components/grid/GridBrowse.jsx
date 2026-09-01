@@ -135,7 +135,7 @@ export default function GridBrowse({ type }) {
             className="retry-button"
             onClick={() => initSearch(type, searchTerm)}
           >
-            Try Again
+            Try again
           </button>
         </div>
       </div>
@@ -180,7 +180,7 @@ export default function GridBrowse({ type }) {
       {error && (
         <div className="inline-error" role="status">
           <p>{error}</p>
-          <button className="retry-button" onClick={retryLoadMore}>Try Again</button>
+          <button className="retry-button" onClick={retryLoadMore}>Try again</button>
         </div>
       )}
 

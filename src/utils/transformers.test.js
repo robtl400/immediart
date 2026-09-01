@@ -20,20 +20,20 @@ describe('formatArtistUsername (T2-A)', () => {
     expect(formatArtistUsername('Toulouse-Lautrec-Someone')).toBe('@toulouse_lautrec_someone');
   });
 
-  it('all-parenthetical name returns Unknown_Artist', () => {
-    expect(formatArtistUsername('(Unknown)')).toBe('@Unknown_Artist');
+  it('all-parenthetical name returns @unknown_artist', () => {
+    expect(formatArtistUsername('(Unknown)')).toBe('@unknown_artist');
   });
 
   it('multiple parentheticals both removed', () => {
     expect(formatArtistUsername('Jan van Eyck (Flemish) (attr.)')).toBe('@jan_van_eyck');
   });
 
-  it('null returns Unknown_Artist', () => {
-    expect(formatArtistUsername(null)).toBe('@Unknown_Artist');
+  it('null returns @unknown_artist', () => {
+    expect(formatArtistUsername(null)).toBe('@unknown_artist');
   });
 
-  it('empty string returns Unknown_Artist', () => {
-    expect(formatArtistUsername('')).toBe('@Unknown_Artist');
+  it('empty string returns @unknown_artist', () => {
+    expect(formatArtistUsername('')).toBe('@unknown_artist');
   });
 });
 

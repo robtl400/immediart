@@ -128,10 +128,30 @@
 
 /* ErrorBoundary fallback — full-height framed page like every other view */
 .error-boundary-page {
-  min-height: 100vh;
+  height: 100vh;
   width: 100%;
   background-color: var(--color-bg);
   display: flex;
   flex-direction: column;
   justify-content: center;
+}
+
+/* Empty-state / not-found CTA (grid empty states, /liked, 404) */
+.empty-state-cta {
+  background: none;
+  border: 1px solid var(--color-gold);
+  color: var(--color-gold);
+  padding: 10px var(--space-5);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color var(--dur-base) ease, color var(--dur-base) ease;
+}
+.empty-state-cta:hover {
+  background-color: var(--color-gold);
+  color: var(--color-bg);
+}
+.empty-state-cta:active {
+  opacity: 0.8;
 }

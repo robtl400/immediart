@@ -1,11 +1,12 @@
 /**
- * Regression: ISSUE-004 — Share button "Copied!" feedback not shown when clipboard write fails
+ * Regression: ISSUE-004 — Share button gives no feedback when the clipboard write fails
  * Found by /qa on 2026-03-21
  * Report: .gstack/qa-reports/qa-report-localhost-2026-03-21.md
  *
- * Root cause: the else branch in handleShare called `await navigator.clipboard?.writeText(url)`
- * without try-catch. If clipboard throws (permission denied, insecure context, etc.),
- * the async function aborts before `setShareCopied(true)` is reached, so "Copied!" never shows.
+ * Root cause: the clipboard write was awaited without try-catch, so a refused
+ * write aborted the handler before any feedback state was set. The button must
+ * always answer a tap — "Copied!" when the link really is on the clipboard,
+ * "Couldn't copy" when it isn't (never a false "Copied!").
  */
 
 import { describe, it, expect, afterEach, vi } from 'vitest';
@@ -37,7 +38,7 @@ describe('ArtworkCard — Share feedback (ISSUE-004 regression)', () => {
     vi.useRealTimers();
   });
 
-  it('shows "Copied!" even when clipboard.writeText throws a permission error', async () => {
+  it('answers a refused clipboard write with "Couldn\'t copy" — feedback, but never a false "Copied!"', async () => {
     // Simulate: navigator.share is undefined, clipboard.writeText throws
     Object.defineProperty(navigator, 'share', { value: undefined, configurable: true });
     Object.defineProperty(navigator, 'clipboard', {
@@ -54,10 +55,12 @@ describe('ArtworkCard — Share feedback (ISSUE-004 regression)', () => {
       await Promise.resolve();
     });
 
-    expect(screen.getByText('Copied!')).toBeTruthy();
+    expect(screen.queryByText('Copied!')).toBeNull();
+    expect(screen.getByText("Couldn't copy")).toBeTruthy();
 
     act(() => { vi.advanceTimersByTime(2001); });
-    expect(screen.queryByText('Copied!')).toBeNull();
+    expect(screen.queryByText("Couldn't copy")).toBeNull();
+    expect(screen.getByText('Share')).toBeTruthy();
   });
 
   it('shows "Copied!" when clipboard.writeText succeeds (no share API)', async () => {
@@ -79,7 +82,7 @@ describe('ArtworkCard — Share feedback (ISSUE-004 regression)', () => {
     expect(screen.getByText('Copied!')).toBeTruthy();
   });
 
-  it('shows "Copied!" when navigator.share throws non-AbortError and clipboard also throws', async () => {
+  it('shows "Couldn\'t copy" when navigator.share throws non-AbortError and clipboard also throws', async () => {
     Object.defineProperty(navigator, 'share', {
       value: vi.fn().mockRejectedValue(new DOMException('Share failed', 'InvalidStateError')),
       configurable: true,
@@ -98,6 +101,7 @@ describe('ArtworkCard — Share feedback (ISSUE-004 regression)', () => {
       await Promise.resolve();
     });
 
-    expect(screen.getByText('Copied!')).toBeTruthy();
+    expect(screen.queryByText('Copied!')).toBeNull();
+    expect(screen.getByText("Couldn't copy")).toBeTruthy();
   });
 });

@@ -1,7 +1,7 @@
 import { useState, useMemo, Fragment } from 'react';
 import flyingMachineIcon from '../../assets/FlyingMachine2_tinted_gold.png';
 import { activateOnKey } from '../../utils/keyboard';
-import { useShareArtwork } from '../../hooks/useShareArtwork';
+import { useShareArtwork, shareLabel } from '../../hooks/useShareArtwork';
 import { buildSlides } from '../../utils/slides';
 import { clampFrameAspect } from '../../utils/frameAspect';
 import ImageCarousel from './ImageCarousel';
@@ -17,7 +17,7 @@ export default function ArtworkCard({ artwork, isLiked, onLike, onImageClick, on
   // null until the (primary) image reports its natural size; the frame shows
   // as a square placeholder until then (CSS default aspect-ratio).
   const [frameAspect, setFrameAspect] = useState(null);
-  const { copied: shareCopied, share } = useShareArtwork();
+  const { copied, failed, share } = useShareArtwork();
 
   const handleImageLoad = (e) => {
     const img = e.target;
@@ -111,7 +111,7 @@ export default function ArtworkCard({ artwork, isLiked, onLike, onImageClick, on
 
           <button className="action-btn share-btn" onClick={() => share(artwork)} aria-label="Share">
             <img src={flyingMachineIcon} alt="Share" className="icon share-icon" />
-            <span className="btn-label">{shareCopied ? 'Copied!' : 'Share'}</span>
+            <span className="btn-label">{shareLabel({ copied, failed })}</span>
           </button>
         </div>
       </div>
