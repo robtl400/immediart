@@ -11,7 +11,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { RequestManager } from './requestManager';
+import { RequestManager, RECONNECT_GRACE_MS } from './requestManager';
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
@@ -611,5 +611,104 @@ describe('RequestManager — budget ignores aborted callers', () => {
     controller.abort();
     await expect(rm.fetch('http://b', controller.signal)).rejects.toMatchObject({ name: 'AbortError' });
     expect(globalThis.fetch).toHaveBeenCalledTimes(2); // a + b's immediate rejection
+  });
+});
+
+// ─── offline: a dead network says nothing about the API ──────────────────────
+
+describe('RequestManager — offline failures and reconnect()', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.stubGlobal('fetch', vi.fn());
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it('network errors while navigator.onLine is false do not count toward the breaker', async () => {
+    vi.stubGlobal('navigator', { ...globalThis.navigator, onLine: false });
+    globalThis.fetch.mockRejectedValue(new TypeError('Failed to fetch'));
+    const rm = makeManager();
+    for (let i = 0; i < 8; i++) {
+      try { await rm.fetch('http://x', null); } catch { /* expected */ }
+    }
+    expect(rm.state).toBe('CLOSED'); // eight offline failures, no trip
+  });
+
+  it('the same failures while online still trip the breaker', async () => {
+    vi.stubGlobal('navigator', { ...globalThis.navigator, onLine: true });
+    globalThis.fetch.mockRejectedValue(new TypeError('Failed to fetch'));
+    const rm = makeManager();
+    for (let i = 0; i < 5; i++) {
+      try { await rm.fetch('http://x', null); } catch { /* expected */ }
+    }
+    expect(rm.state).toBe('OPEN');
+  });
+
+  it('reconnect() moves an OPEN breaker to HALF_OPEN — one probe decides, escalation intact', async () => {
+    globalThis.fetch.mockImplementation(err403);
+    const rm = makeManager();
+    for (let i = 0; i < 5; i++) {
+      try { await rm.fetch('http://x', null); } catch { /* expected */ }
+    }
+    expect(rm.state).toBe('OPEN');
+    await expect(rm.fetch('http://x', null)).rejects.toThrow('Circuit breaker open');
+
+    rm.reconnect();
+    expect(rm.state).toBe('HALF_OPEN'); // not CLOSED: `online` is not proof a ban lifted
+
+    // The probe succeeds (the trip was a dead network) → CLOSED
+    globalThis.fetch.mockImplementation(ok200);
+    const res = await rm.fetch('http://x', null);
+    expect(res.status).toBe(200);
+    expect(rm.state).toBe('CLOSED');
+  });
+
+  it('a real ban survives reconnect(): the single probe 403s and the breaker re-opens, escalated', async () => {
+    globalThis.fetch.mockImplementation(err403);
+    const rm = makeManager();
+    for (let i = 0; i < 5; i++) {
+      try { await rm.fetch('http://x', null); } catch { /* expected */ }
+    }
+    rm.reconnect();
+    expect(rm.state).toBe('HALF_OPEN');
+    await rm.fetch('http://x', null); // the probe: still 403
+    expect(rm.state).toBe('OPEN');
+    expect(globalThis.fetch).toHaveBeenCalledTimes(6); // exactly one probe hit the live ban
+    // Escalated wait: still OPEN after the base period, HALF_OPEN after the doubled one
+    await vi.advanceTimersByTimeAsync(60000);
+    expect(rm.state).toBe('OPEN');
+    await vi.advanceTimersByTimeAsync(60000);
+    expect(rm.state).toBe('HALF_OPEN');
+  });
+
+  it('reconnect() while HALF_OPEN leaves the running probe in charge', async () => {
+    globalThis.fetch.mockImplementation(err403);
+    const rm = makeManager();
+    for (let i = 0; i < 5; i++) {
+      try { await rm.fetch('http://x', null); } catch { /* expected */ }
+    }
+    await vi.advanceTimersByTimeAsync(60000); // OPEN → HALF_OPEN
+    expect(rm.state).toBe('HALF_OPEN');
+    rm.reconnect();
+    expect(rm.state).toBe('HALF_OPEN');
+  });
+
+  it('failures in the first seconds after reconnect() do not count (the network is still settling)', async () => {
+    vi.stubGlobal('navigator', { ...globalThis.navigator, onLine: true });
+    globalThis.fetch.mockRejectedValue(new TypeError('Failed to fetch'));
+    const rm = makeManager();
+    rm.reconnect();
+    for (let i = 0; i < 8; i++) {
+      try { await rm.fetch('http://x', null); } catch { /* expected */ }
+    }
+    expect(rm.state).toBe('CLOSED');
+    // Once the grace window has passed, failures count again
+    await vi.advanceTimersByTimeAsync(RECONNECT_GRACE_MS + 1);
+    for (let i = 0; i < 5; i++) {
+      try { await rm.fetch('http://x', null); } catch { /* expected */ }
+    }
+    expect(rm.state).toBe('OPEN');
   });
 });

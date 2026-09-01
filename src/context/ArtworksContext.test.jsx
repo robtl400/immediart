@@ -28,7 +28,6 @@ vi.mock('../services/artworkCache', () => ({
   getCachedIDs: vi.fn(),
   setCachedIDs: vi.fn(),
   getCachedArtwork: vi.fn().mockResolvedValue(null),
-  clearCache: vi.fn(),
 }));
 
 import { fetchAllObjectIDs, batchFetchArtworks } from '../services/metAPI';

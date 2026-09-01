@@ -35,6 +35,7 @@ export const CIRCUIT_BREAKER_OPEN = 'Circuit breaker open';
 const CB_FAILURE_THRESHOLD = 5;      // consecutive failures to trip breaker
 const CB_OPEN_BASE_MS      = 60000;  // first OPEN period ≈ measured penalty
 const CB_OPEN_MAX_MS       = 240000; // escalation ceiling
+export const RECONNECT_GRACE_MS = 3000; // failures this soon after `online` don't count (see reconnect)
 
 // Dynamic concurrency constants
 const DC_WINDOW_SIZE       = 10;  // sliding window size (requests)
@@ -159,6 +160,36 @@ export class RequestManager {
     if (this._cbState !== 'OPEN') this._tripBreaker();
   }
 
+  // ── reconnect ─────────────────────────────────────────────────────────────
+  //
+  // The browser reports it is (back) online. The `online` event fires on any
+  // interface change — a Wi-Fi switch, a VPN, a laptop wake — so it is NOT
+  // proof the Met is reachable, and never proof that an Imperva ban has
+  // lifted. So: don't close an OPEN breaker, let ONE probe decide. A breaker
+  // tripped by a dead network clears on that probe's first success; a real
+  // ban costs one request and re-opens with its escalation intact. A breaker
+  // already HALF_OPEN has its probe mechanism running — leave it alone.
+  //
+  // Failures in the first moments after reconnecting are also discounted:
+  // the interface comes up before DHCP/DNS settle (captive portals
+  // especially), and six parallel fetches x three retries in that gap would
+  // manufacture the exact self-inflicted 60s ban the offline rule prevents.
+
+  reconnect() {
+    this._onlineAt = Date.now();
+    if (this._cbState === 'OPEN') {
+      clearTimeout(this._cbOpenTimer);
+      this._cbState         = 'HALF_OPEN';
+      this._cbProbeInFlight = false;
+    } else if (this._cbState === 'CLOSED') {
+      this._cbConsecutiveFails = 0;
+    }
+  }
+
+  get _settlingAfterReconnect() {
+    return this._onlineAt != null && Date.now() - this._onlineAt < RECONNECT_GRACE_MS;
+  }
+
   // ── Throttled fetch with circuit breaker ──────────────────────────────────
 
   async fetch(url, signal) {
@@ -234,16 +265,22 @@ export class RequestManager {
     try {
       response = await myRequest;
     } catch (err) {
-      if (err.name !== 'AbortError') {
+      // A failure while the browser reports no connection says nothing about
+      // the API's health: it must not count toward the breaker, or a brief
+      // Wi-Fi drop (six parallel fetches x three retries) trips a 60s ban of
+      // our own making that outlasts the reconnect.
+      const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
+      if (err.name !== 'AbortError' && !offline && !this._settlingAfterReconnect) {
         // Network error — count it, and a failed HALF_OPEN probe re-opens the breaker
         this.recordResult(false);
         if (this._cbState === 'HALF_OPEN') this._reopenBreaker();
       } else if (isProbe && this._cbState === 'HALF_OPEN') {
-        // An aborted probe says nothing about API health — release the probe
-        // slot and promote the next LIVE queued caller as the new probe.
-        // Loop past aborted entries (batch fetches share one AbortController,
-        // so a navigate-away can abort the probe and queued callers together);
-        // stopping at the first aborted entry would strand the rest.
+        // An aborted (or offline) probe says nothing about API health —
+        // release the probe slot and promote the next LIVE queued caller as
+        // the new probe. Loop past aborted entries (batch fetches share one
+        // AbortController, so a navigate-away can abort the probe and queued
+        // callers together); stopping at the first aborted entry would strand
+        // the rest.
         this._cbProbeInFlight = false;
         let next;
         while ((next = this._cbPendingResolvers.shift())) {
@@ -359,3 +396,7 @@ export const requestManager = new RequestManager({
   requestBudget:         REQUEST_BUDGET,
   requestBudgetWindowMs: REQUEST_BUDGET_WINDOW_MS,
 });
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('online', () => requestManager.reconnect());
+}

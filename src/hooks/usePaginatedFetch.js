@@ -108,6 +108,7 @@ export function usePaginatedFetch({
   const fetchingRef          = useRef(false);
   const abortControllerRef   = useRef(null);
   const fetchIdRef           = useRef(0);
+  const pausedRef            = useRef(false);         // set by pause(); cleared by any view-driven fetch
 
   // fetchIDs function — updated via reset(); always read via ref so fetchBatch
   // can be stable (no dep on fetchIDs function identity)
@@ -206,6 +207,7 @@ export function usePaginatedFetch({
   const fetchBatch = useCallback(async (isInitial = false) => {
     if (fetchingRef.current) return;
     fetchingRef.current = true;
+    pausedRef.current   = false; // a fetch is view-driven — the hook is live again
 
     abortControllerRef.current?.abort();
     abortControllerRef.current = new AbortController();
@@ -541,6 +543,8 @@ export function usePaginatedFetch({
     // against a known-unhealthy API. Recovery goes through retryLoadMore.
     if (fetchingRef.current || !hasMore || loadingMore || error) return;
 
+    pausedRef.current = false; // view-driven — the hook is live again
+
     // Instant merge from prefetch if ready
     if (prefetchRef.current) {
       mergePrefetch();
@@ -590,6 +594,29 @@ export function usePaginatedFetch({
     fetchBatch(allIDsRef.current.length === 0);
   }, [fetchBatch]);
 
+  // Coming back online retries a showing error on its own — the user
+  // shouldn't have to find the button after a Wi-Fi drop. Two guards:
+  //   - a paused hook (the provider outlives its view; the user navigated
+  //     away with the error showing) stays quiet — an unwatched retry would
+  //     spend the request budget the visible view needs;
+  //   - the retry waits out the recovery pause: `online` fires when the
+  //     interface is up, often before DNS/DHCP settle, and an instant burst of
+  //     failures there would count against the breaker.
+  // Read through refs so the listener is bound once.
+  const errorRef  = useRef(error);
+  useEffect(() => { errorRef.current = error; }, [error]);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    let timer = null;
+    const onOnline = () => {
+      if (!errorRef.current || pausedRef.current) return;
+      clearTimeout(timer);
+      timer = setTimeout(() => { if (errorRef.current && !pausedRef.current) retryLoadMore(); }, RATE_LIMIT_RECOVERY_MS);
+    };
+    window.addEventListener('online', onOnline);
+    return () => { clearTimeout(timer); window.removeEventListener('online', onOnline); };
+  }, [retryLoadMore]);
+
   // ── reset ─────────────────────────────────────────────────────────────────
   //
   // Abort all in-flight work, install a new fetchIDs function, start fresh.
@@ -626,6 +653,7 @@ export function usePaginatedFetch({
     prefetchRef.current  = null;
     prefetchPromiseRef.current = null;
     fetchingRef.current  = false;
+    pausedRef.current    = true;
     // Clear loading flags directly: a joined prefetch's continuation may not
     // settle for a long time under budget pressure, and the provider outlives
     // the view — a stranded loadingMore=true would gate loadMore when the user

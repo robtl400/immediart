@@ -31,7 +31,7 @@ export default function ArtistProfileHeader({ artistName, artworks }) {
       <div className="profile-identity">
         <span className="profile-username">{username}</span>
         {highlightCount > 0 && (
-          <span className="profile-verified" aria-label="Museum Highlight">✓</span>
+          <span className="profile-verified" role="img" aria-label="Museum Highlight">✓</span>
         )}
       </div>
 

@@ -79,17 +79,6 @@ describe('artworkCache — artworks', () => {
   });
 });
 
-describe('artworkCache — clearCache', () => {
-  it('clearCache removes all entries; subsequent reads return null', async () => {
-    const { getCachedIDs, setCachedIDs, getCachedArtwork, setCachedArtwork, clearCache } = await import('./artworkCache.js');
-    await setCachedIDs('ids:feed:paintings', [1, 2]);
-    await setCachedArtwork(5, { objectID: 5, title: 'Test' });
-    await clearCache();
-    expect(await getCachedIDs('ids:feed:paintings')).toBeNull();
-    expect(await getCachedArtwork(5)).toBeNull();
-  });
-});
-
 describe('artworkCache — key namespacing', () => {
   it('ids:artist:X and ids:tag:X are distinct slots', async () => {
     const { getCachedIDs, setCachedIDs } = await import('./artworkCache.js');
@@ -121,6 +110,46 @@ describe('artworkCache — storage error resilience', () => {
     };
     // Should not throw
     await expect(setCachedIDs('ids:feed:paintings', [1, 2, 3])).resolves.toBeUndefined();
+  });
+
+  it('a read on a connection the browser closed resolves null — and the next call reopens', async () => {
+    // First open hands back a dead connection (every transaction throws
+    // InvalidStateError, as a closed IDBDatabase does); later opens are healthy.
+    const origOpen = globalThis.indexedDB.open.bind(globalThis.indexedDB);
+    let opens = 0;
+    globalThis.indexedDB.open = (...args) => {
+      opens++;
+      const req = origOpen(...args);
+      if (opens === 1) {
+        req.addEventListener('success', () => {
+          req.result.transaction = () => { throw new DOMException('The database connection is closing.', 'InvalidStateError'); };
+        });
+      }
+      return req;
+    };
+    const { getCachedIDs, setCachedIDs } = await import('./artworkCache.js');
+
+    // The read must NOT reject (a rejection here turns every id into an
+    // 'error' outcome and dead-ends the feed) — it resolves null like a miss.
+    await expect(getCachedIDs('ids:feed:paintings')).resolves.toBeNull();
+    expect(opens).toBe(1);
+
+    // The dead handle was dropped: the next calls reopen and work.
+    await setCachedIDs('ids:feed:paintings', [7, 8]);
+    expect(await getCachedIDs('ids:feed:paintings')).toEqual([7, 8]);
+    expect(opens).toBe(2);
+  });
+
+  it('a versionchange from another tab closes the handle so the next call reopens', async () => {
+    const origOpen = globalThis.indexedDB.open.bind(globalThis.indexedDB);
+    let opens = 0; let db;
+    globalThis.indexedDB.open = (...args) => { opens++; const req = origOpen(...args); req.addEventListener('success', () => { db = req.result; }); return req; };
+    const { getCachedIDs, setCachedIDs } = await import('./artworkCache.js');
+    await setCachedIDs('k', [1]);
+    expect(opens).toBe(1);
+    db.onversionchange(new Event('versionchange')); // what the browser fires before another tab upgrades
+    expect(await getCachedIDs('k')).toEqual([1]);   // served by a fresh connection
+    expect(opens).toBe(2);
   });
 
   it('setCachedArtwork swallows write failure without throwing', async () => {

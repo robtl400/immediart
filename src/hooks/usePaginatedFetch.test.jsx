@@ -925,6 +925,62 @@ describe('usePaginatedFetch — outage windows', () => {
     expect(batchFetchArtworks.mock.calls[2][0][0]).toBe(5); // same window, fetched for real
   });
 
+  it('retries a showing error on its own when the browser comes back online', async () => {
+    batchFetchArtworks
+      .mockResolvedValueOnce(makeBatch(BATCH, 1))       // initial → ids 1-4
+      .mockResolvedValueOnce(makeOutage([5, 6, 7, 8]))  // prefetch sees the outage
+      .mockResolvedValueOnce(makeOutage([5, 6, 7, 8]))  // loadMore surfaces it
+      .mockResolvedValue(makeBatch(BATCH, 5));          // back online: recovered
+
+    const { result } = renderHook(() =>
+      usePaginatedFetch({ shuffleIDs: true, batchSize: BATCH })
+    );
+    await act(async () => { result.current.reset(fetchIDs); });
+    await drain();
+    await act(async () => { result.current.loadMore(); });
+    await drain();
+    expect(result.current.error).toBeTruthy();
+    const calls = batchFetchArtworks.mock.calls.length;
+
+    await act(async () => { window.dispatchEvent(new Event('online')); });
+    // Not instantly — the network is still settling; the recovery pause first
+    await act(async () => { await vi.advanceTimersByTimeAsync(RATE_LIMIT_RECOVERY_MS - 1); });
+    expect(batchFetchArtworks.mock.calls.length).toBe(calls);
+    await drain();
+    expect(batchFetchArtworks.mock.calls.length).toBeGreaterThan(calls);
+    expect(batchFetchArtworks.mock.calls[calls][0][0]).toBe(5); // the same window, re-attempted
+    expect(result.current.error).toBeNull();
+    expect(result.current.artworks).toHaveLength(BATCH * 2);
+
+    // With no error showing, 'online' is a no-op
+    const quiet = batchFetchArtworks.mock.calls.length;
+    await act(async () => { window.dispatchEvent(new Event('online')); });
+    await drain();
+    expect(batchFetchArtworks.mock.calls.length).toBe(quiet);
+  });
+
+  it('a paused hook (view navigated away) does not retry on reconnect', async () => {
+    batchFetchArtworks
+      .mockResolvedValueOnce(makeBatch(BATCH, 1))
+      .mockResolvedValueOnce(makeOutage([5, 6, 7, 8]))
+      .mockResolvedValueOnce(makeOutage([5, 6, 7, 8]))
+      .mockResolvedValue(makeBatch(BATCH, 5));
+    const { result } = renderHook(() =>
+      usePaginatedFetch({ shuffleIDs: true, batchSize: BATCH })
+    );
+    await act(async () => { result.current.reset(fetchIDs); });
+    await drain();
+    await act(async () => { result.current.loadMore(); });
+    await drain();
+    expect(result.current.error).toBeTruthy();
+    await act(async () => { result.current.pause(); }); // the user left the feed
+
+    const calls = batchFetchArtworks.mock.calls.length;
+    await act(async () => { window.dispatchEvent(new Event('online')); });
+    await drain();
+    expect(batchFetchArtworks.mock.calls.length).toBe(calls); // an unwatched retry would spend the budget the visible view needs
+  });
+
   it('a pause() that lands after the batch resolved leaves no sticky error behind', async () => {
     let pauseNow = () => {};
     batchFetchArtworks

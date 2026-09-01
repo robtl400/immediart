@@ -101,18 +101,25 @@ export default function ArtworkCard({ artwork, isLiked, onLike, onImageClick, on
           </div>
         )}
         <div className="action-buttons">
+          {/* A toggle: a constant name plus aria-pressed, so assistive tech
+              announces "Like, toggle button, pressed" rather than a name that
+              flips. The share button's name is its visible label, so
+              "Copied!" / "Couldn't copy" reach assistive tech too (a polite live
+              region, not a status role: one status per card would drown out the
+              page's real status messages). */}
           <button
             className={`action-btn like-btn ${isLiked ? 'liked' : ''}`}
             onClick={onLike}
-            aria-label={isLiked ? 'Unlike' : 'Like'}
+            aria-label="Like"
+            aria-pressed={isLiked}
           >
-            <span className="icon heart-icon">{isLiked ? '♥' : '♡'}</span>
+            <span className="icon heart-icon" aria-hidden="true">{isLiked ? '♥' : '♡'}</span>
             <span className="btn-label">Like</span>
           </button>
 
-          <button className="action-btn share-btn" onClick={() => share(artwork)} aria-label="Share">
-            <img src={flyingMachineIcon} alt="Share" className="icon share-icon" />
-            <span className="btn-label">{shareLabel({ copied, failed })}</span>
+          <button className="action-btn share-btn" onClick={() => share(artwork)}>
+            <img src={flyingMachineIcon} alt="" className="icon share-icon" />
+            <span className="btn-label" aria-live="polite">{shareLabel({ copied, failed })}</span>
           </button>
         </div>
       </div>
@@ -136,7 +143,7 @@ export default function ArtworkCard({ artwork, isLiked, onLike, onImageClick, on
             <span className="artist-name">{artwork.username}</span>
           )}
           {artwork.isHighlight && (
-            <span className="verified-badge" aria-label="Museum Highlight">✓</span>
+            <span className="verified-badge" role="img" aria-label="Museum Highlight">✓</span>
           )}{' '}
           {artwork.description && `${artwork.description}.`}
           {artwork.tags.map((tag, index) => (

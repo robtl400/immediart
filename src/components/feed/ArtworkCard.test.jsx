@@ -192,14 +192,24 @@ describe('ArtworkCard — description period (T1-B)', () => {
 });
 
 describe('ArtworkCard — like state', () => {
-  it('renders Like aria-label when not liked', () => {
+  // A toggle button keeps ONE name and exposes its state via aria-pressed, so
+  // assistive tech announces "Like, toggle button, pressed / not pressed".
+  it('exposes an unpressed Like toggle when not liked', () => {
     render(<ArtworkCard artwork={makeArtwork()} isLiked={false} onLike={vi.fn()} onImageClick={vi.fn()} />);
-    expect(screen.getByLabelText('Like')).toBeTruthy();
+    const btn = screen.getByRole('button', { name: 'Like', pressed: false });
+    expect(btn).toBeTruthy();
   });
 
-  it('renders Unlike aria-label when liked', () => {
+  it('exposes a pressed Like toggle when liked — the name does not flip to Unlike', () => {
     render(<ArtworkCard artwork={makeArtwork()} isLiked={true} onLike={vi.fn()} onImageClick={vi.fn()} />);
-    expect(screen.getByLabelText('Unlike')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Like', pressed: true })).toBeTruthy();
+    expect(screen.queryByLabelText('Unlike')).toBeNull();
+  });
+
+  it('the share button is named by its visible label, which is a polite live region', () => {
+    const { container } = render(<ArtworkCard artwork={makeArtwork()} isLiked={false} onLike={vi.fn()} onImageClick={vi.fn()} />);
+    expect(screen.getByRole('button', { name: 'Share' })).toBeTruthy();
+    expect(container.querySelector('.share-btn .btn-label').getAttribute('aria-live')).toBe('polite');
   });
 });
 

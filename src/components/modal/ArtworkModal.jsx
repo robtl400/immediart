@@ -40,8 +40,12 @@ function ModalImage({ artwork }) {
         tabIndex={0}
         role="group"
         aria-label="Zoomable artwork image"
-        aria-roledescription="Zoomable image — double-tap or pinch to zoom, press 0 to reset"
+        aria-describedby="zoom-help"
       >
+        {/* Instructions as a description, not a role description: screen
+            readers speak a role description IN PLACE of the role on every
+            focus, and some truncate it — a description is read once, after. */}
+        <p id="zoom-help" className="sr-only">Double-tap or pinch to zoom, press 0 to reset.</p>
         <img
           ref={imgRef}
           src={src}
@@ -194,17 +198,23 @@ export default function ArtworkModal() {
 
             {/* Action row — mirrors the feed card's image → actions → text rhythm */}
             <div className="artwork-modal-actions">
+              {/* A toggle: a constant name plus aria-pressed, so assistive tech
+                  announces "Like, toggle button, pressed" rather than a name
+                  that flips. The share button's name is its visible label, so
+                  "Copied!" / "Couldn't copy" reach assistive tech too (a polite live
+                  region rather than a status role). */}
               <button
                 className={`action-btn like-btn ${liked ? 'liked' : ''}`}
                 onClick={() => toggleLike(artwork.id)}
-                aria-label={liked ? 'Unlike' : 'Like'}
+                aria-label="Like"
+                aria-pressed={liked}
               >
-                <span className="icon heart-icon">{liked ? '♥' : '♡'}</span>
+                <span className="icon heart-icon" aria-hidden="true">{liked ? '♥' : '♡'}</span>
                 <span className="btn-label">Like</span>
               </button>
-              <button className="action-btn share-btn" onClick={() => share(artwork)} aria-label="Share">
+              <button className="action-btn share-btn" onClick={() => share(artwork)}>
                 <img src={flyingMachineIcon} alt="" className="icon share-icon" />
-                <span className="btn-label">{shareLabel({ copied, failed })}</span>
+                <span className="btn-label" aria-live="polite">{shareLabel({ copied, failed })}</span>
               </button>
             </div>
 

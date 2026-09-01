@@ -9,8 +9,16 @@ const DB_VERSION = 1;
 const TTL_IDS = 86400000;      // 24 hours
 const TTL_ARTWORKS = 604800000; // 7 days
 
-// Module-level singleton — open once, reuse across all calls
+// Module-level singleton — open once, reuse across all calls. `liveDb` is the
+// connection `dbPromise` resolved to; the handlers that drop a dead handle
+// compare against it so a straggler holding an OLDER connection can never
+// discard a newer, healthy one (a reopen would then leak the healthy one).
 let dbPromise = null;
+let liveDb = null;
+
+function dropIfLive(db) {
+  if (db === liveDb) { liveDb = null; dbPromise = null; }
+}
 
 function openDB() {
   if (dbPromise) return dbPromise;
@@ -31,6 +39,13 @@ function openDB() {
 
       request.onsuccess = (event) => {
         const db = event.target.result;
+        // The browser can close this connection behind our back (Safari
+        // storage eviction, a discarded-then-restored tab, storage cleared in
+        // another tab, a version bump elsewhere). Drop the cached handle so the
+        // next call reopens instead of failing forever on a dead connection.
+        db.onversionchange = () => { db.close(); dropIfLive(db); };
+        db.onclose = () => dropIfLive(db);
+        liveDb = db;
         // Cleanup expired entries after open (fire and forget) — deferred off
         // the open path: it cursor-walks both stores, and now that validation
         // rejects are cached too the artworks store can hold thousands of
@@ -46,7 +61,9 @@ function openDB() {
         reject(request.error);
       };
     } catch (err) {
-      dbPromise = null;
+      // A synchronous throw (no indexedDB at all, a sandboxed frame) leaves
+      // dbPromise as this rejected promise: every later call fast-fails to
+      // null without re-attempting an open that can never succeed.
       reject(err);
     }
   });
@@ -75,11 +92,27 @@ function cleanupExpired(db) {
   }
 }
 
+// Open a transaction on the live connection. A connection the browser has
+// already closed throws InvalidStateError here; drop the cached handle so the
+// NEXT call reopens (this call still fails, and its caller swallows that).
+function transaction(db, storeName, mode) {
+  try {
+    return db.transaction(storeName, mode);
+  } catch (err) {
+    if (err?.name === 'InvalidStateError') dropIfLive(db);
+    throw err;
+  }
+}
+
 async function getFromStore(storeName, key) {
   try {
     const db = await openDB();
-    return new Promise((resolve) => {
-      const tx = db.transaction(storeName, 'readonly');
+    // `return await`, not `return`: a synchronous throw inside the executor
+    // (a closed connection at db.transaction) becomes a rejected promise, and
+    // only an awaited one is caught below — a returned one would escape and
+    // turn every cache read into a hard failure until reload.
+    return await new Promise((resolve) => {
+      const tx = transaction(db, storeName, 'readonly');
       const store = tx.objectStore(storeName);
       const req = store.get(key);
       req.onsuccess = () => {
@@ -101,7 +134,7 @@ async function removeFromStore(storeName, key) {
   try {
     const db = await openDB();
     await new Promise((resolve) => {
-      const tx = db.transaction(storeName, 'readwrite');
+      const tx = transaction(db, storeName, 'readwrite');
       const store = tx.objectStore(storeName);
       const req = store.delete(key);
       req.onsuccess = () => resolve();
@@ -116,7 +149,7 @@ async function setInStore(storeName, key, data, ttl) {
   try {
     const db = await openDB();
     await new Promise((resolve, reject) => {
-      const tx = db.transaction(storeName, 'readwrite');
+      const tx = transaction(db, storeName, 'readwrite');
       const store = tx.objectStore(storeName);
       const req = store.put({ key, data, expiresAt: Date.now() + ttl });
       req.onerror = () => reject(req.error);
@@ -148,21 +181,4 @@ export async function setCachedArtwork(id, obj, ttl = TTL_ARTWORKS) {
 
 export async function removeCachedArtwork(id) {
   await removeFromStore('artworks', String(id));
-}
-
-export async function clearCache() {
-  try {
-    const db = await openDB();
-    for (const storeName of ['ids', 'artworks']) {
-      await new Promise((resolve) => {
-        const tx = db.transaction(storeName, 'readwrite');
-        const store = tx.objectStore(storeName);
-        const req = store.clear();
-        req.onsuccess = () => resolve();
-        req.onerror = () => resolve(); // Swallow
-      });
-    }
-  } catch {
-    // Swallow
-  }
 }

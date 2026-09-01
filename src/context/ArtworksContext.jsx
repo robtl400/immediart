@@ -6,7 +6,6 @@
 
 import { createContext, useContext, useEffect, useCallback, useRef } from 'react';
 import { fetchAllObjectIDs } from '../services/metAPI';
-import { clearCache } from '../services/artworkCache';
 import { usePaginatedFetch } from '../hooks/usePaginatedFetch';
 import { FEED_BATCH_SIZE, FEED_INITIAL_BATCH_SIZE, MAX_ARTWORKS_IN_MEMORY, RATE_LIMIT_RECOVERY_MS } from '../utils/constants';
 
@@ -40,11 +39,13 @@ export function ArtworksProvider({ children }) {
     feed.reset((signal) => fetchAllObjectIDs(signal));
   }, [feed]);
 
-  // Refresh — evicts all caches and re-fetches from the API
-  const refresh = useCallback(async () => {
+  // Refresh — a fresh shuffle of the feed. The cache stays: the ID list and
+  // every cached artwork (including the negative cache that keeps rejected
+  // ids from costing ~12 requests per card) serve the new feed instantly, and
+  // a "go home" tap must never spend the request budget on refetching what
+  // the app already knows.
+  const refresh = useCallback(() => {
     feed.pause();
-    await clearCache();
-    await new Promise(r => setTimeout(r, RATE_LIMIT_RECOVERY_MS));
     feed.reset((signal) => fetchAllObjectIDs(signal));
   }, [feed]);
 

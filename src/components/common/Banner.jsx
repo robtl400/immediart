@@ -8,7 +8,8 @@ import BannerSearch from './BannerSearch';
 
 /**
  * Shared Banner.
- * - The logo/title is the home/refresh control (a real <button>, so Enter/Space
+ * - The logo/title is the home control — on the feed it scrolls to the top and
+ *   reshuffles; anywhere else it just navigates home (a real <button>, so Enter/Space
  *   work natively) — only that region is clickable, not the whole header, so the
  *   right-aligned action cluster can nest without invalid nested interactives.
  * - `showActions` (default true) renders the search + likes cluster; the modal
@@ -45,10 +46,10 @@ export default function Banner({ isScrolled = false, feedRef = null, showActions
       }
       refresh();
     } else {
+      // Going home from a grid is free: the feed is still mounted in its
+      // provider and restores its scroll position on its own.
       abortGrid();
       navigate('/');
-      // Refresh after navigation settles.
-      setTimeout(refresh, 100);
     }
   };
 
