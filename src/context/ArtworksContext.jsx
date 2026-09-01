@@ -55,6 +55,7 @@ export function ArtworksProvider({ children }) {
     loadingMore:    feed.loadingMore,
     error:          feed.error,
     hasMore:        feed.hasMore,
+    throttledUntil: feed.throttledUntil,
     loadMoreArtworks: feed.loadMore,
     retryLoadMore:  feed.retryLoadMore,
     retry,

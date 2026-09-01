@@ -18,7 +18,7 @@
  *                     └──► OPEN (doubled timer, capped)
  */
 
-import { delay } from '../utils/delay';
+import { delay, delayOrAbort } from '../utils/delay';
 
 // Shared error message for the open-breaker fast-fail. Consumers match on
 // this constant (not a retyped string) so a rewording can't silently break
@@ -36,6 +36,7 @@ const CB_FAILURE_THRESHOLD = 5;      // consecutive failures to trip breaker
 const CB_OPEN_BASE_MS      = 60000;  // first OPEN period ≈ measured penalty
 const CB_OPEN_MAX_MS       = 240000; // escalation ceiling
 export const RECONNECT_GRACE_MS = 3000; // failures this soon after `online` don't count (see reconnect)
+const RETRY_AFTER_MAX_MS = 60000;       // longest server-requested hold we honour
 
 // Dynamic concurrency constants
 const DC_WINDOW_SIZE       = 10;  // sliding window size (requests)
@@ -45,7 +46,7 @@ const DC_COOLDOWN_STEP_MS  = 50;  // ms added to batchCooldownMs on step-down
 const DC_MAX_COOLDOWN_MS   = 1000;
 
 export class RequestManager {
-  constructor({ minGapMs, maxConcurrent, batchCooldownMs, requestBudget = Infinity, requestBudgetWindowMs = 30000 }) {
+  constructor({ minGapMs, maxConcurrent, batchCooldownMs, requestBudget = Infinity, requestBudgetWindowMs = 30000, persistKey = null }) {
     this._minGapMs        = minGapMs;
     this._maxConcurrent   = maxConcurrent;
     this._configuredMax   = maxConcurrent;
@@ -62,7 +63,16 @@ export class RequestManager {
     // age out instead of walking into a ~60s ban.
     this._budget          = requestBudget;
     this._budgetWindowMs  = requestBudgetWindowMs;
-    this._dispatchTimes   = [];
+    // The bucket outlives the page: the Met counts every request from this
+    // connection across reloads and tabs, so the timestamps persist (in
+    // localStorage, merged across tabs) — otherwise a pull-to-refresh or a
+    // second tab starts a fresh 60 while Imperva's window remembers.
+    this._persistKey      = persistKey;
+    this._dispatchTimes   = this._loadDispatchTimes();
+    this._unsavedTimes    = []; // dispatches not yet merged into storage
+    // Server-requested hold (Retry-After on a 429/503): nothing dispatches
+    // before it lapses.
+    this._holdUntil       = 0;
 
     // In-flight dedup (keyed by URL)
     this._pendingFetches  = new Map();
@@ -71,6 +81,7 @@ export class RequestManager {
     this._cbState              = 'CLOSED'; // 'CLOSED' | 'OPEN' | 'HALF_OPEN'
     this._cbConsecutiveFails   = 0;
     this._cbOpenTimer          = null;
+    this._cbOpenUntil          = null;             // when the current OPEN period ends
     this._cbOpenDurationMs     = CB_OPEN_BASE_MS; // escalates on failed probes
     this._cbProbeInFlight      = false;
     this._cbPendingResolvers   = []; // { resolve, reject, url, signal }[]
@@ -92,6 +103,90 @@ export class RequestManager {
 
   get state()              { return this._cbState; }
 
+  // ── Throttle visibility ───────────────────────────────────────────────────
+  //
+  // How long until the next request can go out, and why — so the UI can say
+  // "resuming in Ns" instead of showing a dead spinner (budget) or a "Try
+  // again" that fails on the spot (breaker).
+
+  // Time until an OPEN breaker moves to HALF_OPEN (0 when not OPEN).
+  get retryAfterMs() {
+    if (this._cbState !== 'OPEN' || this._cbOpenUntil == null) return 0;
+    return Math.max(0, this._cbOpenUntil - Date.now());
+  }
+
+  // Time the next dispatch would wait at the gate: a server-requested hold,
+  // or the rolling budget being spent (0 when a request could go now).
+  get budgetWaitMs() {
+    this._syncDispatchTimes();
+    const now = Date.now();
+    let wait = Math.max(0, this._holdUntil - now);
+    if (this._budget !== Infinity) {
+      const live = this._dispatchTimes.filter(t => now - t < this._budgetWindowMs);
+      if (live.length >= this._budget) wait = Math.max(wait, live[0] + this._budgetWindowMs - now);
+    }
+    return wait;
+  }
+
+  // ── Budget persistence ────────────────────────────────────────────────────
+
+  // Timestamps stored for this bucket, filtered to the live window. A corrupt
+  // value (anything but an array) reads as empty and is overwritten on the
+  // next save rather than wedging persistence.
+  _readStoredTimes() {
+    if (!this._persistKey) return [];
+    try {
+      const parsed = JSON.parse(globalThis.localStorage?.getItem(this._persistKey) || '[]');
+      const now = Date.now();
+      return (Array.isArray(parsed) ? parsed : [])
+        .filter(t => Number.isFinite(t) && t <= now && now - t < this._budgetWindowMs);
+    } catch {
+      return [];
+    }
+  }
+
+  _loadDispatchTimes() {
+    return this._readStoredTimes();
+  }
+
+  // Fold in what other tabs have dispatched since we last looked (no write).
+  // Called before every gate decision so a second tab's spending counts here.
+  _syncDispatchTimes() {
+    if (!this._persistKey) return;
+    const stored = this._readStoredTimes();
+    if (stored.length === 0 && this._unsavedTimes.length === 0) return;
+    this._dispatchTimes = [...stored, ...this._unsavedTimes].sort((a, b) => a - b);
+  }
+
+  _saveDispatchTimes() {
+    if (!this._persistKey) return;
+    try {
+      // Merge with what other tabs wrote — the bucket is per connection, not
+      // per tab — and fold their dispatches into this tab's view of it. Only
+      // dispatches not yet written are appended (timestamps are not unique:
+      // two requests can share a millisecond, and both must count). Two tabs
+      // saving in the same instant can lose one entry to the read-modify-
+      // write race; that costs a token against a 40-request safety margin
+      // and is accepted rather than engineered around.
+      const merged = [...this._readStoredTimes(), ...this._unsavedTimes].sort((a, b) => a - b);
+      this._unsavedTimes = [];
+      this._dispatchTimes = merged;
+      globalThis.localStorage?.setItem(this._persistKey, JSON.stringify(merged));
+    } catch {
+      this._unsavedTimes = []; // storage unavailable — the in-memory bucket still applies
+    }
+  }
+
+  // Honour a Retry-After header (seconds or an HTTP date) on a 429/503.
+  _holdFor(response) {
+    const header = response.headers?.get?.('retry-after');
+    if (!header) return;
+    let ms = Number(header) * 1000;
+    if (!Number.isFinite(ms)) ms = Date.parse(header) - Date.now();
+    if (!Number.isFinite(ms) || ms <= 0) return;
+    this._holdUntil = Math.max(this._holdUntil, Date.now() + Math.min(ms, RETRY_AFTER_MAX_MS));
+  }
+
   // ── recordResult ─────────────────────────────────────────────────────────
   //
   // Called after every HTTP attempt (including retries) with ok=true/false.
@@ -102,6 +197,14 @@ export class RequestManager {
   //   2. Consecutive counter → circuit breaker trips
 
   recordResult(ok) {
+    this._recordWindow(ok);
+    this._recordBreaker(ok);
+  }
+
+  // 1+2: sliding window + step-up counter → dynamic concurrency. Fed by
+  // every HTTP attempt AND by 429/5xx responses (the Met straining, which
+  // the breaker deliberately ignores — see fetch()).
+  _recordWindow(ok) {
     // 1. Sliding window (dynamic concurrency)
     this._dcWindow[this._dcWindowIdx] = ok;
     this._dcWindowIdx = (this._dcWindowIdx + 1) % DC_WINDOW_SIZE;
@@ -133,8 +236,11 @@ export class RequestManager {
     } else {
       this._dcConsecutiveSuccess = 0;
     }
+  }
 
-    // 3. Circuit breaker consecutive-failure counter
+  // 3: consecutive-failure counter → circuit breaker. Only a 403 / block
+  // page / counted network error reaches this — never a 429/5xx.
+  _recordBreaker(ok) {
     if (!ok) {
       this._cbConsecutiveFails++;
       if (this._cbConsecutiveFails >= CB_FAILURE_THRESHOLD &&
@@ -179,6 +285,7 @@ export class RequestManager {
     this._onlineAt = Date.now();
     if (this._cbState === 'OPEN') {
       clearTimeout(this._cbOpenTimer);
+      this._cbOpenUntil     = null;
       this._cbState         = 'HALF_OPEN';
       this._cbProbeInFlight = false;
     } else if (this._cbState === 'CLOSED') {
@@ -240,15 +347,33 @@ export class RequestManager {
       // window's budget is spent, NOTHING dispatches until the oldest request
       // ages out. Callers whose signal aborts during the wait reject at the
       // fetch() below, immediately after their turn arrives.
-      if (this._budget !== Infinity) {
-        let now = Date.now();
+      // Wait out whichever applies — a server-requested hold (Retry-After on
+      // a 429/503) or a spent budget — and loop, since either can arrive or
+      // grow while the other is being waited out. Waits are abortable: a
+      // caller whose view unmounted leaves the queue at once instead of
+      // holding it (and a token) for nothing.
+      for (;;) {
+        const hold = this._holdUntil - Date.now();
+        if (hold > 0) { await delayOrAbort(hold, signal); continue; }
+        if (this._budget === Infinity) break;
+        this._syncDispatchTimes();
+        const now = Date.now();
         this._dispatchTimes = this._dispatchTimes.filter(t => now - t < this._budgetWindowMs);
-        while (this._dispatchTimes.length >= this._budget) {
-          await delay(Math.max(1, this._dispatchTimes[0] + this._budgetWindowMs - now));
-          now = Date.now();
-          this._dispatchTimes = this._dispatchTimes.filter(t => now - t < this._budgetWindowMs);
-        }
-        this._dispatchTimes.push(Date.now());
+        if (this._dispatchTimes.length < this._budget) break;
+        await delayOrAbort(Math.max(1, this._dispatchTimes[0] + this._budgetWindowMs - now), signal);
+      }
+
+      // The waits are over, but the world may have moved on: a caller that
+      // aborted meanwhile must not spend a token, and a breaker that tripped
+      // meanwhile must not be walked into — dispatching into an active ban
+      // is exactly what extends it.
+      if (signal?.aborted) return;
+      if (this._cbState === 'OPEN') throw new Error(CIRCUIT_BREAKER_OPEN);
+      if (this._budget !== Infinity) {
+        const t = Date.now();
+        this._dispatchTimes.push(t);
+        this._unsavedTimes.push(t);
+        this._saveDispatchTimes();
       }
 
       const now     = Date.now();
@@ -265,6 +390,9 @@ export class RequestManager {
     try {
       response = await myRequest;
     } catch (err) {
+      // Raised by the gate above (the breaker tripped during a wait): not a
+      // network result, nothing to record.
+      if (err.message === CIRCUIT_BREAKER_OPEN) throw err;
       // A failure while the browser reports no connection says nothing about
       // the API's health: it must not count toward the breaker, or a brief
       // Wi-Fi drop (six parallel fetches x three retries) trips a 60s ban of
@@ -295,8 +423,22 @@ export class RequestManager {
       throw err;
     }
 
-    const ok = response.status !== 403;
-    this.recordResult(ok);
+    // 403 (and a block page, via reportBlockPage) is Imperva banning: it
+    // feeds the breaker. 429/5xx is the Met straining: it steps concurrency
+    // down and honours a Retry-After, but never trips the breaker — a 60s
+    // self-imposed ban is not the right answer to a busy server.
+    const status   = response.status;
+    const banned   = status === 403;
+    const degraded = status === 429 || status >= 500;
+    if (banned) {
+      this.recordResult(false);
+    } else if (degraded) {
+      this._recordWindow(false);
+      this._holdFor(response);
+    } else {
+      this.recordResult(true);
+    }
+    const ok = !banned;
 
     if (this._cbState === 'HALF_OPEN') {
       if (ok) {
@@ -335,6 +477,7 @@ export class RequestManager {
     this._cbState         = 'OPEN';
     this._cbProbeInFlight = false;
     clearTimeout(this._cbOpenTimer);
+    this._cbOpenUntil = Date.now() + this._cbOpenDurationMs;
     this._cbOpenTimer = setTimeout(() => {
       this._cbState         = 'HALF_OPEN';
       this._cbProbeInFlight = false;
@@ -346,6 +489,7 @@ export class RequestManager {
     this._cbProbeInFlight     = false;
     this._cbConsecutiveFails  = 0;
     this._cbOpenDurationMs    = CB_OPEN_BASE_MS; // healthy again — reset escalation
+    this._cbOpenUntil         = null;
     clearTimeout(this._cbOpenTimer);
 
     // Release all queued callers — they retry now that the breaker is CLOSED
@@ -373,6 +517,7 @@ export class RequestManager {
       reject(new Error(CIRCUIT_BREAKER_OPEN));
     }
 
+    this._cbOpenUntil = Date.now() + this._cbOpenDurationMs;
     this._cbOpenTimer = setTimeout(() => {
       this._cbState         = 'HALF_OPEN';
       this._cbProbeInFlight = false;
@@ -395,6 +540,7 @@ export const requestManager = new RequestManager({
   batchCooldownMs: BATCH_COOLDOWN_MS,
   requestBudget:         REQUEST_BUDGET,
   requestBudgetWindowMs: REQUEST_BUDGET_WINDOW_MS,
+  persistKey:            'immediart_dispatch_times',
 });
 
 if (typeof window !== 'undefined') {

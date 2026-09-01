@@ -156,3 +156,13 @@
 .empty-state-cta:active {
   opacity: 0.8;
 }
+
+/* Throttle notice (feed, grid, /liked) — shown while the request layer is
+   deliberately waiting: budget spent, or a Met ban due to lift. */
+.throttle-notice {
+  margin: 0;
+  padding: var(--space-4) var(--space-5);
+  text-align: center;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}

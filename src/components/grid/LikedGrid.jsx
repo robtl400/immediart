@@ -8,6 +8,7 @@ import { useArtworkModal } from '../../context/ArtworkModalContext';
 import { preloadArtworkImages } from '../../utils/imageLoader';
 import useInfiniteScroll from '../../hooks/useInfiniteScroll';
 import Banner from '../common/Banner';
+import ThrottleNotice from '../common/ThrottleNotice';
 import { InlineLoader } from '../common/LoadingSpinner';
 import SkeletonCard from '../common/SkeletonCard';
 import ThumbnailCard from './ThumbnailCard';
@@ -76,6 +77,7 @@ export default function LikedGrid() {
         <div className="thumbnail-grid columns-2">
           {Array.from({ length: 6 }, (_, i) => <SkeletonCard key={i} />)}
         </div>
+        {grid.throttledUntil && <ThrottleNotice until={grid.throttledUntil} />}
       </div>
     );
   }
@@ -84,11 +86,15 @@ export default function LikedGrid() {
     return (
       <div className="grid-browse app-frame" ref={gridRef}>
         {header}
-        <div className="error-container">
-          <p className="error-message">Unable to load liked artworks</p>
-          <p className="error-detail">{grid.error}</p>
-          <button className="retry-button" onClick={grid.retryLoadMore}>Try again</button>
-        </div>
+        {grid.throttledUntil ? (
+          <ThrottleNotice until={grid.throttledUntil} />
+        ) : (
+          <div className="error-container">
+            <p className="error-message">Unable to load liked artworks</p>
+            <p className="error-detail">{grid.error}</p>
+            <button className="retry-button" onClick={grid.retryLoadMore}>Try again</button>
+          </div>
+        )}
       </div>
     );
   }
@@ -133,7 +139,9 @@ export default function LikedGrid() {
 
       {grid.loadingMore && <InlineLoader />}
 
-      {grid.error && (
+      {grid.throttledUntil && <ThrottleNotice until={grid.throttledUntil} />}
+
+      {grid.error && !grid.throttledUntil && (
         <div className="inline-error" role="status">
           <p>{grid.error}</p>
           <button className="retry-button" onClick={grid.retryLoadMore}>Try again</button>

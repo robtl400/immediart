@@ -7,6 +7,7 @@ import { useArtworkModal } from '../../context/ArtworkModalContext';
 import { useLikes } from '../../context/LikesContext';
 import LoadingSpinner, { InlineLoader } from '../common/LoadingSpinner';
 import Banner from '../common/Banner';
+import ThrottleNotice from '../common/ThrottleNotice';
 import ArtworkCard from './ArtworkCard';
 import useInfiniteScroll from '../../hooks/useInfiniteScroll';
 import { FEED_ROOT_MARGIN, BANNER_SCROLL_THRESHOLD } from '../../utils/constants';
@@ -16,7 +17,7 @@ import { debounce } from '../../utils/delay';
 const HINT_STORAGE_KEY = 'immediart_hint_seen';
 
 export default function DiscoveryFeed() {
-  const { artworks, loading, loadingMore, error, hasMore, loadMoreArtworks, retryLoadMore, retry, pause, feedScrollRef } = useArtworks();
+  const { artworks, loading, loadingMore, error, hasMore, throttledUntil, loadMoreArtworks, retryLoadMore, retry, pause, feedScrollRef } = useArtworks();
   const { openModal } = useArtworkModal();
   const { isLiked, toggleLike } = useLikes();
   const navigate = useNavigate();
@@ -164,7 +165,15 @@ export default function DiscoveryFeed() {
     });
   }, [pause, navigate]);
 
-  // Hover prefetch — warm IndexedDB cache before user clicks artist/tag chip
+  // Hover prefetch — warm IndexedDB cache before user clicks artist/tag chip.
+  // Only where hover exists: a touch device never hovers, and a finger
+  // brushing chips while scrolling would otherwise spend a search request
+  // per chip out of the shared 60-per-minute budget. (Enabled where the
+  // media query API is missing — an engine without it has a mouse.)
+  const hoverCapable = useMemo(
+    () => !window.matchMedia || window.matchMedia('(hover: hover)').matches,
+    []
+  );
   const artistHover = useMemo(() => debounce((name) => searchByArtist(name).catch(() => {}), 150), []);
   const tagHover = useMemo(() => debounce((tag) => searchByTag(tag).catch(() => {}), 150), []);
   useEffect(() => () => { artistHover.cancel(); tagHover.cancel(); }, [artistHover, tagHover]);
@@ -258,6 +267,7 @@ export default function DiscoveryFeed() {
       <div className="discovery-feed app-frame" ref={feedRef}>
         <Banner feedRef={feedRef} />
         <LoadingSpinner />
+        {throttledUntil && <ThrottleNotice until={throttledUntil} />}
       </div>
     );
   }
@@ -267,11 +277,15 @@ export default function DiscoveryFeed() {
     return (
       <div className="discovery-feed app-frame" ref={feedRef}>
         <Banner feedRef={feedRef} />
-        <div className="error-container">
-          <p className="error-message">Unable to load artworks</p>
-          <p className="error-detail">{error}</p>
-          <button className="retry-button" onClick={retry}>Try again</button>
-        </div>
+        {throttledUntil ? (
+          <ThrottleNotice until={throttledUntil} />
+        ) : (
+          <div className="error-container">
+            <p className="error-message">Unable to load artworks</p>
+            <p className="error-detail">{error}</p>
+            <button className="retry-button" onClick={retry}>Try again</button>
+          </div>
+        )}
       </div>
     );
   }
@@ -297,8 +311,8 @@ export default function DiscoveryFeed() {
           onImageClick={(viewImageUrl) => openModal(artwork, viewImageUrl)}
           onArtistClick={handleArtistClick}
           onTagClick={handleTagClick}
-          onArtistHover={artistHover}
-          onTagHover={tagHover}
+          onArtistHover={hoverCapable ? artistHover : undefined}
+          onTagHover={hoverCapable ? tagHover : undefined}
         />
       ))}
 
@@ -306,7 +320,9 @@ export default function DiscoveryFeed() {
 
       {loadingMore && <InlineLoader />}
 
-      {error && artworks.length > 0 && (
+      {throttledUntil && <ThrottleNotice until={throttledUntil} />}
+
+      {error && !throttledUntil && artworks.length > 0 && (
         <div className="inline-error" role="status">
           <p>{error}</p>
           <button className="retry-button" onClick={retryLoadMore}>Try again</button>

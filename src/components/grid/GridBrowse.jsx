@@ -5,6 +5,7 @@ import './GridBrowse.css';
 import { useGridBrowse } from '../../context/GridBrowseContext';
 import { useArtworkModal } from '../../context/ArtworkModalContext';
 import Banner from '../common/Banner';
+import ThrottleNotice from '../common/ThrottleNotice';
 import { InlineLoader } from '../common/LoadingSpinner';
 import ThumbnailCard from './ThumbnailCard';
 import SkeletonCard from '../common/SkeletonCard';
@@ -48,6 +49,7 @@ export default function GridBrowse({ type }) {
 
   const {
     artworks, loading, loadingMore, error, hasMore,
+    throttledUntil,
     searchType: ctxType, searchTerm: ctxTerm,
     initSearch, loadMore, retryLoadMore, abort,
   } = useGridBrowse();
@@ -118,6 +120,7 @@ export default function GridBrowse({ type }) {
             <SkeletonCard key={i} />
           ))}
         </div>
+        {throttledUntil && <ThrottleNotice until={throttledUntil} />}
       </div>
     );
   }
@@ -128,16 +131,20 @@ export default function GridBrowse({ type }) {
     return (
       <div className="grid-browse app-frame" ref={gridRef}>
         {header}
-        <div className="error-container">
-          <p className="error-message">Unable to load artworks</p>
-          <p className="error-detail">{error}</p>
-          <button
-            className="retry-button"
-            onClick={() => initSearch(type, searchTerm)}
-          >
-            Try again
-          </button>
-        </div>
+        {throttledUntil ? (
+          <ThrottleNotice until={throttledUntil} />
+        ) : (
+          <div className="error-container">
+            <p className="error-message">Unable to load artworks</p>
+            <p className="error-detail">{error}</p>
+            <button
+              className="retry-button"
+              onClick={() => initSearch(type, searchTerm)}
+            >
+              Try again
+            </button>
+          </div>
+        )}
       </div>
     );
   }
@@ -177,7 +184,9 @@ export default function GridBrowse({ type }) {
 
       {loadingMore && <InlineLoader />}
 
-      {error && (
+      {throttledUntil && <ThrottleNotice until={throttledUntil} />}
+
+      {error && !throttledUntil && (
         <div className="inline-error" role="status">
           <p>{error}</p>
           <button className="retry-button" onClick={retryLoadMore}>Try again</button>

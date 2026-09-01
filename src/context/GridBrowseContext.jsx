@@ -85,6 +85,7 @@ export function GridBrowseProvider({ children }) {
     loadingMore:  grid.loadingMore,
     error:        grid.error,
     hasMore:      grid.hasMore,
+    throttledUntil: grid.throttledUntil,
     searchType,
     searchTerm,
     initSearch,

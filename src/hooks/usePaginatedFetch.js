@@ -18,6 +18,9 @@
  *
  * Public API:
  *   artworks, loading, loadingMore, error, hasMore
+ *   throttledUntil          — timestamp while the request layer is deliberately
+ *                             waiting (budget spent / Met ban due to lift); views
+ *                             count it down, breaker waits auto-retry at the end
  *   loadMore()              — instant merge from a ready prefetch, join an
  *                             in-flight prefetch, or fetch the next batch
  *   reset(newFetchIDs)      — abort + install new fetchIDs fn + start fresh
@@ -26,7 +29,7 @@
 
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { batchFetchArtworks } from '../services/metAPI';
-import { CIRCUIT_BREAKER_OPEN } from '../services/requestManager';
+import { requestManager, CIRCUIT_BREAKER_OPEN } from '../services/requestManager';
 import { shuffleArray } from '../utils/shuffle';
 import { transformAPIToDisplay } from '../utils/transformers';
 import { delayOrAbort } from '../utils/delay';
@@ -84,6 +87,10 @@ const recordOutageAttempt = (outageRef, windowStart) => {
 const loadError = () =>
   (typeof navigator !== 'undefined' && navigator.onLine === false) ? OFFLINE_ERROR : LOAD_ERROR;
 
+// A budget wait shorter than this is invisible behind the loader; longer, and
+// the view says "resuming in Ns" instead of showing a dead spinner.
+const THROTTLE_NOTICE_MS = 1500;
+
 export function usePaginatedFetch({
   shuffleIDs       = false,
   batchSize,
@@ -98,6 +105,10 @@ export function usePaginatedFetch({
   const [loadingMore, setLoadingMore] = useState(false);
   const [error,       setError]       = useState(null);
   const [hasMore,     setHasMore]     = useState(true);
+  // Timestamp until which the request layer is deliberately waiting (budget
+  // spent, or a Met ban due to lift) — the views count it down and, when it
+  // is a breaker wait, the hook retries on its own at the end.
+  const [throttledUntil, setThrottledUntil] = useState(null);
 
   // ── Refs ─────────────────────────────────────────────────────────────────
   const allIDsRef            = useRef([]);
@@ -204,10 +215,36 @@ export function usePaginatedFetch({
   //   On retry failure: show user-friendly "Couldn't load more art" message.
   //   Raw API error messages are never surfaced to the user.
 
+  // Surface a budget wait the coming batch is about to sit through.
+  const noteBudgetWait = useCallback(() => {
+    const wait = requestManager.budgetWaitMs;
+    setThrottledUntil(wait > THROTTLE_NOTICE_MS ? Date.now() + wait : null);
+  }, []);
+
+  // Surface an OPEN breaker as a countdown (the auto-retry effect fires at
+  // the end of it). Returns whether one was scheduled.
+  const noteBreakerWait = useCallback(() => {
+    let ms = requestManager.retryAfterMs;
+    if (ms <= 0) {
+      // OPEN with nothing left on the clock (a background tab's clamped
+      // timers): the breaker's own timer is about to flip it — count one
+      // second and retry, rather than showing a Try-again that fails.
+      if (requestManager.state !== 'OPEN') return false;
+      ms = 1000;
+    }
+    setThrottledUntil(Date.now() + ms);
+    return true;
+  }, []);
+
   const fetchBatch = useCallback(async (isInitial = false) => {
     if (fetchingRef.current) return;
     fetchingRef.current = true;
     pausedRef.current   = false; // a fetch is view-driven — the hook is live again
+    noteBudgetWait();
+    // A batch is many dispatches, and the budget usually runs out (or a
+    // Retry-After lands) partway through — keep sampling while it runs.
+    const budgetPoll = setInterval(noteBudgetWait, 1000);
+    let breakerWait = false; // set when this batch ended on an OPEN breaker
 
     abortControllerRef.current?.abort();
     abortControllerRef.current = new AbortController();
@@ -391,6 +428,7 @@ export function usePaginatedFetch({
       // of dying silently (the feed would otherwise stall with no error UI).
       if (err.message === CIRCUIT_BREAKER_OPEN) {
         setError(loadError());
+        breakerWait = noteBreakerWait();
         return;
       }
 
@@ -498,17 +536,20 @@ export function usePaginatedFetch({
         }
         if (retryErr.name !== 'AbortError' && fetchIdRef.current === currentFetchId) {
           setError(loadError());
+          if (retryErr.message === CIRCUIT_BREAKER_OPEN) breakerWait = noteBreakerWait();
         }
       }
 
     } finally {
+      clearInterval(budgetPoll);
       if (fetchIdRef.current === currentFetchId) {
         setLoading(false);
         setLoadingMore(false);
         fetchingRef.current = false;
+        if (!breakerWait) setThrottledUntil(null); // a budget wait ends with the batch
       }
     }
-  }, [shuffleIDs, batchSize, initialBatchSize, maxInMemory, strictValidation, startPrefetch, collectCandidates]);
+  }, [shuffleIDs, batchSize, initialBatchSize, maxInMemory, strictValidation, startPrefetch, collectCandidates, noteBudgetWait, noteBreakerWait]);
 
   // ── loadMore ──────────────────────────────────────────────────────────────
 
@@ -561,11 +602,13 @@ export function usePaginatedFetch({
       const joinId = fetchIdRef.current;
       fetchingRef.current = true; // gate re-entry while waiting
       setLoadingMore(true);
+      noteBudgetWait(); // the prefetch may be sitting at the budget gate
       prefetchPromiseRef.current.then(() => {
         // A reset() during the join started a new fetch that owns the flags now.
         if (fetchIdRef.current !== joinId) return;
         fetchingRef.current = false;
         setLoadingMore(false);
+        setThrottledUntil(null);
         if (signal?.aborted) return; // pause() — flags cleared, nothing to merge
         if (prefetchRef.current) mergePrefetch();
         else fetchBatch(false); // prefetch came back empty/failed — fetch for real
@@ -579,7 +622,7 @@ export function usePaginatedFetch({
     // fetchBatch(false) would see zero candidates, set hasMore=false, and
     // dead-end the feed with no cards, no error, and no retry affordance.
     fetchBatch(allIDsRef.current.length === 0);
-  }, [fetchBatch, hasMore, loadingMore, error, mergePrefetch]);
+  }, [fetchBatch, hasMore, loadingMore, error, mergePrefetch, noteBudgetWait]);
 
   // ── retryLoadMore ─────────────────────────────────────────────────────────
   //
@@ -617,6 +660,18 @@ export function usePaginatedFetch({
     return () => { clearTimeout(timer); window.removeEventListener('online', onOnline); };
   }, [retryLoadMore]);
 
+  // When a throttle countdown ends: a breaker wait retries the showing error
+  // on its own (the "Try again" that used to fail on the spot); a budget
+  // wait just clears the notice — its batch is already in flight.
+  useEffect(() => {
+    if (throttledUntil == null) return;
+    const t = setTimeout(() => {
+      setThrottledUntil(null);
+      if (errorRef.current && !pausedRef.current) retryLoadMore();
+    }, Math.max(0, throttledUntil - Date.now()) + 250);
+    return () => clearTimeout(t);
+  }, [throttledUntil, retryLoadMore]);
+
   // ── reset ─────────────────────────────────────────────────────────────────
   //
   // Abort all in-flight work, install a new fetchIDs function, start fresh.
@@ -642,6 +697,7 @@ export function usePaginatedFetch({
     setArtworks(seedArtworks);
     setError(null);
     setHasMore(true);
+    setThrottledUntil(null);
     fetchBatch(true);
   }, [shuffleIDs, fetchBatch]);
 
@@ -660,6 +716,7 @@ export function usePaginatedFetch({
     // returns to the feed, dead-ending it on a snapped-to spinner.
     setLoading(false);
     setLoadingMore(false);
+    setThrottledUntil(null);
   }, []);
 
   return {
@@ -668,6 +725,7 @@ export function usePaginatedFetch({
     loadingMore,
     error,
     hasMore,
+    throttledUntil,
     loadMore,
     retryLoadMore,
     reset,

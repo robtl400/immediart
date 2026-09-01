@@ -132,7 +132,6 @@ export default function ArtworkCard({ artwork, isLiked, onLike, onImageClick, on
               className="artist-name clickable"
               onClick={handleArtistClick}
               onMouseEnter={() => onArtistHover?.(artwork.artistName)}
-              onFocus={() => onArtistHover?.(artwork.artistName)}
               role="button"
               tabIndex={0}
               onKeyDown={activateOnKey(handleArtistClick)}
@@ -153,7 +152,6 @@ export default function ArtworkCard({ artwork, isLiked, onLike, onImageClick, on
                 className="hashtag"
                 onClick={() => handleHashtagClick(tag)}
                 onMouseEnter={() => onTagHover?.(tag)}
-                onFocus={() => onTagHover?.(tag)}
                 role="button"
                 tabIndex={0}
                 onKeyDown={activateOnKey(() => handleHashtagClick(tag))}
