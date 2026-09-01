@@ -8,7 +8,9 @@
  *   shuffleIDs   {boolean}  — shuffle IDs and use shownIDsRef dedup (feed: true, grid: false)
  *   batchSize    {number}   — artworks per batch (FEED_BATCH_SIZE | GRID_BATCH_SIZE)
  *   maxInMemory  {number}   — trim artworks state to last N (feed: 30, grid: Infinity)
- *   onBatchReady {function} — (artworks[], signal) => void — fires after each setArtworks;
+ *   onBatchReady {function} — (artworks[], signal, outcomes) => void — fires after
+ *                             each batch, and with [] for an outage window so the
+ *                             live-404 evidence in its outcomes is never lost;
  *                             errors are swallowed, hook continues regardless
  *
  * fetchIDs is NOT a constructor param. Install it via reset(newFetchIDs).
@@ -32,6 +34,50 @@ import { RATE_LIMIT_RECOVERY_MS } from '../utils/constants';
 
 const LOAD_ERROR = "Couldn't load more art. Tap to retry.";
 const OFFLINE_ERROR = "You appear to be offline. Reconnect and tap to retry.";
+
+// An "outage window": a batch that kept zero artworks where transport errors
+// (5xx / network) are the majority of the ids that ACTUALLY hit the network.
+// Batch fetch doesn't throw for these — per-id failures become 'error'
+// outcomes — so callers must detect them or they'd scan straight past the
+// failed ids. errorCount and networkCount are both counted over the ordered
+// attempt list in batchFetchArtworks (never the deduped outcomes Map), and
+// cache-answered rejects are excluded: on a warm cache most outcomes never
+// touch the network and would dilute a real 5xx storm below any threshold.
+// OUTAGE_MIN_ERRORS keeps one flipped request from stopping infinite scroll:
+// a single 500 in a window of cached rejects is a blip, not an outage. The
+// floor scales down to the window size so a one-id window (a single like, the
+// tail of a search list) can still register — with nothing else to dilute it,
+// its lone error IS the whole picture.
+const OUTAGE_MIN_ERRORS = 2;
+const isOutageWindow = ({ artworks, outcomes, networkCount, errorCount }) =>
+  artworks.length === 0 &&
+  errorCount >= Math.min(OUTAGE_MIN_ERRORS, outcomes.size) &&
+  errorCount > networkCount / 2;
+
+// How many times the user may retry the SAME stuck window before the hook
+// gives up and scans past it (the pre-outage-guard behavior). Without this
+// cap, ids that deterministically 500 could pin the cursor forever.
+const OUTAGE_MAX_RETRIES = 3;
+
+// Outage bookkeeping pinned to one window position (the hook's outageRef):
+//   index — allIDsRef position of the window under suspicion (-1: none)
+//   count — outages SURFACED to the user at that window. 0 = seen once
+//           silently (by a prefetch, or the primary path's silent re-attempt)
+const NO_OUTAGE = () => ({ index: -1, count: 0 });
+
+// Record one more outage at `windowStart`. Returns true while the outage
+// should be surfaced as a retryable error; false once the cap is hit — the
+// caller then falls through and scans past the window. Mutates outageRef, so
+// call it exactly once per detection, after isOutageWindow.
+const recordOutageAttempt = (outageRef, windowStart) => {
+  const o = outageRef.current;
+  o.count = o.index === windowStart ? o.count + 1 : 1;
+  o.index = windowStart;
+  if (o.count <= OUTAGE_MAX_RETRIES) return true;
+  console.warn('[ImmediArt] window still failing after', o.count, 'attempts — scanning past it');
+  outageRef.current = NO_OUTAGE();
+  return false;
+};
 
 // Surface an offline-specific message when the browser reports no connection,
 // so a network drop reads as "you're offline" rather than a generic failure.
@@ -66,6 +112,10 @@ export function usePaginatedFetch({
   // fetchIDs function — updated via reset(); always read via ref so fetchBatch
   // can be stable (no dep on fetchIDs function identity)
   const fetchIDsRef          = useRef(null);
+
+  // Outage bookkeeping pinned to one window position — see NO_OUTAGE and
+  // recordOutageAttempt above.
+  const outageRef            = useRef(NO_OUTAGE());
 
   // onBatchReady in a ref so the hook's callbacks are stable regardless of
   // whether the caller redefines the function each render
@@ -117,8 +167,26 @@ export function usePaginatedFetch({
     // The promise is kept so loadMore can JOIN an in-flight prefetch instead of
     // racing it with a duplicate batch. It always resolves (never rejects).
     prefetchPromiseRef.current = batchFetchArtworks(ids, batchSize, signal, { strict: strictValidation })
-      .then(({ artworks: raw, outcomes, consumedCount }) => {
+      .then(({ artworks: raw, outcomes, consumedCount, networkCount, errorCount }) => {
         if (signal.aborted) return;
+        // An outage window must not become a mergeable prefetch — merging it
+        // would advance the cursor past ids that only failed transiently.
+        // Leaving prefetchRef null (and clearing the settled promise so
+        // loadMore doesn't take a pointless join detour) routes the next
+        // loadMore straight through fetchBatch. Recording the sighting lets
+        // that fetchBatch surface the error on its first detection instead of
+        // spending another silent re-attempt; handing the outcomes over keeps
+        // their live-404 prune evidence, which the tombstone written alongside
+        // would otherwise answer as 'notFoundCached' from now on.
+        if (isOutageWindow({ artworks: raw, outcomes, networkCount, errorCount })) {
+          outageRef.current = { index: fromIndex, count: 0 };
+          prefetchPromiseRef.current = null;
+          if (onBatchReadyRef.current) {
+            Promise.resolve(onBatchReadyRef.current([], signal, outcomes))
+              .catch(e => console.warn('[ImmediArt] onBatchReady error:', e.message));
+          }
+          return;
+        }
         const nextIndex = consumedCount > 0 ? srcIdx[consumedCount - 1] + 1 : fromIndex;
         prefetchRef.current = { artworks: raw.map(transformAPIToDisplay), nextIndex, outcomes };
       })
@@ -146,8 +214,21 @@ export function usePaginatedFetch({
 
     // IDs we attempt in this batch + their allIDsRef positions — declared here
     // so the catch block can retry the SAME window and derive the resume index.
+    // `start` is the window's allIDsRef position: the ONE key both outage
+    // sites use, so the retry cap counts consistently across paths.
     let idsToTry = [];
     let idsSrcIdx = [];
+    let start = 0;
+
+    // A batch that resolved after reset() superseded this fetch, or after a
+    // pause() landed in the gap between its last signal check and our resume,
+    // must not touch state — the paused hook would otherwise keep a sticky
+    // error that gates loadMore when the user returns to the view. Exiting by
+    // AbortError routes through the catch block, which already knows how to
+    // leave a superseded fetch alone and how to keep streamed cards' ids from
+    // being revisited after a pause.
+    const stale = () => signal.aborted || fetchIdRef.current !== currentFetchId;
+    const bailIfStale = () => { if (stale()) throw new DOMException('Aborted', 'AbortError'); };
 
     // Use smaller initial batch so first artworks appear sooner
     const targetCount = isInitial && initialBatchSize != null ? initialBatchSize : batchSize;
@@ -181,6 +262,15 @@ export function usePaginatedFetch({
       appendArtwork(display);
     };
 
+    // Hand a window's outcomes to onBatchReady (with whatever cards are on
+    // screen for it). Used for outage windows, whose outcomes never reach the
+    // normal post-batch call because the cursor stays put.
+    const reportOutcomes = async (outcomes, list = []) => {
+      if (!onBatchReadyRef.current) return;
+      try { await onBatchReadyRef.current(list, signal, outcomes); }
+      catch (e) { console.warn('[ImmediArt] onBatchReady error:', e.message); }
+    };
+
     try {
       if (isInitial) {
         // Skip the full-screen skeleton when seed artworks are already visible
@@ -201,7 +291,7 @@ export function usePaginatedFetch({
       // Collect candidate IDs WITHOUT advancing currentIndexRef — the position
       // only moves after a successful fetch, so an error leaves this window
       // intact for retryLoadMore to re-attempt.
-      const start = currentIndexRef.current;
+      start = currentIndexRef.current;
       const limit = targetCount * (shuffleIDs ? 3 : 2);
       ({ ids: idsToTry, srcIdx: idsSrcIdx } = collectCandidates(start, limit));
 
@@ -210,9 +300,38 @@ export function usePaginatedFetch({
         return;
       }
 
-      const { artworks: rawArtworks, outcomes, consumedCount } =
-        await batchFetchArtworks(idsToTry, targetCount, signal, { strict: strictValidation, onArtwork });
-      if (fetchIdRef.current !== currentFetchId) return;
+      let batch = await batchFetchArtworks(idsToTry, targetCount, signal, { strict: strictValidation, onArtwork });
+      bailIfStale();
+
+      // A window that kept NOTHING and failed mostly with transport errors is
+      // an API outage (5xx storm), not content to scan past. Batch fetch does
+      // not throw for these (per-id errors become 'error' outcomes), so the
+      // cursor used to advance anyway — silently consuming ids window after
+      // window until the feed ended at a false "explored the whole collection".
+      // Surface the retry error instead; the cursor stays put, so a retry
+      // re-attempts this same window (bounded by OUTAGE_MAX_RETRIES).
+      if (isOutageWindow(batch)) {
+        if (outageRef.current.index !== start) {
+          // First sighting at this window: re-attempt once, silently, after
+          // the recovery pause — the thrown-error path gets the same one free
+          // retry, and a momentary blip must not stop infinite scroll. The
+          // first attempt's outcomes go to onBatchReady now (live-404 prune
+          // evidence the re-attempt will only see as 'notFoundCached').
+          await reportOutcomes(batch.outcomes);
+          outageRef.current = { index: start, count: 0 };
+          await delayOrAbort(RATE_LIMIT_RECOVERY_MS, signal);
+          bailIfStale();
+          batch = await batchFetchArtworks(idsToTry, targetCount, signal, { strict: strictValidation, onArtwork });
+          bailIfStale();
+        }
+        if (isOutageWindow(batch) && recordOutageAttempt(outageRef, start)) {
+          await reportOutcomes(batch.outcomes);
+          setError(loadError());
+          return;
+        }
+      }
+      outageRef.current = NO_OUTAGE(); // healthy window (or cap hit: scan past it)
+      const { artworks: rawArtworks, outcomes, consumedCount } = batch;
 
       // Advance past the id that produced the LAST kept artwork; over-fetched or
       // unattempted candidates stay visitable next round.
@@ -302,7 +421,7 @@ export function usePaginatedFetch({
         let retryOutcomes = new Map();
         let retryConsumedSrc = -1; // allIDsRef position after the last retry-kept id
         if (retryTarget > 0 && retryIds.length > 0) {
-          const { artworks: retryRaw, outcomes, consumedCount: retryConsumed } =
+          const retryBatch =
             await batchFetchArtworks(retryIds, retryTarget, signal, { strict: strictValidation, onArtwork: (raw, idIdx) => {
               // Map emission indices through the FILTERED list's src positions
               if (signal.aborted || fetchIdRef.current !== currentFetchId) return;
@@ -313,7 +432,21 @@ export function usePaginatedFetch({
               if (shuffleIDs) shownIDsRef.current.add(display.id);
               appendArtwork(display);
             } });
-          if (fetchIdRef.current !== currentFetchId) return;
+          bailIfStale();
+          // Same outage detection as the primary path (this IS already the
+          // one free re-attempt, so it counts on the first detection): a
+          // zero-kept, mostly-'error' retry must not advance the cursor past
+          // the failed ids. (Streamed cards from the first attempt were
+          // already advanced past in the outer catch, so returning here
+          // revisits nothing.)
+          if (isOutageWindow(retryBatch) && recordOutageAttempt(outageRef, start)) {
+            // Cards attempt 1 streamed are on screen — give onBatchReady its
+            // usual shot at them (grid image warm-up) before bailing out.
+            await reportOutcomes(retryBatch.outcomes, streamed);
+            setError(loadError());
+            return;
+          }
+          const { artworks: retryRaw, outcomes, consumedCount: retryConsumed } = retryBatch;
           retryOutcomes = outcomes;
           if (retryConsumed > 0) retryConsumedSrc = retrySrc[retryConsumed - 1];
 
@@ -332,6 +465,8 @@ export function usePaginatedFetch({
             });
           }
         }
+
+        outageRef.current = NO_OUTAGE(); // healthy retry (or cap hit) — same as the primary path
 
         // Advance past the last kept artwork across BOTH attempts. Ids between
         // kept ones were attempted (in-order emission guarantees every id
@@ -476,6 +611,7 @@ export function usePaginatedFetch({
     hasSeedRef.current   = seedArtworks.length > 0;
     seedIDsRef.current   = new Set(seedArtworks.map(a => String(a.id)));
     fetchingRef.current  = false;
+    outageRef.current    = NO_OUTAGE();
     setArtworks(seedArtworks);
     setError(null);
     setHasMore(true);

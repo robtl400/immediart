@@ -549,6 +549,52 @@ describe('fetchArtworkWithStatus — negative caching of validation rejects', ()
     expect(result).toEqual({ artwork: fresh, status: 'used' });
   });
 
+  it('negative-caches a 404 as a notFound tombstone on the short TTL', async () => {
+    getCachedArtwork.mockResolvedValueOnce(null);
+    const { requestManager } = await import('./requestManager');
+    requestManager.fetchDeduped.mockResolvedValueOnce({ ok: false, status: 404 });
+
+    const { fetchArtworkWithStatus } = await import('./metAPI');
+    const result = await fetchArtworkWithStatus(123, null, { strict: false });
+
+    expect(result).toEqual({ artwork: null, status: 'notFound' });
+    expect(setCachedArtwork).toHaveBeenCalledWith(
+      123,
+      { objectID: 123, notFound: true },
+      expect.any(Number)
+    );
+    expect(setCachedArtwork.mock.calls[0][2]).toBe(3600000); // 1h: shorter than the 24h invalid-reject TTL
+  });
+
+  it('fetchArtworkByID (a deep link) re-checks a tombstone live instead of trusting it', async () => {
+    getCachedArtwork.mockResolvedValueOnce({ objectID: 123, notFound: true });
+    const live = { objectID: 123, title: 'Back', primaryImage: 'https://x/123.jpg', objectName: 'Painting' };
+    const { requestManager } = await import('./requestManager');
+    requestManager.fetchDeduped.mockResolvedValueOnce({ ok: true, status: 200, json: async () => live });
+
+    const { fetchArtworkByID } = await import('./metAPI');
+    const artwork = await fetchArtworkByID(123);
+
+    expect(requestManager.fetchDeduped).toHaveBeenCalledTimes(1);
+    expect(artwork).toEqual(live);
+    expect(setCachedArtwork).toHaveBeenCalledWith(123, live); // the tombstone is replaced
+    expect(removeCachedArtwork).not.toHaveBeenCalled();
+  });
+
+  it('answers a cached 404 tombstone as notFoundCached — never prune-evidence', async () => {
+    // 'notFoundCached', NOT 'notFound': /liked prunes only on a LIVE 404 —
+    // a spurious 404 tombstoned yesterday must not delete a like today.
+    getCachedArtwork.mockResolvedValueOnce({ objectID: 123, notFound: true });
+    const { requestManager } = await import('./requestManager');
+    const { fetchArtworkWithStatus } = await import('./metAPI');
+
+    const result = await fetchArtworkWithStatus(123, null, { strict: true });
+
+    expect(result).toEqual({ artwork: null, status: 'notFoundCached', fromCache: true });
+    expect(requestManager.fetchDeduped).not.toHaveBeenCalled();
+    expect(removeCachedArtwork).not.toHaveBeenCalled();
+  });
+
   it('does NOT cache a 200 body that is not a real API object (no objectID)', async () => {
     getCachedArtwork.mockResolvedValueOnce(null);
     const { requestManager } = await import('./requestManager');
@@ -916,5 +962,63 @@ describe('fetchArtworkWithStatus — shared-response dedup safety', () => {
     const result = await fetchArtworkWithStatus(9);
     expect(result).toEqual({ artwork: null, status: 'error' });
     expect(requestManager.reportBlockPage).not.toHaveBeenCalled();
+  });
+});
+
+// ─── batchFetchArtworks — networkCount / errorCount (the outage ratio) ────────
+//
+// The hook divides errorCount by networkCount to tell a 5xx storm from a warm
+// cache full of rejects. Both are counted here, over the ordered attempt list.
+
+describe('batchFetchArtworks — networkCount and errorCount', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    getCachedArtwork.mockReset();
+    setCachedArtwork.mockResolvedValue(undefined);
+  });
+
+  it('counts only ids that touched the network, and only those that ended in error', async () => {
+    getCachedArtwork.mockImplementation(async (id) => {
+      if (id === 1) return { objectID: 1, title: 'ok', primaryImage: 'https://x/1.jpg', objectName: 'Painting' };
+      if (id === 2) return { objectID: 2, title: 'no-img', primaryImage: '', objectName: 'Painting' };
+      if (id === 3) return { objectID: 3, notFound: true };
+      return null;
+    });
+    const { requestManager } = await import('./requestManager');
+    requestManager.fetchDeduped.mockImplementation((url) => {
+      const id = Number(url.split('/').pop());
+      if (id === 4) return Promise.resolve({ ok: false, status: 404 });
+      if (id === 5) return Promise.resolve({ ok: false, status: 500 });
+      if (id === 6) return Promise.reject(new TypeError('Failed to fetch'));
+      return Promise.resolve({ ok: true, status: 200, json: async () => ({ objectID: id, title: 't', primaryImage: `https://x/${id}.jpg`, objectName: 'Painting' }) });
+    });
+
+    const { batchFetchArtworks } = await import('./metAPI');
+    const { artworks, outcomes, networkCount, errorCount, consumedCount } =
+      await batchFetchArtworks([1, 2, 3, 4, 5, 6, 7], 4, null, { strict: true });
+
+    expect(outcomes.get(1)).toBe('used');            // cache
+    expect(outcomes.get(2)).toBe('invalid');         // cache
+    expect(outcomes.get(3)).toBe('notFoundCached');  // cache (tombstone)
+    expect(outcomes.get(4)).toBe('notFound');        // network, live 404
+    expect(outcomes.get(5)).toBe('error');           // network, 500
+    expect(outcomes.get(6)).toBe('error');           // network, rejected
+    expect(outcomes.get(7)).toBe('used');            // network, 200
+    expect(networkCount).toBe(4);                    // ids 4-7; cache-answered 1-3 excluded
+    expect(errorCount).toBe(2);                      // ids 5 and 6 only — a 404 is not an error
+    expect(artworks.map(a => a.objectID)).toEqual([1, 7]);
+    expect(consumedCount).toBe(7);
+  });
+
+  it('an all-cached window touches no network: networkCount 0, errorCount 0', async () => {
+    getCachedArtwork.mockImplementation(async (id) => ({ objectID: id, title: 'no-img', primaryImage: '', objectName: 'Painting' }));
+    const { requestManager } = await import('./requestManager');
+    const { batchFetchArtworks } = await import('./metAPI');
+
+    const { networkCount, errorCount } = await batchFetchArtworks([1, 2, 3], 2);
+
+    expect(requestManager.fetchDeduped).not.toHaveBeenCalled();
+    expect(networkCount).toBe(0);
+    expect(errorCount).toBe(0);
   });
 });

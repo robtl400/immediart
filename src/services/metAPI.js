@@ -159,7 +159,8 @@ export function validateArtwork(artwork, { strict = false } = {}) {
 
 // A cached entry is a real API object (vs a corrupt/misfiled write) only when
 // it carries the id it was stored under — this is the negative-cache contract:
-// real-but-invalid objects answer 'invalid' from cache; anything else is
+// real-but-invalid objects answer 'invalid' from cache, 404 tombstones
+// ({ objectID, notFound: true }) answer 'notFoundCached'; anything else is
 // evicted and refetched.
 const isRealApiObject = (obj, objectID) => String(obj?.objectID ?? '') === String(objectID);
 
@@ -170,39 +171,66 @@ const isRealApiObject = (obj, objectID) => String(obj?.objectID ?? '') === Strin
 // the default TTL.
 const TTL_INVALID_ARTWORK_MS = 86400000; // 24h
 
+// 404 tombstones live for ONE HOUR: long enough that a scan window doesn't
+// refetch a known-dead id on every pass, short enough that a spurious 404 (a
+// CDN hiccup, a bad deploy) can't hide a real artwork from the feed, the grids
+// and /liked for a day. Deletions are near-certainly permanent, so the only
+// cost of expiry is one request per dead id per hour.
+const TTL_NOT_FOUND_MS = 3600000; // 1h
+
 // Per-ID fetch outcome (used by batchFetchArtworks + /liked prune logic):
-//   'used'     — fetched (or cache-hit) and passed the caller's strictness
-//   'invalid'  — fetched but failed validation (no image, wrong medium, or a
-//                strict-mismatch like the feed reading a grid-cached print)
-//   'notFound' — definitive HTTP 404 (safe to prune a saved like)
-//   'error'    — network error / non-404 non-ok response (transient; never prune)
+//   'used'          — fetched (or cache-hit) and passed the caller's strictness
+//   'invalid'       — fetched but failed validation (no image, wrong medium, or a
+//                     strict-mismatch like the feed reading a grid-cached print)
+//   'notFound'      — LIVE HTTP 404 observed on this call (safe to prune a like)
+//   'notFoundCached'— 404 tombstone answered from cache (skip it, but NOT prune
+//                     evidence — the 404 wasn't re-verified on this call)
+//   'error'         — network error / non-404 non-ok response (transient; never prune)
 // Abort and circuit-breaker-open are thrown, never reported as an outcome.
 
 // Fetch single artwork with its outcome (cache + in-flight dedup via requestManager)
-export async function fetchArtworkWithStatus(objectID, signal = null, { strict = false } = {}) {
+export async function fetchArtworkWithStatus(objectID, signal = null, { strict = false, ignoreTombstone = false } = {}) {
   // 1. Cache check — re-validate on read: the cache is shared between strict (feed)
   // and non-strict (grid) callers, and it stores validation REJECTS too (negative
   // cache), so a hit must be re-validated against the caller's own strictness.
   const cached = await getCachedArtwork(objectID);
   if (cached) {
-    if (isRealApiObject(cached, objectID)) {
-      if (validateArtwork(cached, { strict })) return { artwork: cached, status: 'used', fromCache: true };
+    if (!isRealApiObject(cached, objectID)) {
+      // Missing or mismatched objectID — the entry is corrupt (not the object
+      // this key names). Evict it and fall through to a fresh fetch rather than
+      // blackholing the ID.
+      await removeCachedArtwork(objectID);
+    } else if (cached.notFound) {
+      // 404 tombstone: the object was deleted from the collection but its id
+      // lingers in the 24h ID-list caches — answer from cache instead of
+      // refetching a known-dead id every scan window. Status is
+      // 'notFoundCached', NOT 'notFound': pruning a like requires a LIVE 404
+      // observed right now — a spurious 404 tombstoned earlier must never
+      // propagate into deleting the user's like today. A caller that asks to
+      // ignore tombstones (one explicit deep-link request) falls through to a
+      // live re-check instead: one request is cheap, and a spurious 404 must
+      // not hide a shared link for the tombstone's lifetime.
+      if (!ignoreTombstone) return { artwork: null, status: 'notFoundCached', fromCache: true };
+    } else if (validateArtwork(cached, { strict })) {
+      return { artwork: cached, status: 'used', fromCache: true };
+    } else {
       // A real API object that fails this caller's validation — a correct
       // filter outcome, not a cache problem, and NOT a reason to prune a like
       // (the artwork still exists). Answered from cache, no refetch.
       return { artwork: null, status: 'invalid', fromCache: true };
     }
-    // Missing or mismatched objectID — the entry is corrupt (not the object
-    // this key names). Evict it and fall through to a fresh fetch rather than
-    // blackholing the ID.
-    await removeCachedArtwork(objectID);
   }
 
   // 2. In-flight dedup + throttled fetch (via requestManager.fetchDeduped)
   const url = `${API_BASE_URL}/objects/${objectID}`;
   try {
     const response = await requestManager.fetchDeduped(url, signal);
-    if (response.status === 404) return { artwork: null, status: 'notFound' };
+    if (response.status === 404) {
+      // Negative-cache the 404 as a tombstone on its own short TTL (see
+      // TTL_NOT_FOUND_MS and the tombstone branch in the cache read above).
+      await setCachedArtwork(objectID, { objectID: Number(objectID), notFound: true }, TTL_NOT_FOUND_MS);
+      return { artwork: null, status: 'notFound' };
+    }
     if (!response.ok) return { artwork: null, status: 'error' };
     let artwork;
     try {
@@ -251,15 +279,17 @@ export async function fetchArtworkWithStatus(objectID, signal = null, { strict =
   }
 }
 
-// Thin wrapper for callers that only want the artwork (e.g. deep-link resolution)
+// Thin wrapper for callers that only want the artwork (deep-link resolution).
+// One explicit request for one id: a 404 tombstone is re-checked live rather
+// than trusted, so a spurious 404 can never blank a shared link for an hour.
 export async function fetchArtworkByID(objectID, signal = null, opts = {}) {
-  const { artwork } = await fetchArtworkWithStatus(objectID, signal, opts);
+  const { artwork } = await fetchArtworkWithStatus(objectID, signal, { ignoreTombstone: true, ...opts });
   return artwork;
 }
 
 // Batch fetch with parallel requests — uses requestManager.maxConcurrent for dynamic sizing.
 //
-// Returns { artworks, outcomes, consumedCount }:
+// Returns { artworks, outcomes, consumedCount, networkCount, errorCount }:
 //   artworks      — up to targetCount valid artworks (in order)
 //   outcomes      — Map<objectID, status> for EVERY id attempted (lets /liked prune 404s)
 //   consumedCount — how many entries of objectIDs the caller should advance past: the
@@ -267,6 +297,14 @@ export async function fetchArtworkByID(objectID, signal = null, opts = {}) {
 //                   Ids beyond this point were either over-fetched-and-discarded or never
 //                   attempted, so they must remain visitable — advancing by a raw count
 //                   would silently skip them (the bug this contract fixes).
+//   networkCount  — how many attempted ids actually touched the network (not answered
+//                   from cache). Outage detection divides errors by THIS, not by
+//                   outcomes.size — cache-answered rejects would otherwise dilute a
+//                   real 5xx storm below any threshold on a warm cache.
+//   errorCount    — how many attempted ids ended 'error' (transport failure / non-404
+//                   non-ok). Counted over the same ordered attempt list as networkCount
+//                   (NOT the deduped outcomes Map), so a duplicated id in one window
+//                   can't skew the outage ratio.
 //
 // onArtwork(artwork, idIndex) — optional progressive-render hook. Fired for
 // EXACTLY the artworks the call will return, in return order, as soon as each
@@ -278,6 +316,8 @@ export async function fetchArtworkByID(objectID, signal = null, opts = {}) {
 export async function batchFetchArtworks(objectIDs, targetCount = 4, signal = null, { strict = false, onArtwork = null } = {}) {
   const artworks = [];
   const outcomeList = []; // ordered [{ id, status }], processing order === objectIDs order
+  let networkCount = 0;   // attempted ids that were NOT answered from cache
+  let errorCount = 0;     // attempted ids that ended 'error'
   let idIndex = 0;
   // Once the batch is failing (abort/breaker rejection in flight), stop
   // emitting: a late-settling sibling promise must not announce cards after
@@ -309,6 +349,8 @@ export async function batchFetchArtworks(objectIDs, targetCount = 4, signal = nu
       while (drained < results.length && results[drained] !== undefined) {
         const r = results[drained];
         outcomeList.push({ id: batchIDs[drained], status: r.status });
+        if (!r.fromCache) networkCount++;
+        if (r.status === 'error') errorCount++;
         if (r.artwork) {
           artworks.push(r.artwork);
           if (artworks.length <= targetCount && !stopEmitting) {
@@ -365,6 +407,8 @@ export async function batchFetchArtworks(objectIDs, targetCount = 4, signal = nu
     artworks: artworks.slice(0, targetCount),
     outcomes: new Map(outcomeList.map(o => [o.id, o.status])),
     consumedCount,
+    networkCount,
+    errorCount,
   };
 }
 

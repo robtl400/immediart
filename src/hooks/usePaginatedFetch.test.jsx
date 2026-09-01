@@ -55,6 +55,16 @@ const makeBatch = (count, startId = 1, consumedCount = count) => ({
 
 const drain = () => act(async () => { await vi.runAllTimersAsync(); });
 
+// An outage window: zero artworks, every attempted id failed with a transport
+// error (what batchFetchArtworks returns during a 5xx storm — it doesn't throw).
+const makeOutage = (ids) => ({
+  artworks: [],
+  outcomes: new Map(ids.map(id => [id, 'error'])),
+  consumedCount: ids.length,
+  networkCount: ids.length,
+  errorCount: ids.length,
+});
+
 // fetchIDs function that returns ALL_IDS synchronously
 const fetchIDs = vi.fn(async () => ALL_IDS);
 
@@ -548,6 +558,396 @@ describe('usePaginatedFetch — duplicate key regression', () => {
     expect(result.current.artworks).toHaveLength(BATCH);
     expect(result.current.hasMore).toBe(true);
     expect(result.current.error).toBeNull();
+  });
+});
+
+// ─── outage windows (5xx storm) ───────────────────────────────────────────────
+//
+// batchFetchArtworks does NOT throw when every id fails with a transport error
+// (per-id failures become 'error' outcomes). The hook used to scan straight
+// past such windows — advancing the cursor, permanently skipping the ids, and
+// ending a sustained outage at a false "explored the whole collection".
+
+describe('usePaginatedFetch — outage windows', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.clearAllMocks();
+    fetchIDs.mockResolvedValue(ALL_IDS);
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it('zero-kept all-error window: shows the retry error, cursor stays for retry', async () => {
+    batchFetchArtworks
+      .mockResolvedValueOnce(makeBatch(BATCH, 1))            // initial → ids 1-4
+      .mockResolvedValueOnce(makeOutage([5, 6, 7, 8]))        // prefetch A hits the outage → not mergeable
+      .mockResolvedValueOnce(makeOutage([5, 6, 7, 8]))        // loadMore's fetchBatch hits it too
+      .mockResolvedValue(makeBatch(BATCH, 5));                // API recovers for the retry
+
+    const { result } = renderHook(() =>
+      usePaginatedFetch({ shuffleIDs: true, batchSize: BATCH })
+    );
+    await act(async () => { result.current.reset(fetchIDs); });
+    await drain();
+    expect(result.current.artworks).toHaveLength(BATCH);
+
+    // The outage prefetch must not merge; loadMore falls through to a real
+    // fetch, which surfaces the error instead of scanning past the window.
+    await act(async () => { result.current.loadMore(); });
+    await drain();
+    expect(result.current.error).toBe("Couldn't load more art. Tap to retry.");
+    expect(result.current.artworks).toHaveLength(BATCH); // nothing consumed
+    expect(result.current.hasMore).toBe(true);           // not a false end-of-collection
+
+    // While the error shows, the sentinel loop is gated
+    const callsDuringError = batchFetchArtworks.mock.calls.length;
+    await act(async () => { result.current.loadMore(); });
+    expect(batchFetchArtworks.mock.calls.length).toBe(callsDuringError);
+
+    // Retry re-attempts the SAME window — the failed ids were not skipped
+    await act(async () => { result.current.retryLoadMore(); });
+    await drain();
+    const retryCall = batchFetchArtworks.mock.calls[callsDuringError];
+    expect(retryCall[0][0]).toBe(5); // window still starts at id 5
+    expect(result.current.error).toBeNull();
+    expect(result.current.artworks).toHaveLength(BATCH * 2);
+  });
+
+  it('zero-kept all-INVALID window still scans past silently (not an outage)', async () => {
+    batchFetchArtworks
+      .mockResolvedValueOnce(makeBatch(BATCH, 1))  // initial → ids 1-4
+      .mockResolvedValueOnce({                      // prefetch: 12 rejects, no errors
+        artworks: [],
+        outcomes: new Map(Array.from({ length: 12 }, (_, i) => [i + 5, 'invalid'])),
+        consumedCount: 12,
+        networkCount: 0,
+        errorCount: 0,
+      })
+      .mockResolvedValue(makeBatch(BATCH, 17));     // next window past the rejects
+
+    const { result } = renderHook(() =>
+      usePaginatedFetch({ shuffleIDs: true, batchSize: BATCH })
+    );
+    await act(async () => { result.current.reset(fetchIDs); });
+    await drain();
+
+    // Merging the empty-but-definitive prefetch advances past the rejects
+    await act(async () => { result.current.loadMore(); });
+    await drain();
+    expect(result.current.error).toBeNull();
+    expect(result.current.hasMore).toBe(true);
+
+    // The follow-up prefetch starts past the scanned window (id 17), proving
+    // definitive rejects still advance the cursor
+    const lastCall = batchFetchArtworks.mock.calls.at(-1);
+    expect(lastCall[0][0]).toBe(17);
+  });
+
+  it('warm cache: cached rejects do not dilute outage detection (ratio uses networkCount)', async () => {
+    // 12 attempted: 7 answered from cache as invalid, 5 hit the network and
+    // all errored. Against outcomes.size the errors are a minority (5/12);
+    // against networkCount they are total (5/5) — this IS an outage.
+    const dilutedOutage = {
+      artworks: [],
+      outcomes: new Map([
+        ...[5, 6, 7, 8, 9, 10, 11].map(id => [id, 'invalid']), // cache-answered
+        ...[12, 13, 14, 15, 16].map(id => [id, 'error']),      // network, all failed
+      ]),
+      consumedCount: 12,
+      networkCount: 5,
+      errorCount: 5,
+    };
+    batchFetchArtworks
+      .mockResolvedValueOnce(makeBatch(BATCH, 1))   // initial → ids 1-4
+      .mockResolvedValueOnce(dilutedOutage)          // prefetch hits the diluted outage
+      .mockResolvedValueOnce(dilutedOutage)          // loadMore's fetchBatch hits it too
+      .mockResolvedValue(makeBatch(BATCH, 5));
+
+    const { result } = renderHook(() =>
+      usePaginatedFetch({ shuffleIDs: true, batchSize: BATCH })
+    );
+    await act(async () => { result.current.reset(fetchIDs); });
+    await drain();
+
+    await act(async () => { result.current.loadMore(); });
+    await drain();
+    expect(result.current.error).toBe("Couldn't load more art. Tap to retry.");
+    expect(result.current.artworks).toHaveLength(BATCH); // cursor not advanced
+  });
+
+  it('a persistently failing window is scanned past after OUTAGE_MAX_RETRIES retries', async () => {
+    // One window that 500s forever must not pin the feed permanently: after
+    // 3 surfaced retries the hook gives up and scans past it (old behavior).
+    batchFetchArtworks
+      .mockResolvedValueOnce(makeBatch(BATCH, 1))        // initial → ids 1-4
+      .mockResolvedValueOnce(makeOutage([5, 6, 7, 8]))    // prefetch
+      .mockResolvedValueOnce(makeOutage([5, 6, 7, 8]))    // loadMore → outage 1 (surfaced)
+      .mockResolvedValueOnce(makeOutage([5, 6, 7, 8]))    // retry 1 → outage 2 (surfaced)
+      .mockResolvedValueOnce(makeOutage([5, 6, 7, 8]))    // retry 2 → outage 3 (surfaced)
+      .mockResolvedValueOnce(makeOutage([5, 6, 7, 8]))    // retry 3 → cap hit: scan past
+      .mockResolvedValue(makeBatch(BATCH, 9));            // life goes on past the window
+
+    const { result } = renderHook(() =>
+      usePaginatedFetch({ shuffleIDs: true, batchSize: BATCH })
+    );
+    await act(async () => { result.current.reset(fetchIDs); });
+    await drain();
+
+    await act(async () => { result.current.loadMore(); });
+    await drain();
+    expect(result.current.error).toBeTruthy(); // outage 1 surfaced
+
+    for (let i = 0; i < 2; i++) {
+      await act(async () => { result.current.retryLoadMore(); });
+      await drain();
+      expect(result.current.error).toBeTruthy(); // outages 2 and 3 surfaced
+    }
+
+    // 4th attempt at the same window: cap exceeded → scanned past, no error,
+    // and the feed keeps flowing from beyond the dead window.
+    await act(async () => { result.current.retryLoadMore(); });
+    await drain();
+    expect(result.current.error).toBeNull();
+    expect(result.current.hasMore).toBe(true);
+    expect(result.current.artworks).toHaveLength(BATCH);        // the dead window yielded no cards
+    expect(batchFetchArtworks.mock.calls.at(-1)[0][0]).toBe(9); // follow-up prefetch starts PAST it
+
+    // Life goes on: the next loadMore merges the healthy prefetch
+    await act(async () => { result.current.loadMore(); });
+    await drain();
+    expect(result.current.artworks).toHaveLength(BATCH * 2);
+    expect(result.current.artworks.at(-1).id).toBe(12);
+  });
+
+  it('first sighting at a window: one silent re-attempt after the recovery pause, no error if it recovers', async () => {
+    batchFetchArtworks
+      .mockResolvedValueOnce(makeBatch(BATCH, 1))       // initial → ids 1-4
+      .mockResolvedValueOnce(makeBatch(BATCH, 5))       // prefetch (dropped by the pause below)
+      .mockResolvedValueOnce(makeOutage([5, 6, 7, 8]))  // loadMore's fetchBatch: outage, first sighting
+      .mockResolvedValue(makeBatch(BATCH, 5));          // silent re-attempt: the API is back
+
+    const { result } = renderHook(() =>
+      usePaginatedFetch({ shuffleIDs: true, batchSize: BATCH })
+    );
+    await act(async () => { result.current.reset(fetchIDs); });
+    await drain();
+    await act(async () => { result.current.pause(); }); // drop the prefetch so loadMore fetches for real
+
+    await act(async () => { result.current.loadMore(); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(RATE_LIMIT_RECOVERY_MS - 1); });
+    // Still inside the recovery pause: nothing surfaced, nothing re-requested yet
+    expect(batchFetchArtworks).toHaveBeenCalledTimes(3);
+    expect(result.current.error).toBeNull();
+    expect(result.current.loadingMore).toBe(true);
+
+    await drain();
+    expect(batchFetchArtworks.mock.calls[3][0][0]).toBe(5); // the SAME window, re-attempted
+    expect(result.current.error).toBeNull();
+    expect(result.current.artworks).toHaveLength(BATCH * 2);
+  });
+
+  it('a one-id window (a single like) that errors is still an outage — never a false empty state', async () => {
+    // With nothing else in the window to dilute it, the lone error is the
+    // whole picture: the floor scales to the window size. Scanning past it
+    // would set hasMore=false and render "No liked artworks yet." for a like
+    // that still exists.
+    const singleId = vi.fn(async () => [1]);
+    batchFetchArtworks
+      .mockResolvedValueOnce(makeOutage([1]))  // initial attempt
+      .mockResolvedValueOnce(makeOutage([1]))  // silent re-attempt: still down → surfaced
+      .mockResolvedValue(makeBatch(1, 1));     // back up for the user's retry
+
+    const { result } = renderHook(() =>
+      usePaginatedFetch({ shuffleIDs: false, batchSize: BATCH })
+    );
+    await act(async () => { result.current.reset(singleId); });
+    await drain();
+    expect(result.current.error).toBe("Couldn't load more art. Tap to retry.");
+    expect(result.current.artworks).toEqual([]);
+    expect(result.current.hasMore).toBe(true);
+
+    await act(async () => { result.current.retryLoadMore(); });
+    await drain();
+    expect(result.current.error).toBeNull();
+    expect(result.current.artworks).toHaveLength(1);
+  });
+
+  it('a lone errored request among cached rejects is a blip, not an outage', async () => {
+    // 11 ids answered from cache as rejects, ONE hit the network and 500'd:
+    // errors are 100% of networkCount, but a single request must not stop
+    // infinite scroll — the window scans past like any all-reject window.
+    const blip = {
+      artworks: [],
+      outcomes: new Map([
+        ...[5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15].map(id => [id, 'invalid']),
+        [16, 'error'],
+      ]),
+      consumedCount: 12,
+      networkCount: 1,
+      errorCount: 1,
+    };
+    batchFetchArtworks
+      .mockResolvedValueOnce(makeBatch(BATCH, 1))  // initial → ids 1-4
+      .mockResolvedValueOnce(blip)                  // prefetch: mergeable (not an outage)
+      .mockResolvedValue(makeBatch(BATCH, 17));     // next window past the rejects
+
+    const { result } = renderHook(() =>
+      usePaginatedFetch({ shuffleIDs: true, batchSize: BATCH })
+    );
+    await act(async () => { result.current.reset(fetchIDs); });
+    await drain();
+
+    await act(async () => { result.current.loadMore(); });
+    await drain();
+    expect(result.current.error).toBeNull();
+    expect(batchFetchArtworks.mock.calls.at(-1)[0][0]).toBe(17);
+  });
+
+  it('an outage window hands its outcomes to onBatchReady before the error surfaces (live-404 prune evidence)', async () => {
+    const onBatchReady = vi.fn();
+    const outage = {
+      ...makeOutage([5, 6, 7, 8]),
+      outcomes: new Map([[5, 'notFound'], [6, 'error'], [7, 'error'], [8, 'error']]),
+      errorCount: 3,
+    };
+    batchFetchArtworks
+      .mockResolvedValueOnce(makeBatch(BATCH, 1))  // initial → ids 1-4
+      .mockResolvedValueOnce(outage)                // the prefetch sees it first
+      .mockResolvedValueOnce(outage)                // loadMore's fetchBatch surfaces it
+      .mockResolvedValue(makeBatch(BATCH, 5));
+
+    const { result } = renderHook(() =>
+      usePaginatedFetch({ shuffleIDs: true, batchSize: BATCH, onBatchReady })
+    );
+    await act(async () => { result.current.reset(fetchIDs); });
+    await drain();
+    // Prefetch outage: outcomes forwarded with an empty card list
+    expect(onBatchReady).toHaveBeenCalledTimes(2); // initial batch + prefetch outage
+    expect(onBatchReady.mock.calls[1][0]).toEqual([]);
+    expect(onBatchReady.mock.calls[1][2].get(5)).toBe('notFound');
+
+    await act(async () => { result.current.loadMore(); });
+    await drain();
+    expect(result.current.error).toBeTruthy();
+    expect(onBatchReady).toHaveBeenCalledTimes(3); // + the surfaced outage
+    expect(onBatchReady.mock.calls[2][0]).toEqual([]);
+    expect(onBatchReady.mock.calls[2][2].get(5)).toBe('notFound');
+  });
+
+  it('retry-path outage (attempt 1 throws, the auto-retry is an outage): surfaced, cursor stays, cap counts across both paths', async () => {
+    // A seed at the head of the window (id 5 already shown) makes the first
+    // candidate sit PAST the window start — the retry path must still key the
+    // cap on the window start, or the count restarts on every alternation.
+    batchFetchArtworks
+      .mockResolvedValueOnce(makeBatch(BATCH, 1))       // initial → ids 1-4
+      .mockResolvedValueOnce(makeBatch(BATCH, 6))       // prefetch (dropped by the pause below)
+      .mockRejectedValueOnce(new Error('boom'))         // loadMore attempt 1 throws
+      .mockResolvedValueOnce(makeOutage([6, 7, 8, 9]))  // auto-retry → outage 1 (retry path, surfaced)
+      .mockResolvedValueOnce(makeOutage([6, 7, 8, 9]))  // retryLoadMore → outage 2 (primary path)
+      .mockResolvedValueOnce(makeOutage([6, 7, 8, 9]))  // retryLoadMore → outage 3
+      .mockResolvedValueOnce(makeOutage([6, 7, 8, 9]))  // retryLoadMore → cap hit: scan past
+      .mockResolvedValue(makeBatch(BATCH, 10));         // life goes on past the window
+
+    const { result } = renderHook(() =>
+      usePaginatedFetch({ shuffleIDs: true, batchSize: BATCH })
+    );
+    await act(async () => { result.current.reset(fetchIDs, [{ id: 5 }]); });
+    await drain();
+    expect(result.current.artworks).toHaveLength(BATCH + 1);
+    await act(async () => { result.current.pause(); });
+
+    await act(async () => { result.current.loadMore(); });
+    await drain();
+    expect(result.current.error).toBe("Couldn't load more art. Tap to retry.");
+    expect(result.current.artworks).toHaveLength(BATCH + 1);   // nothing consumed
+    expect(batchFetchArtworks.mock.calls[3][0][0]).toBe(6);    // the auto-retry hit the same window
+
+    // The primary path continues the SAME count: outages 2 and 3 surface…
+    for (let i = 0; i < 2; i++) {
+      await act(async () => { result.current.retryLoadMore(); });
+      await drain();
+      expect(result.current.error).toBeTruthy();
+      expect(batchFetchArtworks.mock.calls.at(-1)[0][0]).toBe(6);
+    }
+    // …and the 4th attempt scans past it
+    await act(async () => { result.current.retryLoadMore(); });
+    await drain();
+    expect(result.current.error).toBeNull();
+    expect(batchFetchArtworks.mock.calls.at(-1)[0][0]).toBe(10);
+  });
+
+  it('outage on the INITIAL fetch: silent re-attempt, then the error with an empty list; retry restarts at the first id', async () => {
+    batchFetchArtworks
+      .mockResolvedValueOnce(makeOutage([1, 2, 3, 4]))  // initial attempt
+      .mockResolvedValueOnce(makeOutage([1, 2, 3, 4]))  // silent re-attempt: still down → surfaced
+      .mockResolvedValue(makeBatch(BATCH, 1));          // back up for the user's retry
+
+    const { result } = renderHook(() =>
+      usePaginatedFetch({ shuffleIDs: true, batchSize: BATCH })
+    );
+    await act(async () => { result.current.reset(fetchIDs); });
+    await drain();
+    expect(batchFetchArtworks).toHaveBeenCalledTimes(2);
+    expect(result.current.loading).toBe(false);
+    expect(result.current.artworks).toEqual([]);
+    expect(result.current.error).toBe("Couldn't load more art. Tap to retry.");
+    expect(result.current.hasMore).toBe(true);
+
+    await act(async () => { result.current.retryLoadMore(); });
+    await drain();
+    expect(batchFetchArtworks.mock.calls[2][0][0]).toBe(1);
+    expect(result.current.error).toBeNull();
+    expect(result.current.artworks).toHaveLength(BATCH);
+  });
+
+  it('loadMore joined to an in-flight prefetch that resolves as an outage falls through to a real fetch', async () => {
+    let resolvePrefetch;
+    batchFetchArtworks
+      .mockResolvedValueOnce(makeBatch(BATCH, 1))                        // initial → ids 1-4
+      .mockReturnValueOnce(new Promise(r => { resolvePrefetch = r; }))   // prefetch stalls
+      .mockResolvedValue(makeBatch(BATCH, 5));                           // the real fetch after the join
+
+    const { result } = renderHook(() =>
+      usePaginatedFetch({ shuffleIDs: true, batchSize: BATCH })
+    );
+    await act(async () => { result.current.reset(fetchIDs); });
+    await drain();
+
+    await act(async () => { result.current.loadMore(); });
+    expect(result.current.loadingMore).toBe(true); // joined
+
+    await act(async () => {
+      resolvePrefetch(makeOutage([5, 6, 7, 8]));
+      await vi.runAllTimersAsync();
+    });
+    expect(result.current.loadingMore).toBe(false);
+    expect(result.current.error).toBeNull();
+    expect(result.current.artworks).toHaveLength(BATCH * 2);
+    expect(batchFetchArtworks.mock.calls[2][0][0]).toBe(5); // same window, fetched for real
+  });
+
+  it('a pause() that lands after the batch resolved leaves no sticky error behind', async () => {
+    let pauseNow = () => {};
+    batchFetchArtworks
+      .mockResolvedValueOnce(makeBatch(BATCH, 1))  // initial → ids 1-4
+      .mockResolvedValueOnce(makeBatch(BATCH, 5))  // prefetch (dropped by the pause below)
+      .mockImplementationOnce(async () => {        // resolves as an outage — AFTER a pause()
+        pauseNow();
+        return makeOutage([5, 6, 7, 8]);
+      });
+
+    const { result } = renderHook(() =>
+      usePaginatedFetch({ shuffleIDs: true, batchSize: BATCH })
+    );
+    pauseNow = () => result.current.pause();
+    await act(async () => { result.current.reset(fetchIDs); });
+    await drain();
+    await act(async () => { result.current.pause(); });
+
+    await act(async () => { result.current.loadMore(); });
+    await drain();
+    expect(result.current.error).toBeNull();
+    expect(result.current.loadingMore).toBe(false);
+    expect(batchFetchArtworks).toHaveBeenCalledTimes(3); // no silent re-attempt on a paused hook
   });
 });
 
