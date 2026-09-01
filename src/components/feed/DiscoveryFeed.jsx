@@ -37,6 +37,14 @@ export default function DiscoveryFeed() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // A feed that was paused in its error state (the user left for a grid while
+  // the API was down) gets one automatic retry when it comes back into view;
+  // if the API is still down the retry re-surfaces the error or the countdown.
+  useEffect(() => {
+    if (error && artworks.length === 0) retryLoadMore();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const [showHint, setShowHint] = useState(() => {
     try {
       return !localStorage.getItem(HINT_STORAGE_KEY);

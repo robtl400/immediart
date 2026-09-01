@@ -14,6 +14,11 @@ import { createContext, useContext, useState, useEffect, useCallback } from 'rea
 
 const LIKES_KEY = 'immediart_liked_artworks';
 const LIKES_VERSION = 1;
+// First-sighting timestamps of live 404s on liked ids. A like is removed only
+// when the Met has 404'd it on two visits this far apart: one 404 can be a
+// CDN hiccup or a deploy, and a minute of 404s must not wipe the liked page.
+const NOT_FOUND_KEY = 'immediart_like_404s';
+const NOT_FOUND_CONFIRM_GAP_MS = 30 * 60 * 1000;
 
 // Read + migrate. Legacy was a bare array of ids; v1 is { v:1, ids:[...] }.
 function readLikes() {
@@ -80,7 +85,24 @@ export function LikesProvider({ children }) {
 
   const isLiked = useCallback((id) => likedIds.has(Number(id)), [likedIds]);
 
-  const value = { likedIds, toggleLike, pruneLike, isLiked };
+  // Record a live 404 on a liked id; prune only when an earlier visit recorded
+  // one too (see NOT_FOUND_CONFIRM_GAP_MS).
+  const reportNotFound = useCallback((id) => {
+    const n = Number(id);
+    let seen = {};
+    try { seen = JSON.parse(localStorage.getItem(NOT_FOUND_KEY) || '{}') || {}; } catch { seen = {}; }
+    const now = Date.now();
+    const first = seen[n];
+    if (first && now - first >= NOT_FOUND_CONFIRM_GAP_MS) {
+      delete seen[n];
+      pruneLike(n);
+    } else if (!first) {
+      seen[n] = now;
+    }
+    try { localStorage.setItem(NOT_FOUND_KEY, JSON.stringify(seen)); } catch { /* ignore */ }
+  }, [pruneLike]);
+
+  const value = { likedIds, toggleLike, pruneLike, reportNotFound, isLiked };
   return <LikesContext.Provider value={value}>{children}</LikesContext.Provider>;
 }
 

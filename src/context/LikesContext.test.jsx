@@ -98,3 +98,35 @@ describe('LikesContext', () => {
     expect(result.current.likedIds).toBe(before);
   });
 });
+
+describe('LikesContext — reportNotFound', () => {
+  let ls;
+  beforeEach(() => {
+    ls = makeLocalStorageMock();
+    vi.stubGlobal('localStorage', ls);
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-01T10:00:00Z'));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it('keeps a like on the first live 404 and removes it only on a second, later visit', () => {
+    ls.setItem(KEY, JSON.stringify({ v: 1, ids: [7] }));
+    const { result } = renderHook(() => useLikes(), { wrapper });
+
+    act(() => { result.current.reportNotFound(7); });
+    expect(result.current.isLiked(7)).toBe(true);
+
+    // The same visit (or a deploy that 404s for a minute) reporting again
+    vi.setSystemTime(new Date('2026-09-01T10:05:00Z'));
+    act(() => { result.current.reportNotFound(7); });
+    expect(result.current.isLiked(7)).toBe(true);
+
+    // A later visit sees it 404 again
+    vi.setSystemTime(new Date('2026-09-01T11:00:00Z'));
+    act(() => { result.current.reportNotFound(7); });
+    expect(result.current.isLiked(7)).toBe(false);
+  });
+});

@@ -637,10 +637,12 @@ describe('usePaginatedFetch — outage windows', () => {
     expect(result.current.error).toBeNull();
     expect(result.current.hasMore).toBe(true);
 
-    // The follow-up prefetch starts past the scanned window (id 17), proving
-    // definitive rejects still advance the cursor
-    const lastCall = batchFetchArtworks.mock.calls.at(-1);
-    expect(lastCall[0][0]).toBe(17);
+    // An empty merge renders nothing the scroll observer can react to, so the
+    // hook fetches the next window itself (starting past the rejects, at id
+    // 17) rather than only prefetching it and waiting for a sentinel that
+    // would never fire again.
+    expect(batchFetchArtworks.mock.calls.some(c => c[0][0] === 17)).toBe(true);
+    expect(result.current.artworks).toHaveLength(BATCH * 2);
   });
 
   it('warm cache: cached rejects do not dilute outage detection (ratio uses networkCount)', async () => {
@@ -800,7 +802,7 @@ describe('usePaginatedFetch — outage windows', () => {
     await act(async () => { result.current.loadMore(); });
     await drain();
     expect(result.current.error).toBeNull();
-    expect(batchFetchArtworks.mock.calls.at(-1)[0][0]).toBe(17);
+    expect(batchFetchArtworks.mock.calls.some(c => c[0][0] === 17)).toBe(true); // scanned past
   });
 
   it('an outage window hands its outcomes to onBatchReady before the error surfaces (live-404 prune evidence)', async () => {

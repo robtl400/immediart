@@ -640,6 +640,7 @@
    viewport past the whole incoming batch. The loader is transient and
    self-resolves; only states that need the user's eyes get a snap stop. */
 .discovery-feed .inline-error,
+.discovery-feed .throttle-notice,
 .discovery-feed .end-message {
   scroll-snap-align: end;
 }

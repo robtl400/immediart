@@ -20,7 +20,7 @@ import { GRID_BATCH_SIZE, GRID_INITIAL_BATCH_SIZE, GRID_ROOT_MARGIN } from '../.
 export default function LikedGrid() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { likedIds, isLiked, toggleLike, pruneLike } = useLikes();
+  const { likedIds, isLiked, toggleLike, reportNotFound } = useLikes();
   // A shared link opened in a fresh tab has no page to go back to — go home.
   const goBack = () => (location.key === 'default' ? navigate('/') : navigate(-1));
   const { openModal } = useArtworkModal();
@@ -33,11 +33,12 @@ export default function LikedGrid() {
     maxInMemory: Infinity,
     onBatchReady: (artworks, signal, outcomes) => {
       preloadArtworkImages(artworks, signal);
-      // Prune any liked ID the Met API now definitively 404s (never on a
-      // transient 'error' — that would delete a like over a network blip).
+      // Report a liked ID the Met API 404s live (never a transient 'error' —
+      // that would delete a like over a network blip); the context removes
+      // it only once a second visit confirms the 404.
       if (outcomes) {
         for (const [id, status] of outcomes) {
-          if (status === 'notFound') pruneLike(id);
+          if (status === 'notFound') reportNotFound(id);
         }
       }
     },

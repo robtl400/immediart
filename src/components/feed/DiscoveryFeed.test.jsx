@@ -251,3 +251,23 @@ describe('DiscoveryFeed — keyboard navigation', () => {
     toggle.remove();
   });
 });
+
+describe('DiscoveryFeed — error state on remount', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('retries once on mount when the feed was left in an empty error state', () => {
+    vi.stubGlobal('localStorage', makeLocalStorageMock());
+    const ctx = makeArtworksContext({ artworks: [], error: 'Failed to load artworks', retryLoadMore: vi.fn() });
+    useArtworks.mockReturnValue(ctx);
+    render(<DiscoveryFeed />);
+    expect(ctx.retryLoadMore).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not retry on mount when artworks are showing', () => {
+    vi.stubGlobal('localStorage', makeLocalStorageMock());
+    const ctx = makeArtworksContext({ error: 'Failed to load artworks', retryLoadMore: vi.fn() });
+    useArtworks.mockReturnValue(ctx);
+    render(<DiscoveryFeed />);
+    expect(ctx.retryLoadMore).not.toHaveBeenCalled();
+  });
+});

@@ -863,3 +863,179 @@ describe('RequestManager — 429/5xx are strain, not a ban', () => {
     expect(rm.retryAfterMs).toBe(0);
   });
 });
+
+// ─── storage failure, offline, breaker persistence, HALF_OPEN waiters ─────────
+
+describe('RequestManager — bucket survives storage failure and offline', () => {
+  const KEY = 'test_dispatch_times';
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.stubGlobal('fetch', vi.fn(ok200));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it('keeps counting in memory when localStorage is absent', async () => {
+    vi.stubGlobal('localStorage', undefined);
+    const rm = makeManager({ requestBudget: 2, requestBudgetWindowMs: 10000, persistKey: KEY });
+    await rm.fetch('http://a', null);
+    await rm.fetch('http://b', null);
+    expect(rm.budgetWaitMs).toBeGreaterThan(0); // both dispatches still count
+    const p = rm.fetch('http://c', null);
+    await vi.advanceTimersByTimeAsync(9000);
+    expect(globalThis.fetch).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(1100);
+    await p;
+    expect(globalThis.fetch).toHaveBeenCalledTimes(3);
+  });
+
+  it('keeps counting in memory when setItem throws (quota, private mode)', async () => {
+    vi.stubGlobal('localStorage', { getItem: () => null, setItem: () => { throw new Error('quota'); } });
+    const rm = makeManager({ requestBudget: 2, requestBudgetWindowMs: 10000, persistKey: KEY });
+    await rm.fetch('http://a', null);
+    await rm.fetch('http://b', null);
+    expect(rm.budgetWaitMs).toBeGreaterThan(0);
+  });
+
+  it('spends no token on a dispatch the browser will refuse offline', async () => {
+    vi.stubGlobal('navigator', { onLine: false });
+    globalThis.fetch.mockImplementation(() => Promise.reject(new TypeError('Failed to fetch')));
+    const rm = makeManager({ requestBudget: 2, requestBudgetWindowMs: 10000 });
+    for (let i = 0; i < 4; i++) {
+      try { await rm.fetch(`http://x${i}`, null); } catch { /* expected */ }
+    }
+    expect(globalThis.fetch).toHaveBeenCalledTimes(4); // never queued behind the budget
+    expect(rm.budgetWaitMs).toBe(0);
+  });
+});
+
+describe('RequestManager — breaker state persists across a reload', () => {
+  const KEY = 'test_dispatch_times';
+  const memoryStorage = () => {
+    const m = new Map();
+    return { getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: (k) => m.delete(k) };
+  };
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.stubGlobal('fetch', vi.fn());
+    vi.stubGlobal('localStorage', memoryStorage());
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it('a new manager starts OPEN for the remainder of a persisted OPEN period', async () => {
+    globalThis.fetch.mockImplementation(err403);
+    const a = makeManager({ persistKey: KEY });
+    for (let i = 0; i < 5; i++) {
+      try { await a.fetch('http://x', null); } catch { /* expected */ }
+    }
+    expect(a.state).toBe('OPEN');
+    await vi.advanceTimersByTimeAsync(20000);
+
+    const b = makeManager({ persistKey: KEY }); // the reload
+    expect(b.state).toBe('OPEN');
+    expect(b.retryAfterMs).toBeGreaterThan(39000);
+    expect(b.retryAfterMs).toBeLessThanOrEqual(40000);
+    await expect(b.fetch('http://y', null)).rejects.toThrow(/circuit breaker/i);
+    await vi.advanceTimersByTimeAsync(40000);
+    expect(b.state).toBe('HALF_OPEN');
+  });
+
+  it('a new manager honours a persisted Retry-After hold', async () => {
+    globalThis.fetch.mockImplementation(() => Promise.resolve({ status: 429, headers: { get: (h) => (h.toLowerCase() === 'retry-after' ? '30' : null) } }));
+    const a = makeManager({ persistKey: KEY });
+    await a.fetch('http://x', null);
+    expect(a.budgetWaitMs).toBeGreaterThan(29000);
+    const b = makeManager({ persistKey: KEY });
+    expect(b.budgetWaitMs).toBeGreaterThan(29000);
+  });
+
+  it('a closed breaker leaves nothing to restore', async () => {
+    globalThis.fetch.mockImplementation(ok200);
+    const a = makeManager({ persistKey: KEY });
+    await a.fetch('http://x', null);
+    const b = makeManager({ persistKey: KEY });
+    expect(b.state).toBe('CLOSED');
+    expect(b.retryAfterMs).toBe(0);
+  });
+});
+
+describe('RequestManager — HALF_OPEN after a wait, and trips with queued callers', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.stubGlobal('fetch', vi.fn());
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  // Trip the breaker with five straight 403s.
+  async function trip(rm) {
+    globalThis.fetch.mockImplementation(err403);
+    for (let i = 0; i < 5; i++) {
+      try { await rm.fetch('http://x', null); } catch { /* expected */ }
+    }
+    expect(rm.state).toBe('OPEN');
+  }
+
+  it('waiters that wake into HALF_OPEN follow the single-probe rule', async () => {
+    const rm = makeManager({ requestBudget: 2, requestBudgetWindowMs: 70000 });
+    globalThis.fetch.mockImplementation(ok200);
+    await rm.fetch('http://warm1', null); // spend both tokens
+    await rm.fetch('http://warm2', null);
+
+    let resolveProbe;
+    globalThis.fetch
+      .mockImplementationOnce(() => new Promise(r => { resolveProbe = r; }))
+      .mockImplementation(ok200);
+    const first  = rm.fetch('http://a', null); // both queue on the budget
+    const second = rm.fetch('http://b', null);
+    second.catch(() => {});
+    rm.reportBlockPage();                // OPEN for 60s; the budget clears at 70s
+    expect(rm.state).toBe('OPEN');
+
+    await vi.advanceTimersByTimeAsync(70100); // both wake in HALF_OPEN
+    expect(rm.state).toBe('HALF_OPEN');
+    expect(globalThis.fetch).toHaveBeenCalledTimes(3); // two warm-ups + one probe
+    await expect(second).rejects.toThrow(/circuit breaker/i); // not a second probe
+
+    resolveProbe({ status: 200 });
+    await first;
+    expect(rm.state).toBe('CLOSED');
+  });
+
+  it('a block page right after a probe closed the breaker reopens it escalated', async () => {
+    const rm = makeManager();
+    await trip(rm);
+    await vi.advanceTimersByTimeAsync(60000);
+    expect(rm.state).toBe('HALF_OPEN');
+
+    globalThis.fetch.mockImplementation(ok200);
+    await rm.fetch('http://probe', null); // a 200 whose body is the block page
+    expect(rm.state).toBe('CLOSED');
+    rm.reportBlockPage();
+    expect(rm.state).toBe('OPEN');
+    await vi.advanceTimersByTimeAsync(60000);
+    expect(rm.state).toBe('OPEN');       // 120s, not the 60s a fresh trip would give
+    await vi.advanceTimersByTimeAsync(60000);
+    expect(rm.state).toBe('HALF_OPEN');
+  });
+
+  it('a trip while callers wait behind a probe rejects them instead of stranding them', async () => {
+    const rm = makeManager();
+    await trip(rm);
+    await vi.advanceTimersByTimeAsync(60000);
+    expect(rm.state).toBe('HALF_OPEN');
+
+    globalThis.fetch.mockImplementationOnce(() => new Promise(() => {})); // probe never settles
+    rm.fetch('http://probe', null).catch(() => {});
+    const queued = rm.fetch('http://queued', null);
+    rm.reportBlockPage(); // a block page seen elsewhere trips it mid-probe
+    await expect(queued).rejects.toThrow(/circuit breaker/i);
+  });
+});

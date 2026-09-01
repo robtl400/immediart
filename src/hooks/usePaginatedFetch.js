@@ -575,8 +575,17 @@ export function usePaginatedFetch({
         .catch(e => console.warn('[ImmediArt] onBatchReady error:', e.message));
     }
 
+    // An empty window (every candidate a cached reject) merges nothing, so
+    // nothing the infinite-scroll observer watches would change and a still-
+    // intersecting sentinel would never fire again. Fetch the next window for
+    // real instead: that toggles loadingMore and re-arms the observer.
+    if (prefetched.length === 0 && nextIndex < allIDsRef.current.length) {
+      fetchBatch(false);
+      return;
+    }
+
     startPrefetch(nextIndex);
-  }, [shuffleIDs, maxInMemory, startPrefetch]);
+  }, [shuffleIDs, maxInMemory, startPrefetch, fetchBatch]);
 
   const loadMore = useCallback(() => {
     // `error` gates the sentinel-driven loop: while an error is showing, the

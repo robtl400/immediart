@@ -1,9 +1,10 @@
 /**
  * LikedGrid — the /liked consumer of the per-id outcome contract.
  *
- * Covers the one rule the outcome statuses exist for: a like is pruned only on
- * a LIVE 404 ('notFound'), never on a cached tombstone ('notFoundCached') or a
- * transient failure ('error').
+ * Covers the one rule the outcome statuses exist for: a like is reported as
+ * missing only on a LIVE 404 ('notFound'), never on a cached tombstone
+ * ('notFoundCached') or a transient failure ('error'); the context decides
+ * when a reported 404 becomes a removal.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -20,9 +21,9 @@ vi.mock('../../hooks/useInfiniteScroll', () => ({ default: () => ({ current: nul
 vi.mock('../../context/ArtworkModalContext', () => ({ useArtworkModal: () => ({ openModal: vi.fn() }) }));
 vi.mock('../../utils/imageLoader', () => ({ preloadArtworkImages: vi.fn() }));
 
-const likes = vi.hoisted(() => ({ pruneLike: vi.fn() }));
+const likes = vi.hoisted(() => ({ reportNotFound: vi.fn() }));
 vi.mock('../../context/LikesContext', () => ({
-  useLikes: () => ({ likedIds: new Set([1, 2, 3, 4]), isLiked: () => true, toggleLike: vi.fn(), pruneLike: likes.pruneLike }),
+  useLikes: () => ({ likedIds: new Set([1, 2, 3, 4]), isLiked: () => true, toggleLike: vi.fn(), reportNotFound: likes.reportNotFound }),
 }));
 
 // Capture the options LikedGrid hands the hook so the test can drive onBatchReady.
@@ -39,11 +40,11 @@ vi.mock('../../hooks/usePaginatedFetch', () => ({
 
 describe('LikedGrid — like pruning', () => {
   beforeEach(() => {
-    likes.pruneLike.mockClear();
+    likes.reportNotFound.mockClear();
     render(<LikedGrid />);
   });
 
-  it('prunes a like only on a LIVE 404 — never on a cached tombstone or a transient error', () => {
+  it('reports a like only on a LIVE 404 — never on a cached tombstone or a transient error', () => {
     const outcomes = new Map([
       [1, 'notFound'],        // live 404: prune
       [2, 'notFoundCached'],  // tombstone answered from cache: keep
@@ -51,17 +52,17 @@ describe('LikedGrid — like pruning', () => {
       [4, 'invalid'],         // exists, fails validation: keep
     ]);
     hook.options.onBatchReady([], undefined, outcomes);
-    expect(likes.pruneLike).toHaveBeenCalledTimes(1);
-    expect(likes.pruneLike).toHaveBeenCalledWith(1);
+    expect(likes.reportNotFound).toHaveBeenCalledTimes(1);
+    expect(likes.reportNotFound).toHaveBeenCalledWith(1);
   });
 
   it('reads outcomes even when the batch carried no artworks (an outage window)', () => {
     hook.options.onBatchReady([], undefined, new Map([[2, 'notFound']]));
-    expect(likes.pruneLike).toHaveBeenCalledWith(2);
+    expect(likes.reportNotFound).toHaveBeenCalledWith(2);
   });
 
   it('tolerates a missing outcomes map', () => {
     expect(() => hook.options.onBatchReady([], undefined, undefined)).not.toThrow();
-    expect(likes.pruneLike).not.toHaveBeenCalled();
+    expect(likes.reportNotFound).not.toHaveBeenCalled();
   });
 });

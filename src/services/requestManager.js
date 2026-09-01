@@ -37,6 +37,7 @@ const CB_OPEN_BASE_MS      = 60000;  // first OPEN period ≈ measured penalty
 const CB_OPEN_MAX_MS       = 240000; // escalation ceiling
 export const RECONNECT_GRACE_MS = 3000; // failures this soon after `online` don't count (see reconnect)
 const RETRY_AFTER_MAX_MS = 60000;       // longest server-requested hold we honour
+const PROBE_VERDICT_WINDOW_MS = 2000;   // a block page this soon after a probe closed the breaker IS the probe's answer
 
 // Dynamic concurrency constants
 const DC_WINDOW_SIZE       = 10;  // sliding window size (requests)
@@ -92,6 +93,12 @@ export class RequestManager {
     this._dcWindowIdx          = 0;
     this._dcWindowCount        = 0;
     this._dcConsecutiveSuccess = 0;
+
+    // When a probe's 200 closed the breaker (see reportBlockPage)
+    this._cbClosedAt           = 0;
+    this._cbLastOpenDurationMs = CB_OPEN_BASE_MS;
+
+    this._loadBreaker();
   }
 
   // ── Public getters ────────────────────────────────────────────────────────
@@ -161,6 +168,8 @@ export class RequestManager {
   _saveDispatchTimes() {
     if (!this._persistKey) return;
     try {
+      const storage = globalThis.localStorage;
+      if (!storage) throw new Error('no storage');
       // Merge with what other tabs wrote — the bucket is per connection, not
       // per tab — and fold their dispatches into this tab's view of it. Only
       // dispatches not yet written are appended (timestamps are not unique:
@@ -169,11 +178,56 @@ export class RequestManager {
       // write race; that costs a token against a 40-request safety margin
       // and is accepted rather than engineered around.
       const merged = [...this._readStoredTimes(), ...this._unsavedTimes].sort((a, b) => a - b);
+      storage.setItem(this._persistKey, JSON.stringify(merged));
+      // Only a successful write may replace the in-memory list: until then the
+      // storage copy is missing this tab's own dispatches.
       this._unsavedTimes = [];
       this._dispatchTimes = merged;
-      globalThis.localStorage?.setItem(this._persistKey, JSON.stringify(merged));
     } catch {
-      this._unsavedTimes = []; // storage unavailable — the in-memory bucket still applies
+      // Storage is unusable (private mode, quota, a sandboxed frame): stop
+      // persisting and let the in-memory bucket, still complete, be the truth.
+      this._persistKey = null;
+      this._unsavedTimes = [];
+    }
+  }
+
+  // ── Breaker persistence ───────────────────────────────────────────────────
+  //
+  // The ban outlives the page as much as the bucket does: a reload during an
+  // OPEN period must come back OPEN (with its escalation) and honour a
+  // Retry-After hold, or the boot fetch walks straight into the live ban.
+
+  _saveBreaker() {
+    if (!this._persistKey) return;
+    try {
+      const state = {
+        openUntil:      this._cbState === 'OPEN' ? this._cbOpenUntil : null,
+        openDurationMs: this._cbOpenDurationMs,
+        holdUntil:      this._holdUntil,
+      };
+      globalThis.localStorage?.setItem(`${this._persistKey}:breaker`, JSON.stringify(state));
+    } catch {
+      // storage unusable — see _saveDispatchTimes
+    }
+  }
+
+  _loadBreaker() {
+    if (!this._persistKey) return;
+    try {
+      const raw = globalThis.localStorage?.getItem(`${this._persistKey}:breaker`);
+      if (!raw) return;
+      const s = JSON.parse(raw) || {};
+      const now = Date.now();
+      if (Number.isFinite(s.openDurationMs) && s.openDurationMs >= CB_OPEN_BASE_MS && s.openDurationMs <= CB_OPEN_MAX_MS) {
+        this._cbOpenDurationMs = s.openDurationMs;
+      }
+      if (Number.isFinite(s.holdUntil) && s.holdUntil > now) this._holdUntil = s.holdUntil;
+      if (Number.isFinite(s.openUntil) && s.openUntil > now) {
+        this._cbState = 'OPEN';
+        this._scheduleHalfOpen(s.openUntil - now);
+      }
+    } catch {
+      // unreadable — start fresh
     }
   }
 
@@ -185,6 +239,7 @@ export class RequestManager {
     if (!Number.isFinite(ms)) ms = Date.parse(header) - Date.now();
     if (!Number.isFinite(ms) || ms <= 0) return;
     this._holdUntil = Math.max(this._holdUntil, Date.now() + Math.min(ms, RETRY_AFTER_MAX_MS));
+    this._saveBreaker();
   }
 
   // ── recordResult ─────────────────────────────────────────────────────────
@@ -263,7 +318,17 @@ export class RequestManager {
 
   reportBlockPage() {
     this.recordResult(false);
-    if (this._cbState !== 'OPEN') this._tripBreaker();
+    if (this._cbState === 'OPEN') return;
+    // The transport layer closes the breaker on a probe's 200 before the body
+    // is read. A block page arriving just after that close IS the probe's
+    // verdict: reopen with the escalation the close discarded, as a failed
+    // probe would.
+    if (this._cbClosedAt && Date.now() - this._cbClosedAt < PROBE_VERDICT_WINDOW_MS) {
+      this._cbOpenDurationMs = this._cbLastOpenDurationMs;
+      this._reopenBreaker();
+      return;
+    }
+    this._tripBreaker();
   }
 
   // ── reconnect ─────────────────────────────────────────────────────────────
@@ -288,6 +353,7 @@ export class RequestManager {
       this._cbOpenUntil     = null;
       this._cbState         = 'HALF_OPEN';
       this._cbProbeInFlight = false;
+      this._saveBreaker();
     } else if (this._cbState === 'CLOSED') {
       this._cbConsecutiveFails = 0;
     }
@@ -369,10 +435,22 @@ export class RequestManager {
       // is exactly what extends it.
       if (signal?.aborted) return;
       if (this._cbState === 'OPEN') throw new Error(CIRCUIT_BREAKER_OPEN);
-      if (this._budget !== Infinity) {
+      if (this._cbState === 'HALF_OPEN' && !isProbe) {
+        // Woke from a wait into HALF_OPEN: the single-probe rule applies here
+        // too. One waiter becomes the probe; the rest fail fast rather than
+        // follow it into a possibly live ban (their views retry on the countdown).
+        if (this._cbProbeInFlight) throw new Error(CIRCUIT_BREAKER_OPEN);
+        this._cbProbeInFlight = true;
+        isProbe = true;
+      }
+      // A request the browser will refuse outright (no connection) is not a
+      // request the Met will count: it must not spend a token that outlives
+      // the drop, or a few seconds offline throttle the minute after.
+      const offlineNow = typeof navigator !== 'undefined' && navigator.onLine === false;
+      if (this._budget !== Infinity && !offlineNow) {
         const t = Date.now();
         this._dispatchTimes.push(t);
-        this._unsavedTimes.push(t);
+        if (this._persistKey) this._unsavedTimes.push(t);
         this._saveDispatchTimes();
       }
 
@@ -476,21 +554,37 @@ export class RequestManager {
   _tripBreaker() {
     this._cbState         = 'OPEN';
     this._cbProbeInFlight = false;
+    // Callers queued behind a HALF_OPEN probe would otherwise never settle:
+    // every path that releases them is gated on HALF_OPEN.
+    for (const { reject } of this._cbPendingResolvers.splice(0)) {
+      reject(new Error(CIRCUIT_BREAKER_OPEN));
+    }
+    this._scheduleHalfOpen(this._cbOpenDurationMs);
+  }
+
+  // Arm the OPEN → HALF_OPEN timer for `ms` and persist the period.
+  _scheduleHalfOpen(ms) {
     clearTimeout(this._cbOpenTimer);
-    this._cbOpenUntil = Date.now() + this._cbOpenDurationMs;
+    this._cbOpenUntil = Date.now() + ms;
     this._cbOpenTimer = setTimeout(() => {
       this._cbState         = 'HALF_OPEN';
       this._cbProbeInFlight = false;
-    }, this._cbOpenDurationMs);
+      this._cbOpenUntil     = null;
+      this._saveBreaker();
+    }, ms);
+    this._saveBreaker();
   }
 
   _closeBreaker() {
+    this._cbClosedAt           = Date.now();
+    this._cbLastOpenDurationMs = this._cbOpenDurationMs;
     this._cbState             = 'CLOSED';
     this._cbProbeInFlight     = false;
     this._cbConsecutiveFails  = 0;
     this._cbOpenDurationMs    = CB_OPEN_BASE_MS; // healthy again — reset escalation
     this._cbOpenUntil         = null;
     clearTimeout(this._cbOpenTimer);
+    this._saveBreaker();
 
     // Release all queued callers — they retry now that the breaker is CLOSED
     const pending = this._cbPendingResolvers.splice(0);
@@ -517,11 +611,7 @@ export class RequestManager {
       reject(new Error(CIRCUIT_BREAKER_OPEN));
     }
 
-    this._cbOpenUntil = Date.now() + this._cbOpenDurationMs;
-    this._cbOpenTimer = setTimeout(() => {
-      this._cbState         = 'HALF_OPEN';
-      this._cbProbeInFlight = false;
-    }, this._cbOpenDurationMs);
+    this._scheduleHalfOpen(this._cbOpenDurationMs);
   }
 }
 
