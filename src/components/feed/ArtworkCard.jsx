@@ -1,4 +1,4 @@
-import { useState, useMemo, Fragment } from 'react';
+import { useState, useMemo, Fragment, memo } from 'react';
 import flyingMachineIcon from '../../assets/FlyingMachine2_tinted_gold.png';
 import { activateOnKey } from '../../utils/keyboard';
 import { useShareArtwork, shareLabel } from '../../hooks/useShareArtwork';
@@ -10,13 +10,19 @@ import ImageCarousel from './ImageCarousel';
  * ArtworkCard Component
  *
  * Purely presentational — navigation side effects are lifted to DiscoveryFeed
- * via onArtistClick and onTagClick props.
+ * via onArtistClick and onTagClick props. Memoised: the feed re-renders on
+ * every like and every scroll-driven state change, and each card's props are
+ * stable (callbacks take the artwork/id as arguments rather than closing over
+ * them), so only the card whose like flipped actually re-renders.
+ *   onLike(id)                   — toggle this artwork's like
+ *   onImageClick(artwork, url)   — open the modal on the image the user saw
  */
-export default function ArtworkCard({ artwork, isLiked, onLike, onImageClick, onArtistClick, onTagClick, onArtistHover, onTagHover }) {
+function ArtworkCard({ artwork, isLiked, onLike, onImageClick, onArtistClick, onTagClick, onArtistHover, onTagHover }) {
   const [imageLoaded, setImageLoaded] = useState(false);
-  // null until the (primary) image reports its natural size; the frame shows
-  // as a square placeholder until then (CSS default aspect-ratio).
-  const [frameAspect, setFrameAspect] = useState(null);
+  // Seeded from the catalogued dimensions when the API has them, so the card
+  // is close to its final height before the image loads; the image's own
+  // natural size corrects it on load. null keeps the square placeholder.
+  const [frameAspect, setFrameAspect] = useState(artwork.frameAspect ?? null);
   const { copied, failed, share } = useShareArtwork();
 
   const handleImageLoad = (e) => {
@@ -57,7 +63,7 @@ export default function ArtworkCard({ artwork, isLiked, onLike, onImageClick, on
           alt={altText}
           frameAspect={frameAspect}
           onPrimaryLoad={handleImageLoad}
-          onOpen={onImageClick}
+          onOpen={(url) => onImageClick(artwork, url)}
         />
       ) : (
         <div
@@ -70,11 +76,11 @@ export default function ArtworkCard({ artwork, isLiked, onLike, onImageClick, on
             alt={altText}
             className="artwork-image"
             onLoad={handleImageLoad}
-            onClick={() => onImageClick(primaryFull)}
+            onClick={() => onImageClick(artwork, primaryFull)}
             role="button"
             tabIndex={0}
             aria-label={`Open details for ${altText}`}
-            onKeyDown={activateOnKey(() => onImageClick(primaryFull))}
+            onKeyDown={activateOnKey(() => onImageClick(artwork, primaryFull))}
             loading="lazy"
             decoding="async"
             draggable={false}
@@ -109,7 +115,7 @@ export default function ArtworkCard({ artwork, isLiked, onLike, onImageClick, on
               page's real status messages). */}
           <button
             className={`action-btn like-btn ${isLiked ? 'liked' : ''}`}
-            onClick={onLike}
+            onClick={() => onLike(artwork.id)}
             aria-label="Like"
             aria-pressed={isLiked}
           >
@@ -184,3 +190,5 @@ export default function ArtworkCard({ artwork, isLiked, onLike, onImageClick, on
     </article>
   );
 }
+
+export default memo(ArtworkCard);

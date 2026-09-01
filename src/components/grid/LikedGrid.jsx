@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import flyingMachineIcon from '../../assets/FlyingMachine2_tinted_gold.png';
 import './GridBrowse.css';
 import { usePaginatedFetch } from '../../hooks/usePaginatedFetch';
@@ -19,7 +19,10 @@ import { GRID_BATCH_SIZE, GRID_INITIAL_BATCH_SIZE, GRID_ROOT_MARGIN } from '../.
 // empty / grid branches — the hook returns state, not UI.
 export default function LikedGrid() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { likedIds, isLiked, toggleLike, pruneLike } = useLikes();
+  // A shared link opened in a fresh tab has no page to go back to — go home.
+  const goBack = () => (location.key === 'default' ? navigate('/') : navigate(-1));
   const { openModal } = useArtworkModal();
   const gridRef = useRef(null);
 
@@ -64,7 +67,7 @@ export default function LikedGrid() {
     <>
       <Banner />
       <div className="search-heading">
-        <button className="grid-back-btn" onClick={() => navigate(-1)} aria-label="Back">‹</button>
+        <button className="grid-back-btn" onClick={goBack} aria-label="Back">‹</button>
         <h2 className="search-term">Liked</h2>
       </div>
     </>

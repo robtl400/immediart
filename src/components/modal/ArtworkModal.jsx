@@ -6,6 +6,7 @@ import { useShareArtwork, shareLabel } from '../../hooks/useShareArtwork';
 import { fetchArtworkByID } from '../../services/metAPI';
 import { transformAPIToDisplay } from '../../utils/transformers';
 import { activateOnKey } from '../../utils/keyboard';
+import { toWebLarge } from '../../utils/slides';
 import useImageZoom from '../../hooks/useImageZoom';
 import Banner from '../common/Banner';
 import LoadingSpinner from '../common/LoadingSpinner';
@@ -19,7 +20,28 @@ function ModalImage({ artwork }) {
   const [imageError, setImageError] = useState(false);
   const [imageLoaded, setImageLoaded] = useState(false);
   const { containerRef, imgRef, handlers, isZoomed } = useImageZoom();
-  const src = artwork.viewImageUrl || artwork.primaryImageFull || artwork.imageUrl;
+  // The full-resolution original can be several megabytes; the web-large copy
+  // is what the card already showed, so it is in the browser cache. Show that
+  // at once and swap the original in when it has arrived (the zoom then has
+  // the pixels it needs). A direct load with no card behind it does the same.
+  const full  = artwork.viewImageUrl || artwork.primaryImageFull || artwork.imageUrl;
+  const quick = artwork.viewImageUrl ? toWebLarge(artwork.viewImageUrl) : artwork.imageUrl;
+  const [src, setSrc] = useState(quick || full);
+  useEffect(() => {
+    if (!full || full === src) return;
+    let cancelled = false;
+    const img = new Image();
+    // Decode before swapping, not just fetch: an undecoded multi-MB original
+    // would paint a blank frame until its bitmap is ready.
+    img.onload = () => { (img.decode?.() ?? Promise.resolve()).catch(() => {}).then(() => { if (!cancelled) setSrc(full); }); };
+    img.src = full;
+    return () => {
+      cancelled = true;
+      img.onload = null;
+      img.src = ''; // closing the modal cancels the transfer instead of finishing it on mobile data
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [full]);
 
   if (imageError) {
     return (
@@ -52,7 +74,7 @@ function ModalImage({ artwork }) {
           alt={artwork.artistName ? `${artwork.title} by ${artwork.artistName}` : artwork.title}
           className="artwork-modal-image"
           onLoad={() => setImageLoaded(true)}
-          onError={() => setImageError(true)}
+          onError={() => { if (src !== full) setSrc(full); else setImageError(true); }} /* a missing web-large copy still tries the original */
           decoding="async"
           draggable={false}
         />

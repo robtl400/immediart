@@ -102,7 +102,9 @@ export default function GridBrowse({ type }) {
     ? `#${searchTerm.replace(/\s+/g, '')}`
     : `“${searchTerm}”`;
 
-  const header = <GridHeader displayTerm={displayTerm} isQuery={type === 'search'} onBack={() => navigate(-1)} />;
+  // A shared link opened in a fresh tab has no page to go back to — go home.
+  const goBack = () => (location.key === 'default' ? navigate('/') : navigate(-1));
+  const header = <GridHeader displayTerm={displayTerm} isQuery={type === 'search'} onBack={goBack} />;
 
   // initSearch runs in an effect (after paint), so the context still holds the
   // PREVIOUS search on this render's first frame — showing either a stale grid

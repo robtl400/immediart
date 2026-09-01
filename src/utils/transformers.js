@@ -3,6 +3,7 @@
  */
 
 import { shuffleArray } from './shuffle';
+import { clampFrameAspect } from './frameAspect';
 
 // Format artist name as username: "Vincent van Gogh" → "@vincent_van_gogh"
 export function formatArtistUsername(artistName) {
@@ -62,12 +63,26 @@ export function buildComments(artwork) {
   return [{ username: '@TheMetMuseum', text }];
 }
 
+// A provisional frame aspect from the object's catalogued dimensions, so a
+// card renders at close to its final height before its image arrives (the
+// image's own pixel size corrects it on load). Only a flat measurement (a
+// height and a width, no depth) is trusted: a vase's footprint says nothing
+// about how its photograph is framed. null keeps the square placeholder.
+function seedFrameAspect(apiArtwork) {
+  const m = (apiArtwork.measurements || []).find((x) => {
+    const d = x?.elementMeasurements;
+    return d?.Height > 0 && d?.Width > 0 && !(d.Depth > 0);
+  });
+  return m ? clampFrameAspect(m.elementMeasurements.Width, m.elementMeasurements.Height) : null;
+}
+
 // Transform API response to display format
 export function transformAPIToDisplay(apiArtwork) {
   return {
     // Core fields
     id: apiArtwork.objectID,
     imageUrl: apiArtwork.primaryImageSmall || apiArtwork.primaryImage,
+    frameAspect: seedFrameAspect(apiArtwork),
     artistName: apiArtwork.artistDisplayName || '',
     username: formatArtistUsername(apiArtwork.artistDisplayName),
     title: apiArtwork.title,

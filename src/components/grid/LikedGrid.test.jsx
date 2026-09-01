@@ -11,7 +11,7 @@ import { render } from '@testing-library/react';
 import LikedGrid from './LikedGrid';
 
 vi.mock('../../assets/FlyingMachine2_tinted_gold.png', () => ({ default: 'icon.png' }));
-vi.mock('react-router-dom', () => ({ useNavigate: () => vi.fn() }));
+vi.mock('react-router-dom', () => ({ useNavigate: () => vi.fn(), useLocation: () => ({ key: 'abc', state: null }) }));
 vi.mock('../common/Banner', () => ({ default: () => <div /> }));
 vi.mock('../common/LoadingSpinner', () => ({ default: () => <div />, InlineLoader: () => <div /> }));
 vi.mock('../common/SkeletonCard', () => ({ default: () => <div /> }));

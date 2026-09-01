@@ -84,26 +84,27 @@ describe('buildComments (T1-C)', () => {
   });
 });
 
+const makeAPIArtwork = (overrides = {}) => ({
+  objectID: 1,
+  primaryImageSmall: 'https://example.com/img.jpg',
+  artistDisplayName: 'Van Gogh',
+  title: 'Starry Night',
+  objectDate: '1889',
+  department: 'European Paintings',
+  GalleryNumber: null,
+  creditLine: '',
+  isHighlight: false,
+  city: '',
+  country: '',
+  artistDisplayBio: '',
+  artistULAN_URL: '',
+  objectURL: '',
+  additionalImages: [],
+  constituents: [],
+  ...overrides,
+});
+
 describe('transformAPIToDisplay — new social media fields', () => {
-  const makeAPIArtwork = (overrides = {}) => ({
-    objectID: 1,
-    primaryImageSmall: 'https://example.com/img.jpg',
-    artistDisplayName: 'Van Gogh',
-    title: 'Starry Night',
-    objectDate: '1889',
-    department: 'European Paintings',
-    GalleryNumber: null,
-    creditLine: '',
-    isHighlight: false,
-    city: '',
-    country: '',
-    artistDisplayBio: '',
-    artistULAN_URL: '',
-    objectURL: '',
-    additionalImages: [],
-    constituents: [],
-    ...overrides,
-  });
 
   it('extracts artistBio from artistDisplayBio', () => {
     const result = transformAPIToDisplay(makeAPIArtwork({ artistDisplayBio: 'Dutch, 1853–1890' }));
@@ -139,5 +140,29 @@ describe('transformAPIToDisplay — new social media fields', () => {
   it('extracts artistULAN_URL', () => {
     const result = transformAPIToDisplay(makeAPIArtwork({ artistULAN_URL: 'https://ulan.example.com/123' }));
     expect(result.artistULAN_URL).toBe('https://ulan.example.com/123');
+  });
+});
+
+describe('transformAPIToDisplay — frameAspect seeded from catalogued dimensions', () => {
+  it('derives a clamped aspect from the first measurement with a height and a width', () => {
+    const result = transformAPIToDisplay(makeAPIArtwork({
+      measurements: [
+        { elementName: 'Frame', elementMeasurements: { Depth: 5 } },              // no width/height — skipped
+        { elementName: 'Overall', elementMeasurements: { Height: 100, Width: 50 } },
+      ],
+    }));
+    expect(result.frameAspect).toBe(0.8); // 50/100 = 0.5, clamped up to the 4:5 tall cap
+  });
+
+  it('is null when the catalogue has no usable size (keeps the square placeholder)', () => {
+    expect(transformAPIToDisplay(makeAPIArtwork({ measurements: [] })).frameAspect).toBeNull();
+    expect(transformAPIToDisplay(makeAPIArtwork({})).frameAspect).toBeNull();
+  });
+
+  it('ignores three-dimensional measurements — a footprint says nothing about the photograph', () => {
+    const vase = transformAPIToDisplay(makeAPIArtwork({
+      measurements: [{ elementName: 'Overall', elementMeasurements: { Height: 30, Width: 15, Depth: 15 } }],
+    }));
+    expect(vase.frameAspect).toBeNull();
   });
 });

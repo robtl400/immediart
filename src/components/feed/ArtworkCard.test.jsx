@@ -273,7 +273,7 @@ describe('ArtworkCard — carousel (multiple images)', () => {
     const onImageClick = vi.fn();
     const { container } = render(<ArtworkCard artwork={withImages()} isLiked={false} onLike={vi.fn()} onImageClick={onImageClick} />);
     fireEvent.click(container.querySelectorAll('.carousel-slide img')[0]);
-    expect(onImageClick).toHaveBeenCalledWith('https://x/full-0.jpg');
+    expect(onImageClick).toHaveBeenCalledWith(expect.objectContaining({ id: 1 }), 'https://x/full-0.jpg');
   });
 
   it('a single-image work keeps the non-carousel path', () => {
@@ -328,6 +328,24 @@ describe('clampFrameAspect', () => {
 });
 
 describe('ArtworkCard — adaptive frame', () => {
+  it('renders at the catalogued aspect before the image loads when the API has one', () => {
+    const { container } = render(
+      <ArtworkCard artwork={makeArtwork({ frameAspect: 1.25 })} isLiked={false} onLike={vi.fn()} onImageClick={vi.fn()} />
+    );
+    expect(container.querySelector('.image-container').dataset.frameAspect).toBe('1.25');
+  });
+
+  it('passes the artwork id to onLike and the artwork to onImageClick (stable callbacks for memo)', () => {
+    const onLike = vi.fn(); const onImageClick = vi.fn();
+    const { container } = render(
+      <ArtworkCard artwork={makeArtwork()} isLiked={false} onLike={onLike} onImageClick={onImageClick} />
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Like' }));
+    expect(onLike).toHaveBeenCalledWith(1);
+    fireEvent.click(container.querySelector('.artwork-image'));
+    expect(onImageClick).toHaveBeenCalledWith(expect.objectContaining({ id: 1 }), 'https://example.com/img.jpg');
+  });
+
   it('starts without an inline aspect (square placeholder) and adopts the clamped aspect on load', () => {
     const artwork = makeArtwork();
     const { container } = render(

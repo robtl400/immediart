@@ -11,7 +11,7 @@
 
 /* eslint-disable react-refresh/only-export-components */
 
-import { createContext, useContext, useState, useCallback } from 'react';
+import { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 
 const ArtworkModalContext = createContext(null);
@@ -20,6 +20,13 @@ export function ArtworkModalProvider({ children }) {
   const [cachedArtwork, setCachedArtwork] = useState(null);
   const navigate = useNavigate();
   const location = useLocation();
+  // Read at call time, not captured: `location` changes on every navigation
+  // (including the modal's own open and close), and a new openModal identity
+  // would re-render every memoised card twice per modal trip.
+  const locationRef = useRef(location);
+  useEffect(() => { locationRef.current = location; }, [location]);
+  const navigateRef = useRef(navigate);
+  useEffect(() => { navigateRef.current = navigate; }, [navigate]);
 
   const openModal = useCallback((artwork, viewImageUrl = null) => {
     // viewImageUrl lets a carousel open the modal on the slide the user was
@@ -28,8 +35,8 @@ export function ArtworkModalProvider({ children }) {
     setCachedArtwork(viewImageUrl ? { ...artwork, viewImageUrl } : artwork);
     // Remember the page we opened from so closing returns to it (and the page
     // routes keep rendering it behind the modal).
-    navigate(`/artwork/${artwork.id}`, { state: { background: location } });
-  }, [navigate, location]);
+    navigateRef.current(`/artwork/${artwork.id}`, { state: { background: locationRef.current } });
+  }, []);
 
   const closeModal = useCallback(() => {
     // Opened from a page → pop back to it. Direct load / shared link (no

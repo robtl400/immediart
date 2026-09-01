@@ -151,19 +151,25 @@ export default function DiscoveryFeed() {
     }
   }, [handleScroll]);
 
+  // `navigate` changes identity with the pathname; read it through a ref so
+  // these handlers stay stable and the memoised cards don't re-render on
+  // every route change.
+  const navigateRef = useRef(navigate);
+  useEffect(() => { navigateRef.current = navigate; }, [navigate]);
+
   const handleArtistClick = useCallback((artistName, artwork) => {
     pause();
-    navigate(`/artist/${encodeURIComponent(artistName)}`, {
+    navigateRef.current(`/artist/${encodeURIComponent(artistName)}`, {
       state: { seedArtworks: [artwork] },
     });
-  }, [pause, navigate]);
+  }, [pause]);
 
   const handleTagClick = useCallback((tag, artwork) => {
     pause();
-    navigate(`/tag/${encodeURIComponent(tag)}`, {
+    navigateRef.current(`/tag/${encodeURIComponent(tag)}`, {
       state: { seedArtworks: [artwork] },
     });
-  }, [pause, navigate]);
+  }, [pause]);
 
   // Hover prefetch — warm IndexedDB cache before user clicks artist/tag chip.
   // Only where hover exists: a touch device never hovers, and a finger
@@ -307,8 +313,8 @@ export default function DiscoveryFeed() {
           key={artwork.id}
           artwork={artwork}
           isLiked={isLiked(artwork.id)}
-          onLike={() => toggleLike(artwork.id)}
-          onImageClick={(viewImageUrl) => openModal(artwork, viewImageUrl)}
+          onLike={toggleLike}
+          onImageClick={openModal}
           onArtistClick={handleArtistClick}
           onTagClick={handleTagClick}
           onArtistHover={hoverCapable ? artistHover : undefined}

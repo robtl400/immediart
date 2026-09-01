@@ -52,7 +52,7 @@ function openDB() {
         // records; don't compete with the splash and first feed paint.
         const idle = globalThis.requestIdleCallback ?? ((fn) => setTimeout(fn, 3000));
         // timeout guarantees the cleanup eventually runs even on a busy page
-        idle(() => cleanupExpired(db), { timeout: 10000 });
+        idle(() => { lastCleanupAt = Date.now(); cleanupExpired(db); }, { timeout: 10000 });
         resolve(db);
       };
 
@@ -71,18 +71,32 @@ function openDB() {
   return dbPromise;
 }
 
+// The artworks store holds every object the app has seen, rejects included,
+// so a long-lived install accumulates. Beyond this many live entries the
+// soonest-to-expire are dropped first.
+const MAX_ARTWORK_ENTRIES = 5000;
+
 function cleanupExpired(db) {
   const now = Date.now();
   for (const storeName of ['ids', 'artworks']) {
     try {
       const tx = db.transaction(storeName, 'readwrite');
       const store = tx.objectStore(storeName);
+      const live = []; // { key, expiresAt } of entries kept, for the size cap
       const req = store.openCursor();
-      req.onsuccess = (event) => {
-        const cursor = event.target.result;
-        if (!cursor) return;
+      req.onsuccess = () => {
+        const cursor = req.result;
+        if (!cursor) {
+          if (storeName === 'artworks' && live.length > MAX_ARTWORK_ENTRIES) {
+            live.sort((a, b) => a.expiresAt - b.expiresAt);
+            for (const { key } of live.slice(0, live.length - MAX_ARTWORK_ENTRIES)) store.delete(key);
+          }
+          return;
+        }
         if (now > cursor.value.expiresAt) {
           cursor.delete();
+        } else {
+          live.push({ key: cursor.key, expiresAt: cursor.value.expiresAt });
         }
         cursor.continue();
       };
@@ -90,6 +104,19 @@ function cleanupExpired(db) {
       // Swallow — cleanup is best-effort
     }
   }
+}
+
+// A standalone install can stay open for days: sweep again when the tab
+// comes back into view, at most every few hours.
+const CLEANUP_INTERVAL_MS = 6 * 3600 * 1000;
+let lastCleanupAt = 0;
+if (typeof document !== 'undefined') {
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible' || !liveDb) return;
+    if (Date.now() - lastCleanupAt < CLEANUP_INTERVAL_MS) return;
+    lastCleanupAt = Date.now();
+    cleanupExpired(liveDb);
+  });
 }
 
 // Open a transaction on the live connection. A connection the browser has

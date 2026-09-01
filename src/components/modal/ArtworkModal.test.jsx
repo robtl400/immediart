@@ -12,8 +12,8 @@
  * clickable Artist metadata value navigating to the artist page.
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 import ArtworkModal from './ArtworkModal';
 
 vi.mock('../../assets/FlyingMachine2_tinted_gold.png', () => ({ default: 'icon.png' }));
@@ -168,37 +168,55 @@ describe('ArtworkModal — artist link', () => {
   });
 });
 
+// jsdom never loads images. This stub "loads" whatever src it is given on
+// the next microtask, so the modal's original-image preload can be driven.
+const stubImage = () => vi.stubGlobal('Image', class {
+  set src(v) { this._src = v; if (v) queueMicrotask(() => this.onload?.()); }
+  get src() { return this._src; }
+  decode() { return Promise.resolve(); }
+});
+
 describe('ArtworkModal — image error fallback', () => {
-  it('shows the fallback when the image fires onError', () => {
-    setup();
+  it('a failed web-large copy retries the original; a failed original shows the fallback', () => {
+    setup(); // imageUrl (web-large) and primaryImageFull (original) differ
     const { container } = render(<ArtworkModal />);
+    const img = container.querySelector('.artwork-modal-image');
+    expect(img.src).toBe('https://example.com/img.jpg');
+    fireEvent.error(img);
+    expect(container.querySelector('.modal-image-fallback')).toBeNull();
+    expect(container.querySelector('.artwork-modal-image').src).toBe('https://example.com/full.jpg');
     fireEvent.error(container.querySelector('.artwork-modal-image'));
     expect(container.querySelector('.modal-image-fallback')).toBeTruthy();
     expect(screen.getByText('Image unavailable')).toBeTruthy();
   });
 
   it('renders the image from the cached artwork before any error', () => {
-    // The image starts in the non-error state, sourced from the cached artwork.
     setup({ artwork: makeArtwork({ primaryImageFull: 'https://example.com/full.jpg' }) });
     const { container } = render(<ArtworkModal />);
     expect(container.querySelector('.modal-image-fallback')).toBeNull();
-    const img = container.querySelector('.artwork-modal-image');
-    expect(img).toBeTruthy();
-    expect(img.src).toBe('https://example.com/full.jpg');
+    expect(container.querySelector('.artwork-modal-image')).toBeTruthy();
   });
 });
 
-describe('ArtworkModal — image source (carousel slide)', () => {
-  it('prefers viewImageUrl (the slide the carousel opened on) over the primary', () => {
-    setup({ artwork: makeArtwork({ viewImageUrl: 'https://example.com/slide-3.jpg' }) });
-    const { container } = render(<ArtworkModal />);
-    expect(container.querySelector('.artwork-modal-image').src).toBe('https://example.com/slide-3.jpg');
-  });
+describe('ArtworkModal — image source', () => {
+  afterEach(() => vi.unstubAllGlobals());
 
-  it('falls back to primaryImageFull when there is no viewImageUrl', () => {
+  it('shows the web-large copy the card already had, then swaps in the original once it has loaded', async () => {
+    stubImage();
     setup({ artwork: makeArtwork() });
     const { container } = render(<ArtworkModal />);
-    expect(container.querySelector('.artwork-modal-image').src).toBe('https://example.com/full.jpg');
+    expect(container.querySelector('.artwork-modal-image').src).toBe('https://example.com/img.jpg'); // instant, from the browser cache
+    await act(async () => {});
+    expect(container.querySelector('.artwork-modal-image').src).toBe('https://example.com/full.jpg'); // the multi-MB original, once it arrived
+  });
+
+  it('prefers viewImageUrl (the slide the carousel opened on) over the primary', async () => {
+    stubImage();
+    setup({ artwork: makeArtwork({ viewImageUrl: 'https://images.metmuseum.org/CRDImages/ep/original/slide-3.jpg' }) });
+    const { container } = render(<ArtworkModal />);
+    expect(container.querySelector('.artwork-modal-image').src).toBe('https://images.metmuseum.org/CRDImages/ep/web-large/slide-3.jpg');
+    await act(async () => {});
+    expect(container.querySelector('.artwork-modal-image').src).toBe('https://images.metmuseum.org/CRDImages/ep/original/slide-3.jpg');
   });
 
   it('the image sits inside a focusable zoom viewport', () => {

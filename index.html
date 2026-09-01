@@ -12,12 +12,24 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <title>ImmediArt</title>
+    <meta name="description" content="An Instagram-style feed of The Metropolitan Museum of Art's open collection. Scroll, tap an artist or a hashtag, save what you love." />
+    <!-- Link previews (a shared artwork link shows the app card; per-artwork
+         previews would need a server-side render on /artwork/*). -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="ImmediArt" />
+    <meta property="og:title" content="ImmediArt" />
+    <meta property="og:description" content="Scroll The Met's open collection like a feed." />
+    <meta property="og:image" content="https://immediart.netlify.app/icon-512.png" />
+    <meta property="og:url" content="https://immediart.netlify.app/" />
+    <meta name="twitter:card" content="summary" />
 
     <!-- Warm DNS+TCP+TLS to both Met origins before the first fetch/image
          (~100-300ms each off the cold-start waterfall — scripts/API-FINDINGS.md).
          crossorigin on the API host: fetch() uses the CORS connection pool.
          NO crossorigin on the image host: <img> uses the no-cors pool, and a
-         mismatched hint would warm a connection the images never use. -->
+         mismatched hint would warm a connection the images never use. (The
+         image CDN does not send CORS headers consistently, so the images
+         cannot be loaded in CORS mode — verified live 2026-09-01.) -->
     <link rel="preconnect" href="https://collectionapi.metmuseum.org" crossorigin />
     <link rel="preconnect" href="https://images.metmuseum.org" />
 

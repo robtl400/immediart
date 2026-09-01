@@ -20,6 +20,13 @@ export default defineConfig({
         // runtime-cached — IndexedDB already covers data, and image quota
         // policy is out of scope for this epic.
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+        // Met images are NOT runtime-cached by the service worker. The image
+        // CDN does not send CORS headers consistently (verified live), so the
+        // <img> loads are no-cors and their responses opaque, and an opaque
+        // entry is padded to ~7MB in Cache Storage quota accounting — a few
+        // hundred of them would fill a phone's quota and trigger a purge. The
+        // browser's own HTTP cache keeps them for the CDN's five-day max-age,
+        // which covers repeat visits; true offline images stay out of scope.
       },
       manifest: {
         id: '/',
@@ -28,15 +35,17 @@ export default defineConfig({
         description: 'Discover art from The Metropolitan Museum of Art',
         start_url: '/',
         display: 'standalone',
+        orientation: 'portrait',
         background_color: '#121212',
         theme_color: '#121212',
-        // Split maskable/any into separate entries (a combined "maskable any"
-        // purpose makes the maskable safe-zone padding shrink the "any" render).
+        // Separate "any" and "maskable" files: the maskable variants keep the
+        // artwork inside the central safe zone on the app's ground colour, so
+        // a circle or squircle mask never clips the wing tips.
         icons: [
           { src: '/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
           { src: '/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
-          { src: '/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'maskable' },
-          { src: '/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+          { src: '/icon-maskable-192.png', sizes: '192x192', type: 'image/png', purpose: 'maskable' },
+          { src: '/icon-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
         ],
       },
       devOptions: { enabled: false },
