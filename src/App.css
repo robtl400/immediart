@@ -129,6 +129,7 @@
 /* ErrorBoundary fallback — full-height framed page like every other view */
 .error-boundary-page {
   height: 100vh;
+  height: 100dvh;
   width: 100%;
   background-color: var(--color-bg);
   display: flex;

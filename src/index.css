@@ -85,19 +85,27 @@
   }
 }
 
+/* Heights use dvh (the visible viewport, which shrinks with the mobile
+   browser toolbar) with a vh fallback for engines without it: with plain vh
+   the bottom of every scroller sits behind the toolbar. The document itself
+   never scrolls, and must not rubber-band or pull-to-refresh: a pull at the
+   top of the feed would reload the SPA and wipe the in-memory feed. */
 html, body {
   margin: 0;
   padding: 0;
   width: 100%;
   min-height: 100vh;
+  min-height: 100dvh;
   background: var(--color-bg);
   color: var(--color-text);
   overflow-x: hidden;
+  overscroll-behavior-y: none;
 }
 
 #root {
   width: 100%;
   min-height: 100vh;
+  min-height: 100dvh;
 }
 
 /* Desktop: darker background behind phone container */
@@ -118,6 +126,7 @@ html, body {
   #root .app-frame {
     max-width: 430px;
     height: calc(100vh - 40px);
+    height: calc(100dvh - 40px);
     margin: 0 auto;
     border-radius: 40px;
     box-shadow: 0 0 60px rgba(0, 0, 0, 0.5);
@@ -141,6 +150,7 @@ button {
   display: flex;
   flex-direction: column;
   height: 100vh;
+  height: 100dvh;
   width: 100%;
   background-color: var(--color-bg);
 }

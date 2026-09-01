@@ -38,7 +38,11 @@ export default function Banner({ isScrolled = false, feedRef = null, showActions
 
   const handleLogoClick = () => {
     if (isHome) {
-      if (feedRef?.current) feedRef.current.scrollTo({ top: 0, behavior: 'smooth' });
+      if (feedRef?.current) {
+        // JS scrolling isn't governed by the CSS reduced-motion reset — honour it here
+        const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+        feedRef.current.scrollTo({ top: 0, behavior: reduce ? 'auto' : 'smooth' });
+      }
       refresh();
     } else {
       abortGrid();

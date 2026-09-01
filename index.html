@@ -2,7 +2,10 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- viewport-fit=cover lets the app paint under the notch / home indicator
+         in standalone mode; the banner, splash crest and scroller tails pad
+         themselves with env(safe-area-inset-*) so content never sits under them. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#121212" />
     <meta name="mobile-web-app-capable" content="yes" />
     <!-- Deprecated but still honoured by older iOS for standalone launch -->

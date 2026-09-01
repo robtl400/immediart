@@ -3,18 +3,27 @@
   display: flex;
   flex-direction: column;
   height: 100vh;
+  height: 100dvh; /* the visible viewport — see index.css */
   width: 100%;
   background-color: var(--color-bg);
   overflow-x: hidden;
   overflow-y: auto;
+  overscroll-behavior: contain; /* no chained pull-to-refresh / rubber-banding of the shell */
   scroll-snap-type: y mandatory;
-  scroll-padding-top: 50px;
+  /* The snapport starts below the collapsed banner, which is taller by the
+     status-bar inset in standalone mode; the tail's end-aligned snap targets
+     (retry, end message) likewise stop above the home indicator. */
+  scroll-padding-top: calc(50px + env(safe-area-inset-top, 0px));
+  scroll-padding-bottom: env(safe-area-inset-bottom, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
-/* Banner Section */
+/* Banner Section. The top padding absorbs the status-bar / notch inset in
+   standalone mode (viewport-fit=cover); the banner's own background then
+   paints under the status bar and the logo sits below it. */
 .banner {
   width: 100%;
-  padding: 15px 0;
+  padding: calc(15px + env(safe-area-inset-top, 0px)) 0 15px;
   background-color: var(--color-bg);
   flex-shrink: 0;
   position: sticky;
@@ -52,7 +61,9 @@
 .banner-actions {
   position: absolute;
   right: 8px;
-  top: 50%;
+  /* Centred on the logo row, not the banner box: the box also holds the
+     safe-area top padding, which shifts its midpoint down by half the inset. */
+  top: calc(50% + env(safe-area-inset-top, 0px) / 2);
   transform: translateY(-50%);
   display: flex;
   align-items: center;
@@ -122,7 +133,7 @@
    to edge; it sits above the logo and the action cluster. */
 .banner-search {
   position: absolute;
-  inset: 0;
+  inset: env(safe-area-inset-top, 0px) 0 0 0; /* clear of the status bar */
   z-index: 110;
   display: flex;
   align-items: center;
@@ -251,7 +262,7 @@
 /* Scrolled state - text fades slowly, logo centers and shrinks. Keep a 44px
    floor so the action cluster's touch targets still fit in the collapsed bar. */
 .banner.scrolled {
-  padding: 0px;
+  padding: env(safe-area-inset-top, 0px) 0 0;
   min-height: 44px;
 }
 
@@ -294,6 +305,11 @@
   height: 100%;
   object-fit: cover;
   display: block;
+  /* A long press on a snap-feed image must not pop the iOS save-image sheet
+     or start a text selection; a drag must not lift a ghost image. */
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 /* Multi-image carousel — a horizontal scroll-snap strip inside the same
@@ -643,7 +659,7 @@
 
 .first-visit-hint {
   position: sticky;
-  top: 50px; /* below banner */
+  top: calc(50px + env(safe-area-inset-top, 0px)); /* below banner */
   left: 0;
   right: 0;
   z-index: 50;

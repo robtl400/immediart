@@ -33,11 +33,13 @@
   display: flex;
   flex-direction: column;
   margin: var(--space-4);
+  margin-bottom: calc(var(--space-4) + env(safe-area-inset-bottom, 0px));
   background-color: var(--color-modal);
   border-radius: var(--radius-md);
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
   overflow: hidden;
   max-height: calc(100vh - 100px);
+  max-height: calc(100dvh - 100px);
   position: relative;
 }
 
@@ -74,6 +76,7 @@
 .artwork-modal-content {
   flex: 1;
   overflow-y: auto;
+  overscroll-behavior: contain; /* over-scrolling the metadata must not bounce the backdrop */
   display: flex;
   flex-direction: column;
 }
