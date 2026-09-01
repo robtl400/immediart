@@ -49,6 +49,7 @@ function ModalImage({ artwork }) {
           className="artwork-modal-image"
           onLoad={() => setImageLoaded(true)}
           onError={() => setImageError(true)}
+          decoding="async"
           draggable={false}
         />
       </div>

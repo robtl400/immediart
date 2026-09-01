@@ -77,6 +77,7 @@ export default function ImageCarousel({ slides, alt, frameAspect, onPrimaryLoad,
                 aria-label={`Open details for ${alt}`}
                 onKeyDown={activateOnKey(() => onOpen(slide.full))}
                 loading="lazy"
+                decoding="async"
                 draggable={false}
               />
             </div>

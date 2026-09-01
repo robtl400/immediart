@@ -1,40 +1,22 @@
 /* Launch splash — one flying machine climbs, pulls a loop-de-loop over the top
-   edge, and lands as the logo.
-   Timeline (flight 2.8s):
-     - enters large from off the bottom-left and climbs up-right across the
-       screen, staying nearly level (the spin is saved for the loop);
-     - pulls up at the upper-right and loops tightly over the top edge — the
-       crest is only just off-screen (~0.6s hidden), so the pull-up and the
-       dive back down are both visible;
-     - dives back in on the left, levels out below the banner, and glides
-       right into the logo slot (a full -360°, so it ends level).
-   The "ImmediArt" wordmark fades in EARLY (as the climbing flyer passes the
-   middle, ~0.55–1.35s), so it's already there when the flyer lands beside it.
-   The overlay then fades (3.0–3.5s) to reveal the feed. */
+   edge, and lands as the logo. The choreography itself (waypoints, timings,
+   easing) lives in SplashScreen.jsx and runs on the Web Animations API; this
+   file only sets up the layers it animates. Everything the flight touches is
+   transform or opacity on its own compositor layer — no filters, no
+   visibility, no layout properties. */
 
 .splash-screen {
-  /* Single source of truth for the three animation durations — referenced by
-     the shorthands below AND re-asserted by the reduced-motion carve-out. */
-  --splash-fade-duration: 0.5s;
-  --splash-flight-duration: 2.8s;
-  --splash-title-fade-duration: 0.8s;
-
   position: fixed;
   inset: 0;
   z-index: 2000;
   background: var(--color-bg);
   overflow: hidden;
   cursor: pointer;
-  animation: splashFadeOut var(--splash-fade-duration) ease 3s forwards;
-}
-
-@keyframes splashFadeOut {
-  from { opacity: 1; }
-  to   { opacity: 0; visibility: hidden; }
+  will-change: opacity;
 }
 
 /* Crest = the banner's layout, reused so the landed logo + wordmark line up with
-   the real banner exactly. It has no animation of its own. */
+   the real banner exactly. */
 .splash-crest {
   position: absolute;
   top: 0;
@@ -53,81 +35,42 @@
   .splash-crest { top: 20px; }
 }
 
-/* The flyer carries .banner-logo, so its resting orientation/size == the landed
-   logo. It flies a full CCW loop-de-loop and settles level (-360°). Its layout
-   box stays put (transforms don't reflow), so the wordmark never moves. */
+/* The anchor is the landed logo's exact box (it carries .banner-logo, so it
+   follows every banner breakpoint). It only marks where the flier lands. The
+   asset is square; declaring that gives the anchor its width before the PNG
+   arrives, so a cold load measures the true slot and the wordmark never
+   shifts when the image lands. */
+.splash-anchor {
+  visibility: hidden;
+  aspect-ratio: 1 / 1;
+}
+
+/* The flier is positioned and sized by SplashScreen.jsx: laid out at its
+   largest on-screen size, centred on the anchor, then only ever scaled down.
+   Its layout box never moves, so the wordmark never moves either. */
 .splash-flier {
-  transition: none;
+  position: absolute;
+  opacity: 0;
   transform-origin: center center;
-  filter: drop-shadow(0 5px 14px rgba(0, 0, 0, 0.55));
   will-change: transform, opacity;
-  /* linear base — each keyframe below owns its own segment's easing. CSS
-     applies a timing function PER SEGMENT, not across the whole animation:
-     the old global ease-in-out decelerated to a near-stop at every waypoint
-     (measured dips to ~5% of cruise speed), which read as built-in pauses. */
-  animation: splashJourney var(--splash-flight-duration) linear forwards;
+  pointer-events: none;
 }
 
-/* Timing design: percentages are allocated proportional to the distance flown
-   (constant visible cruise ≈16px per 1% of timeline on a phone viewport), the
-   base timing is linear (CSS eases PER SEGMENT — a global ease-in-out pauses
-   at every waypoint), and easing exists solely at lift-off (accelerate up to
-   cruise) and the landing chain (three velocity-matched decelerating curves —
-   an overshoot bounce here read as a jolt, so the settle is monotonic).
-   Rotation is nearly level through the visible climb and concentrated at the
-   loop's crest, where a loop-de-loop actually spins. */
-@keyframes splashJourney {
-  0%   {
-    transform: translate(-46vw, 80vh) scale(4.4) rotate(-8deg);
-    opacity: 0;
-    animation-timing-function: cubic-bezier(0.4, 0, 0.7, 0.7); /* lift off: end at cruise speed */
-  }
-  6%   { opacity: 1; }
-  16%  { transform: translate(-24vw, 52vh) scale(3.3) rotate(-14deg); }  /* climbing, near level */
-  33%  { transform: translate(8vw, 24vh) scale(2.5) rotate(-22deg); }    /* mid-screen, still gentle */
-  46%  { transform: translate(32vw, 2vh) scale(2.1) rotate(-50deg); }    /* upper-right, pulling up */
-  55%  { transform: translate(44vw, -14vh) scale(1.9) rotate(-100deg); } /* nose past vertical, cresting */
-  62%  { transform: translate(24vw, -24vh) scale(1.8) rotate(-180deg); } /* inverted over the top (brief) */
-  68%  { transform: translate(0vw, -20vh) scale(1.7) rotate(-250deg); }  /* coming back over, leftward */
-  /* Landing chain: velocity decays LINEARLY from cruise (16.2px/%) to 0 at
-     touchdown. Keyframe times and bezier endpoints are solved so each segment
-     starts at exactly the speed the previous one ended (16.2 → 10.9 → 7.8 → 0)
-     — mismatched hand-offs here read as a jolt near the end of the flight. */
-  77%  {
-    transform: translate(-18vw, -6vh) scale(1.55) rotate(-305deg);       /* diving back in on the left */
-    animation-timing-function: cubic-bezier(0.3, 0.33, 0.7, 0.78);       /* 16.2 → 10.9 */
-  }
-  84%  {
-    transform: translate(-16vw, 6vh) scale(1.35) rotate(-338deg);        /* pull-out below the banner */
-    animation-timing-function: cubic-bezier(0.3, 0.38, 0.67, 0.7);       /* 10.9 → 7.8 */
-  }
-  89%  {
-    transform: translate(-6vw, 4vh) scale(1.15) rotate(-354deg);         /* final glide toward the slot */
-    animation-timing-function: cubic-bezier(0.24, 0.5, 0.6, 1);          /* 7.8 → 0, ease to rest */
-  }
-  100% { transform: translate(0, 0) scale(1) rotate(-360deg); }          /* landed, level = the logo */
-}
-
-/* Wordmark: fade in place beside the (eventual) landing spot — no movement —
-   starting as the ascending flyer passes the middle of the screen. */
+/* Wordmark: fades in place beside the (eventual) landing spot — no movement. */
 .splash-title {
   opacity: 0;
   transition: none;
-  animation: splashTitleFade var(--splash-title-fade-duration) ease 0.55s forwards;
 }
 
-@keyframes splashTitleFade {
-  from { opacity: 0; }
-  to   { opacity: 1; }
-}
-
-/* The splash plays for everyone, including reduced-motion visitors (owner's
-   call for a personal app — it's still skippable by tapping). index.css's
-   universal reduced-motion reset flattens every animation-duration to 0.01ms
-   with !important, so re-assert the three splash durations here; the class
-   selectors out-rank its `*` selector. */
-@media (prefers-reduced-motion: reduce) {
-  .splash-screen { animation-duration: var(--splash-fade-duration) !important; }
-  .splash-flier  { animation-duration: var(--splash-flight-duration) !important; }
-  .splash-title  { animation-duration: var(--splash-title-fade-duration) !important; }
+.splash-skip-hint {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(var(--space-6) + env(safe-area-inset-bottom, 0px));
+  text-align: center;
+  font-size: var(--text-xs);
+  letter-spacing: 0.02em;
+  color: var(--color-text-muted);
+  opacity: 0;
+  pointer-events: none;
 }

@@ -76,6 +76,7 @@ export default function ArtworkCard({ artwork, isLiked, onLike, onImageClick, on
             aria-label={`Open details for ${altText}`}
             onKeyDown={activateOnKey(() => onImageClick(primaryFull))}
             loading="lazy"
+            decoding="async"
           />
           <div className={`image-placeholder skeleton-shimmer${imageLoaded ? ' loaded' : ''}`} />
         </div>

@@ -70,11 +70,12 @@
 }
 
 /* Respect a user's reduced-motion preference: neutralise the app's infinite
-   animations (flying-machine sweep, image sweep, skeleton shimmer, heart pop,
-   loader bounce, first-visit-hint fade) and long transitions, and disable
-   smooth programmatic scrolling. One universal reset covers every keyframe
-   site so no future animation can slip through. Exception: the launch splash
-   opts back in (see SplashScreen.css) — it plays for everyone. */
+   animations (image sweep, skeleton shimmer, heart pop, loader bounce,
+   first-visit-hint fade) and long transitions, and disable smooth
+   programmatic scrolling. One universal reset covers every CSS keyframe site
+   so no future animation can slip through. The launch splash runs on the Web
+   Animations API, which this reset does not reach — it plays for everyone
+   (owner's call; see SplashScreen.jsx). */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;

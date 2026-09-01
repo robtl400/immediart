@@ -19,6 +19,7 @@ export default function ThumbnailCard({ artwork, onClick }) {
         alt={artwork.artistName ? `${artwork.title} by ${artwork.artistName}` : artwork.title}
         className="thumbnail-image"
         loading="lazy"
+        decoding="async"
       />
     </div>
   );

@@ -1,31 +1,65 @@
 /**
  * SplashScreen — the one-time launch animation.
  *
- * Covers: it renders the flier + crest wordmark, is decorative + tap-skippable,
- * finishes only on the overlay fade-out (not a child flight/land end), is
- * idempotent (onDone fires once), and has a backstop timeout so it can't wedge.
+ * Covers: it renders the flier, the crest anchor and the wordmark; is
+ * decorative + tap/keyboard skippable; lifts off only once ready, with the
+ * flier laid out at its largest size over the logo slot and scaled DOWN to
+ * land; finishes only on the overlay fade (not the flight); is idempotent;
+ * has a backstop timeout; cancels its animations on unmount; and reveals the
+ * app at once where the Web Animations API is missing.
  */
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import SplashScreen from './SplashScreen';
+import { buildFlightKeyframes, MAX_SCALE, TIMING } from './splashFlight';
 
 vi.mock('../../assets/FlyingMachine2_tinted_gold.png', () => ({ default: 'fm.png' }));
 
-// jsdom's AnimationEvent doesn't preserve animationName through fireEvent, so
-// dispatch a plain animationend event with the name defined explicitly.
-function fireAnim(el, animationName) {
-  const ev = new Event('animationend', { bubbles: true });
-  Object.defineProperty(ev, 'animationName', { value: animationName });
-  fireEvent(el, ev);
+// jsdom has no Web Animations API. Stub Element.animate with a controllable
+// fake so tests can end the overlay fade (which finishes the splash) on cue.
+let animations;
+function installAnimateStub() {
+  animations = [];
+  Element.prototype.animate = vi.fn(function (keyframes, options) {
+    let resolve, reject;
+    const finished = new Promise((res, rej) => { resolve = res; reject = rej; });
+    finished.catch(() => {}); // a cancelled animation rejects; never unhandled here
+    const anim = { target: this, keyframes, options, finished, finish: () => resolve(), cancel: vi.fn(() => reject(new Error('cancelled'))) };
+    animations.push(anim);
+    return anim;
+  });
 }
+const animationOn = (className) => animations.find(a => a.target.classList.contains(className));
+
+// Rects for the layout the component measures: a 390x844 phone with the logo
+// slot at (86, 15), 38px square.
+const RECTS = {
+  'splash-screen': { left: 0, top: 0, width: 390, height: 844 },
+  'splash-anchor': { left: 86, top: 15, width: 38, height: 38 },
+};
+const flush = () => act(async () => { await new Promise(r => setTimeout(r, 0)); });
 
 describe('SplashScreen', () => {
-  it('renders the flier and the crest with the wordmark', () => {
+  beforeEach(() => {
+    installAnimateStub();
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function () {
+      const key = Object.keys(RECTS).find(k => this.classList.contains(k));
+      return { ...(RECTS[key] ?? { left: 0, top: 0, width: 0, height: 0 }), right: 0, bottom: 0, x: 0, y: 0, toJSON() {} };
+    });
+  });
+  afterEach(() => {
+    delete Element.prototype.animate;
+    vi.restoreAllMocks();
+    vi.useRealTimers();
+  });
+
+  it('renders the flier, the crest anchor and the wordmark', () => {
     const { container } = render(<SplashScreen onDone={vi.fn()} />);
     expect(container.querySelector('.splash-flier')).toBeTruthy();
-    expect(container.querySelector('.splash-crest')).toBeTruthy();
+    expect(container.querySelector('.splash-crest .splash-anchor')).toBeTruthy();
     expect(screen.getByText('ImmediArt')).toBeTruthy();
+    expect(screen.getByText('Tap to skip')).toBeTruthy();
   });
 
   it('is decorative (aria-hidden) and skippable by tap', () => {
@@ -35,19 +69,6 @@ describe('SplashScreen', () => {
     expect(el.getAttribute('aria-hidden')).toBe('true');
     fireEvent.click(el);
     expect(onDone).toHaveBeenCalledTimes(1);
-  });
-
-  // The child flight/land animations bubble their end to the overlay; only the
-  // overlay's own fade-out should finish it. (The positive fade-finish path is
-  // browser-verified — jsdom+React doesn't preserve animationName through a
-  // synthetic animationend event, so we can only assert the negative here.)
-  it('a child flight/land animation ending does not finish the splash', () => {
-    const onDone = vi.fn();
-    const { container } = render(<SplashScreen onDone={onDone} />);
-    const el = container.querySelector('.splash-screen');
-    fireAnim(el, 'splashFlight');
-    fireAnim(el, 'splashLand');
-    expect(onDone).not.toHaveBeenCalled();
   });
 
   it('is skippable by keyboard (Escape/Enter/Space) — capture-phase, does not leak to feed shortcuts', () => {
@@ -80,12 +101,100 @@ describe('SplashScreen', () => {
     expect(onDone).toHaveBeenCalledTimes(1);
   });
 
-  it('finishes via the backstop timeout if animationend never fires', () => {
+  it('lifts off once ready: flier laid out at MAX_SCALE logo heights over the slot, scaled DOWN to land, only transform/opacity animated', async () => {
+    const { container } = render(<SplashScreen onDone={vi.fn()} />);
+    await flush();
+
+    // Four animations: flight, wordmark, skip hint, overlay fade
+    expect(Element.prototype.animate).toHaveBeenCalledTimes(4);
+
+    // Layout box: 38px slot × 4.4 = 167px, centred on the slot's centre (105, 34)
+    const flier = container.querySelector('.splash-flier');
+    expect(flier.style.width).toBe('167px');
+    expect(flier.style.height).toBe('167px');
+    expect(flier.style.left).toBe('21.5px');
+    expect(flier.style.top).toBe('-49.5px');
+
+    const flight = animationOn('splash-flier');
+    expect(flight.options).toMatchObject({ duration: TIMING.FLIGHT_MS, easing: 'linear', fill: 'forwards' });
+    const first = flight.keyframes[0];
+    const last  = flight.keyframes.at(-1);
+    expect(first).toMatchObject({ offset: 0, opacity: 0 });
+    expect(first.transform).toBe('translate(-179.4px, 675.2px) scale(1.0000) rotate(-8deg)'); // largest = scale 1, never above
+    expect(last).toMatchObject({ offset: 1, opacity: 1 }); // lands VISIBLE (the element itself rests at opacity 0)
+    expect(last.transform).toBe(`translate(0.0px, 0.0px) scale(${(1 / MAX_SCALE).toFixed(4)}) rotate(-360deg)`); // landed = the logo
+    const animatedProps = new Set(flight.keyframes.flatMap(k => Object.keys(k)).filter(k => !['offset', 'easing'].includes(k)));
+    expect([...animatedProps].sort()).toEqual(['opacity', 'transform']);
+
+    expect(animationOn('splash-title').options).toMatchObject({ delay: TIMING.TITLE_DELAY_MS, duration: TIMING.TITLE_MS });
+    expect(animationOn('splash-skip-hint').options).toMatchObject({ delay: TIMING.HINT_DELAY_MS });
+    expect(animationOn('splash-screen').options).toMatchObject({ delay: TIMING.FADE_DELAY_MS, duration: TIMING.FADE_MS });
+  });
+
+  it('finishes on the overlay fade only — the flight ending does not finish the splash', async () => {
+    const onDone = vi.fn();
+    render(<SplashScreen onDone={onDone} />);
+    await flush();
+
+    await act(async () => { animationOn('splash-flier').finish(); });
+    expect(onDone).not.toHaveBeenCalled();
+
+    await act(async () => { animationOn('splash-screen').finish(); });
+    expect(onDone).toHaveBeenCalledTimes(1);
+  });
+
+  it('finishes via the backstop timeout if the fade never finishes', async () => {
     vi.useFakeTimers();
     const onDone = vi.fn();
     render(<SplashScreen onDone={onDone} />);
-    act(() => vi.advanceTimersByTime(3900));
+    await act(async () => { await vi.advanceTimersByTimeAsync(TIMING.BACKSTOP_MS - 1); });
+    expect(onDone).not.toHaveBeenCalled();
+    await act(async () => { await vi.advanceTimersByTimeAsync(1); });
     expect(onDone).toHaveBeenCalledTimes(1);
-    vi.useRealTimers();
+  });
+
+  it('ends the splash on a real viewport change mid-flight (the keyframes are resolved in px)', async () => {
+    const onDone = vi.fn();
+    render(<SplashScreen onDone={onDone} />);
+    await flush();
+    // jsdom's clientWidth/clientHeight are 0 — a 100% change against the measured 390x844 box
+    await act(async () => { window.dispatchEvent(new Event('resize')); });
+    expect(onDone).toHaveBeenCalledTimes(1);
+  });
+
+  it('cancels its animations on unmount (StrictMode double-mount, early skip)', async () => {
+    const { unmount } = render(<SplashScreen onDone={vi.fn()} />);
+    await flush();
+    expect(animations).toHaveLength(4);
+    unmount();
+    animations.forEach(a => expect(a.cancel).toHaveBeenCalledTimes(1));
+  });
+
+  it('reveals the app at once where the Web Animations API is missing', () => {
+    delete Element.prototype.animate;
+    const onDone = vi.fn();
+    render(<SplashScreen onDone={onDone} />);
+    expect(onDone).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('buildFlightKeyframes', () => {
+  it('resolves viewport fractions to px, keeps offsets ascending, and never scales above 1', () => {
+    const frames = buildFlightKeyframes(390, 844);
+    expect(frames.map(f => f.offset)).toEqual([...frames.map(f => f.offset)].sort((a, b) => a - b));
+    expect(frames[0].offset).toBe(0);
+    expect(frames.at(-1).offset).toBe(1);
+    const scales = frames.filter(f => f.transform).map(f => Number(f.transform.match(/scale\(([\d.]+)\)/)[1]));
+    expect(Math.max(...scales)).toBe(1);
+    expect(Math.min(...scales)).toBeCloseTo(1 / MAX_SCALE, 4);
+    // Easing only at lift-off and in the three landing segments
+    expect(frames.filter(f => f.easing).map(f => f.offset)).toEqual([0, 0.77, 0.84, 0.89]);
+    // The opacity-only keyframe carries no transform
+    expect(frames[1]).toEqual({ offset: 0.06, opacity: 1 });
+    // Every animated property is stated on the last keyframe, so nothing falls
+    // back to the element's resting value (opacity 0) at the landing
+    const props = new Set(frames.flatMap(f => Object.keys(f)).filter(k => !['offset', 'easing'].includes(k)));
+    for (const p of props) expect(frames.at(-1)).toHaveProperty(p);
+    expect(frames.at(-1).opacity).toBe(1);
   });
 });
