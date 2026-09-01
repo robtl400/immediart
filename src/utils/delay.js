@@ -16,7 +16,10 @@ export function debounce(fn, ms) {
   return debounced;
 }
 
-/** Delay that cancels immediately if the AbortSignal fires (or already fired) */
+/**
+ * Delay that cancels immediately if the AbortSignal fires (or already fired)
+ * @returns {Promise<void>}
+ */
 export function delayOrAbort(ms, signal) {
   return new Promise((resolve, reject) => {
     if (signal?.aborted) {

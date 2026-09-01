@@ -3,7 +3,7 @@
  */
 
 // Preload single image, resolves when loaded or failed
-export function preloadImage(url, signal = null) {
+function preloadImage(url, signal = null) {
   return new Promise((resolve) => {
     if (signal?.aborted) return resolve(false);
 

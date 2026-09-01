@@ -40,7 +40,6 @@ export const MAX_ARTWORKS_IN_MEMORY = 30; // Maximum artworks to keep in discove
 // Timing
 export const SEARCH_COOLDOWN_MS = 300; // Minimum time between searches (allows rate limit recovery)
 export const NAVIGATION_DELAY_MS = 150; // Delay before search after navigation
-export const MODAL_CLOSE_DELAY_MS = 200; // Delay for modal close animation
 export const SHARE_FEEDBACK_MS = 2000; // How long the "Copied!" share confirmation shows
 
 // Scroll Detection
@@ -53,4 +52,4 @@ export const GRID_ROOT_MARGIN = '1200px'; // Root margin for grid infinite scrol
 // is a guaranteed 403 that may extend the ban. The circuit breaker owns 403
 // recovery (see requestManager.js).
 export const MAX_RETRIES = 3;
-export const RATE_LIMIT_DELAYS = [1000, 2000, 4000];
+export const NETWORK_RETRY_DELAYS = [1000, 2000, 4000];

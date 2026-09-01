@@ -235,7 +235,6 @@
 .banner-logo {
   height: 1.75rem;
   width: auto;
-  opacity: 1;
   transition: transform var(--dur-slow) ease, opacity var(--dur-slow) ease;
 }
 
@@ -274,7 +273,6 @@
 }
 
 .banner.scrolled .banner-logo {
-  opacity: 1;
   transform: scale(0.75);
 }
 
@@ -616,8 +614,6 @@
 /* Artwork Card - wrapper for each artwork in feed */
 .artwork-card {
   border-bottom: 1px solid var(--color-gold-muted-a30);
-  padding-bottom: 0px;
-  margin-bottom: 0px;
   scroll-snap-align: start;
   scroll-snap-stop: always;
 }
@@ -645,16 +641,6 @@
 .discovery-feed .inline-error,
 .discovery-feed .end-message {
   scroll-snap-align: end;
-}
-
-/* Lazy loading image optimization */
-.artwork-image {
-  opacity: 0;
-  transition: opacity 0.3s ease;
-}
-
-.artwork-image[src]:not([src=""]) {
-  opacity: 1;
 }
 
 .first-visit-hint {

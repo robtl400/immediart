@@ -78,7 +78,7 @@ from the seed search, and a real browser also pays DNS+TCP+TLS per origin
 ## Where today's code disagrees with the measured reality
 
 1. **Retry ladder (1s/2s/4s) retries entirely inside the ~61s penalty** — every retry
-   is a guaranteed 403 that may extend the block ([constants.js](../src/utils/constants.js) `RATE_LIMIT_DELAYS`).
+   is a guaranteed 403 that may extend the block ([constants.js](../src/utils/constants.js) `NETWORK_RETRY_DELAYS`).
 2. **Circuit breaker opens for only 5s** ([requestManager.js](../src/services/requestManager.js) `CB_OPEN_DURATION_MS`)
    — after a real trip it sends ~12 doomed probes over the next minute instead of one
    when the penalty actually lifts.

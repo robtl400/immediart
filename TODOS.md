@@ -6,17 +6,17 @@
 **Found by:** /plan-eng-review outside voice, 2026-07-06 (D10 decision). Depends on: C6 shipping.
 
 
-## (Medium) Grid pagination silently skips unattempted IDs — review 2026-07-06
+## ~~(Medium) Grid pagination silently skips unattempted IDs~~ DONE (2026-07-06, `consumedCount` contract in metAPI.js / usePaginatedFetch.js)
 **What:** `fetchBatch` advances `currentIndexRef` by `targetCount*2` up front, but `batchFetchArtworks` stops once `targetCount` artworks validate — unattempted IDs in the window are skipped forever, and after a load-more error the retry resumes at the NEXT window, dropping the failed one. The grid's "N artworks found" under-reports.
 **Fix sketch:** have `batchFetchArtworks` return how far it consumed so `fetchBatch` can set `currentIndexRef = start + consumed`; rewind the index to the batch start before `setError` so retry re-attempts the same window.
 **Found by:** /review red team, 2026-07-06.
 
-## (Low) Scroll-anchor hardening: image-load height shifts + iOS snap behavior — review 2026-07-06
-**What:** (a) `ArtworkCard` `setIsLandscape` flips container height 55vh↔68vh on image load without re-baselining the feed's card-top map — a trim shortly after can over-correct (low real-world impact: above-anchor images are usually long loaded). (b) `feed.scrollTop += delta` on a `scroll-snap-type: y mandatory` container needs real-device iOS testing — programmatic scrollTop during momentum may be ignored or kill the fling.
-**Fix sketch:** ResizeObserver on cards to refresh `cardTopsRef`; device QA pass (or `/ios-qa`-style manual check) for the snap interaction.
+## (Low) Scroll-anchor hardening: iOS snap behavior — review 2026-07-06
+**What:** `feed.scrollTop += delta` on a `scroll-snap-type: y mandatory` container needs real-device iOS testing — programmatic scrollTop during momentum may be ignored or kill the fling. (The image-load re-baseline half of this item shipped in 81a3c51: a ResizeObserver refreshes `cardTopsRef`, and frames now follow the image's own aspect.)
+**Fix sketch:** device QA pass (or `/ios-qa`-style manual check) for the snap interaction.
 **Found by:** /review adversarial + red team, 2026-07-06.
 
-## (Low) GridBrowse first-frame stale render — review 2026-07-06
+## ~~(Low) GridBrowse first-frame stale render~~ DONE (2026-07-06, 81a3c51: skeleton until the context matches the route)
 **What:** `initSearch` runs in an effect (after paint), so first navigation paints one frame of "No artworks found", and artist→artist navigation paints a frame of the previous artist's grid under the new header.
 **Fix sketch:** render the skeleton until context `searchTerm` matches the route term; needs matching updates to GridBrowse test mocks.
 **Found by:** /review red team, 2026-07-06.
@@ -37,14 +37,15 @@ Fixed by /qa on feat/architecture-revamp. Root cause: `initSearch` depended on `
 
 ---
 
-## (Low) MET API 404s logged in console — ISSUE-003
+## ~~(Low) MET API 404s logged in console — ISSUE-003~~ WON'T FIX
+404s are now tombstoned for an hour so an id is fetched at most once per hour; the remaining console line is the browser's own network log, which JavaScript cannot suppress.
 **What:** Some MET API object IDs return 404 (artwork removed/unavailable). The app handles them gracefully but logs errors to console.
 **Why:** External data issue — not a code bug. Could filter or suppress known-bad IDs.
 **Found by:** /qa on main, 2026-03-20. Report: .gstack/qa-reports/qa-report-localhost-2026-03-20.md
 
 ---
 
-## (Medium) Liked Collection view — /liked route
+## ~~(Medium) Liked Collection view — /liked route~~ DONE (2026-07-07, `LikedGrid.jsx`)
 **What:** Add a `/liked` route that shows the user's liked artworks as a GridBrowse-style grid, loaded from localStorage.
 **Why:** Likes are now persisted to localStorage (Pass 3, /plan-design-review 2026-03-21). Once likes survive navigation and page reloads, users will naturally expect to be able to view their liked collection. Without a destination, persisted likes become invisible data.
 **Pros:** Completes the like feature loop; gives users a reason to like more artworks; uses existing `ThumbnailCard` + `ArtworkModal` infrastructure.
@@ -86,7 +87,7 @@ Added `makeMockArtwork` helper; tests now provide real artwork arrays with `hasM
 
 ---
 
-## (Medium) additionalImages carousel — A-4 deferred
+## ~~(Medium) additionalImages carousel — A-4 deferred~~ DONE (2026-07-07, `ImageCarousel.jsx`)
 **What:** Add `additionalImages` dot indicator AND swipe implementation as a single feature.
 **Why:** Dots-without-swipe is a false interactive affordance (users swipe, nothing happens). Deferred from Social Media Layer pass — /autoplan gate 2026-04-29.
 **Implementation:** Dot indicator + touch swipe handler together; first dot permanently active, remaining dots reflect current image index.

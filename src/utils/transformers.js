@@ -18,7 +18,7 @@ export function formatArtistUsername(artistName) {
 }
 
 // Extract random tags from API tags array
-export function extractRandomTags(tagsArray, count = 5) {
+function extractRandomTags(tagsArray, count = 5) {
   if (!tagsArray?.length) return [];
   return shuffleArray(tagsArray)
     .slice(0, count)
@@ -27,7 +27,7 @@ export function extractRandomTags(tagsArray, count = 5) {
 }
 
 // Build description from artwork metadata
-export function buildDescription(artwork) {
+function buildDescription(artwork) {
   return [artwork.title, artwork.medium, artwork.culture, artwork.period]
     .filter(Boolean)
     .join('. ');
@@ -95,7 +95,6 @@ export function transformAPIToDisplay(apiArtwork) {
     artistBio: apiArtwork.artistDisplayBio || '',
     artistULAN_URL: apiArtwork.artistULAN_URL || '',
     objectURL: apiArtwork.objectURL || '',
-    additionalImages: apiArtwork.additionalImages || [], // reserved for A-4 carousel — see TODOS.md
-    constituents: apiArtwork.constituents || [] // reserved for A-5 tagged contributors — see design plan
+    additionalImages: apiArtwork.additionalImages || [],
   };
 }

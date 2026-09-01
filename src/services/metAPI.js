@@ -5,7 +5,7 @@
 import {
   API_BASE_URL,
   MAX_RETRIES,
-  RATE_LIMIT_DELAYS,
+  NETWORK_RETRY_DELAYS,
 } from '../utils/constants';
 import {
   getCachedIDs,
@@ -32,7 +32,7 @@ async function fetchWithRetry(url, signal = null) {
       if (error.name === 'AbortError') throw error;
       if (error.message === CIRCUIT_BREAKER_OPEN) throw error;
       if (i === MAX_RETRIES - 1) throw error;
-      await delayOrAbort(addJitter(RATE_LIMIT_DELAYS[i] || RATE_LIMIT_DELAYS.at(-1)), signal);
+      await delayOrAbort(addJitter(NETWORK_RETRY_DELAYS[i] || NETWORK_RETRY_DELAYS.at(-1)), signal);
     }
   }
 }
@@ -412,4 +412,3 @@ export async function batchFetchArtworks(objectIDs, targetCount = 4, signal = nu
   };
 }
 
-export { API_BASE_URL };

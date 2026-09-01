@@ -27,8 +27,8 @@ function openDB() {
     try {
       const request = indexedDB.open(DB_NAME, DB_VERSION);
 
-      request.onupgradeneeded = (event) => {
-        const db = event.target.result;
+      request.onupgradeneeded = () => {
+        const db = request.result;
         if (!db.objectStoreNames.contains('ids')) {
           db.createObjectStore('ids', { keyPath: 'key' });
         }
@@ -37,8 +37,8 @@ function openDB() {
         }
       };
 
-      request.onsuccess = (event) => {
-        const db = event.target.result;
+      request.onsuccess = () => {
+        const db = request.result;
         // The browser can close this connection behind our back (Safari
         // storage eviction, a discarded-then-restored tab, storage cleared in
         // another tab, a version bump elsewhere). Drop the cached handle so the
@@ -133,13 +133,13 @@ async function getFromStore(storeName, key) {
 async function removeFromStore(storeName, key) {
   try {
     const db = await openDB();
-    await new Promise((resolve) => {
+    await /** @type {Promise<void>} */ (new Promise((resolve) => {
       const tx = transaction(db, storeName, 'readwrite');
       const store = tx.objectStore(storeName);
       const req = store.delete(key);
       req.onsuccess = () => resolve();
       req.onerror = () => resolve(); // Swallow — best-effort
-    });
+    }));
   } catch {
     // Swallow — storage errors are non-fatal
   }
@@ -148,14 +148,14 @@ async function removeFromStore(storeName, key) {
 async function setInStore(storeName, key, data, ttl) {
   try {
     const db = await openDB();
-    await new Promise((resolve, reject) => {
+    await /** @type {Promise<void>} */ (new Promise((resolve, reject) => {
       const tx = transaction(db, storeName, 'readwrite');
       const store = tx.objectStore(storeName);
       const req = store.put({ key, data, expiresAt: Date.now() + ttl });
       req.onerror = () => reject(req.error);
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error);
-    });
+    }));
   } catch {
     // Swallow — storage errors (quota, private browsing) are non-fatal
   }
