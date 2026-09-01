@@ -432,3 +432,28 @@ describe('metAPI — search wrapper cache integration', () => {
     vi.unstubAllGlobals();
   });
 });
+
+describe('artworkCache — sweep', () => {
+  it('drops expired entries and, over the cap, the soonest-to-expire live ones', async () => {
+    const { setCachedArtwork, getCachedArtwork, sweepCache } = await import('./artworkCache.js');
+    const HOUR = 3600000;
+    await setCachedArtwork(1, { objectID: 1 }, 1);            // expired by the time we sweep
+    for (let id = 2; id <= 9; id++) {
+      await setCachedArtwork(id, { objectID: id }, id * HOUR); // staggered: 2 expires soonest
+    }
+    await new Promise(r => setTimeout(r, 5));
+
+    await sweepCache({ maxArtworkEntries: 5 });
+
+    expect(await getCachedArtwork(1)).toBeNull();
+    for (const id of [2, 3, 4]) expect(await getCachedArtwork(id)).toBeNull(); // the three soonest to expire
+    for (const id of [5, 6, 7, 8, 9]) expect(await getCachedArtwork(id)).toEqual({ objectID: id });
+  });
+
+  it('a store under the cap keeps every live entry', async () => {
+    const { setCachedArtwork, getCachedArtwork, sweepCache } = await import('./artworkCache.js');
+    for (let id = 1; id <= 3; id++) await setCachedArtwork(id, { objectID: id });
+    await sweepCache({ maxArtworkEntries: 5 });
+    for (let id = 1; id <= 3; id++) expect(await getCachedArtwork(id)).toEqual({ objectID: id });
+  });
+});

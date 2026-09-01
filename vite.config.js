@@ -21,7 +21,7 @@ export default defineConfig({
         // policy is out of scope for this epic.
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
         // Met images are NOT runtime-cached by the service worker. The image
-        // CDN does not send CORS headers consistently (verified live), so the
+        // CDN does not send CORS headers consistently, so the
         // <img> loads are no-cors and their responses opaque, and an opaque
         // entry is padded to ~7MB in Cache Storage quota accounting — a few
         // hundred of them would fill a phone's quota and trigger a purge. The

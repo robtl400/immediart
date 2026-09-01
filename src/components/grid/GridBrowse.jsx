@@ -4,32 +4,14 @@ import flyingMachineIcon from '../../assets/FlyingMachine2_tinted_gold.png';
 import './GridBrowse.css';
 import { useGridBrowse } from '../../context/GridBrowseContext';
 import { useArtworkModal } from '../../context/ArtworkModalContext';
-import Banner from '../common/Banner';
-import ThrottleNotice from '../common/ThrottleNotice';
+import LoadStatus from '../common/LoadStatus';
 import { InlineLoader } from '../common/LoadingSpinner';
+import GridHeader from './GridHeader';
 import ThumbnailCard from './ThumbnailCard';
 import SkeletonCard from '../common/SkeletonCard';
 import ArtistProfileHeader from './ArtistProfileHeader';
 import useInfiniteScroll from '../../hooks/useInfiniteScroll';
 import { GRID_ROOT_MARGIN } from '../../utils/constants';
-
-// Hoisted out of GridBrowse so the header subtree isn't remounted on every
-// render (an inline component gets a new type identity each render).
-function GridHeader({ displayTerm, isQuery, onBack }) {
-  return (
-    <>
-      <Banner />
-      <div className="search-heading">
-        <button className="grid-back-btn" onClick={onBack} aria-label="Back">
-          ‹
-        </button>
-        {/* A typed query is verbatim user text, so it renders in the UI sans-serif
-            (Outfit); artist/tag handles keep the decorative Allura script. */}
-        <h2 className={`search-term${isQuery ? ' search-term--query' : ''}`}>{displayTerm}</h2>
-      </div>
-    </>
-  );
-}
 
 // decodeURIComponent throws URIError on malformed escapes (e.g. /artist/%E0) —
 // fall back to the raw segment rather than crashing the render.
@@ -102,9 +84,7 @@ export default function GridBrowse({ type }) {
     ? `#${searchTerm.replace(/\s+/g, '')}`
     : `“${searchTerm}”`;
 
-  // A shared link opened in a fresh tab has no page to go back to — go home.
-  const goBack = () => (location.key === 'default' ? navigate('/') : navigate(-1));
-  const header = <GridHeader displayTerm={displayTerm} isQuery={type === 'search'} onBack={goBack} />;
+  const header = <GridHeader displayTerm={displayTerm} isQuery={type === 'search'} />;
 
   // initSearch runs in an effect (after paint), so the context still holds the
   // PREVIOUS search on this render's first frame — showing either a stale grid
@@ -122,7 +102,7 @@ export default function GridBrowse({ type }) {
             <SkeletonCard key={i} />
           ))}
         </div>
-        {throttledUntil && <ThrottleNotice until={throttledUntil} />}
+        <LoadStatus throttledUntil={throttledUntil} />
       </div>
     );
   }
@@ -133,20 +113,7 @@ export default function GridBrowse({ type }) {
     return (
       <div className="grid-browse app-frame" ref={gridRef}>
         {header}
-        {throttledUntil ? (
-          <ThrottleNotice until={throttledUntil} />
-        ) : (
-          <div className="error-container">
-            <p className="error-message">Unable to load artworks</p>
-            <p className="error-detail">{error}</p>
-            <button
-              className="retry-button"
-              onClick={() => initSearch(type, searchTerm)}
-            >
-              Try again
-            </button>
-          </div>
-        )}
+        <LoadStatus error={error} throttledUntil={throttledUntil} onRetry={() => initSearch(type, searchTerm)} />
       </div>
     );
   }
@@ -186,14 +153,7 @@ export default function GridBrowse({ type }) {
 
       {loadingMore && <InlineLoader />}
 
-      {throttledUntil && <ThrottleNotice until={throttledUntil} />}
-
-      {error && !throttledUntil && (
-        <div className="inline-error" role="status">
-          <p>{error}</p>
-          <button className="retry-button" onClick={retryLoadMore}>Try again</button>
-        </div>
-      )}
+      <LoadStatus inline error={error} throttledUntil={throttledUntil} onRetry={retryLoadMore} />
 
       {!hasMore && artworks.length > 0 && (
         <div className="end-message">

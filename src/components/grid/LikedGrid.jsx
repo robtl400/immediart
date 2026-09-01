@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import flyingMachineIcon from '../../assets/FlyingMachine2_tinted_gold.png';
 import './GridBrowse.css';
 import { usePaginatedFetch } from '../../hooks/usePaginatedFetch';
@@ -7,10 +7,10 @@ import { useLikes } from '../../context/LikesContext';
 import { useArtworkModal } from '../../context/ArtworkModalContext';
 import { preloadArtworkImages } from '../../utils/imageLoader';
 import useInfiniteScroll from '../../hooks/useInfiniteScroll';
-import Banner from '../common/Banner';
-import ThrottleNotice from '../common/ThrottleNotice';
+import LoadStatus from '../common/LoadStatus';
 import { InlineLoader } from '../common/LoadingSpinner';
 import SkeletonCard from '../common/SkeletonCard';
+import GridHeader from './GridHeader';
 import ThumbnailCard from './ThumbnailCard';
 import { GRID_BATCH_SIZE, GRID_INITIAL_BATCH_SIZE, GRID_ROOT_MARGIN } from '../../utils/constants';
 
@@ -19,10 +19,7 @@ import { GRID_BATCH_SIZE, GRID_INITIAL_BATCH_SIZE, GRID_ROOT_MARGIN } from '../.
 // empty / grid branches — the hook returns state, not UI.
 export default function LikedGrid() {
   const navigate = useNavigate();
-  const location = useLocation();
   const { likedIds, isLiked, toggleLike, reportNotFound } = useLikes();
-  // A shared link opened in a fresh tab has no page to go back to — go home.
-  const goBack = () => (location.key === 'default' ? navigate('/') : navigate(-1));
   const { openModal } = useArtworkModal();
   const gridRef = useRef(null);
 
@@ -64,15 +61,7 @@ export default function LikedGrid() {
     rootMargin: GRID_ROOT_MARGIN,
   });
 
-  const header = (
-    <>
-      <Banner />
-      <div className="search-heading">
-        <button className="grid-back-btn" onClick={goBack} aria-label="Back">‹</button>
-        <h2 className="search-term">Liked</h2>
-      </div>
-    </>
-  );
+  const header = <GridHeader displayTerm="Liked" />;
 
   if (grid.loading) {
     return (
@@ -81,7 +70,7 @@ export default function LikedGrid() {
         <div className="thumbnail-grid columns-2">
           {Array.from({ length: 6 }, (_, i) => <SkeletonCard key={i} />)}
         </div>
-        {grid.throttledUntil && <ThrottleNotice until={grid.throttledUntil} />}
+        <LoadStatus throttledUntil={grid.throttledUntil} />
       </div>
     );
   }
@@ -90,15 +79,7 @@ export default function LikedGrid() {
     return (
       <div className="grid-browse app-frame" ref={gridRef}>
         {header}
-        {grid.throttledUntil ? (
-          <ThrottleNotice until={grid.throttledUntil} />
-        ) : (
-          <div className="error-container">
-            <p className="error-message">Unable to load liked artworks</p>
-            <p className="error-detail">{grid.error}</p>
-            <button className="retry-button" onClick={grid.retryLoadMore}>Try again</button>
-          </div>
-        )}
+        <LoadStatus error={grid.error} throttledUntil={grid.throttledUntil} onRetry={grid.retryLoadMore} title="Unable to load liked artworks" />
       </div>
     );
   }
@@ -143,14 +124,7 @@ export default function LikedGrid() {
 
       {grid.loadingMore && <InlineLoader />}
 
-      {grid.throttledUntil && <ThrottleNotice until={grid.throttledUntil} />}
-
-      {grid.error && !grid.throttledUntil && (
-        <div className="inline-error" role="status">
-          <p>{grid.error}</p>
-          <button className="retry-button" onClick={grid.retryLoadMore}>Try again</button>
-        </div>
-      )}
+      <LoadStatus inline error={grid.error} throttledUntil={grid.throttledUntil} onRetry={grid.retryLoadMore} />
 
       {!grid.hasMore && grid.artworks.length > 0 && (
         <div className="end-message">

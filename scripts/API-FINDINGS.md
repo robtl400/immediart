@@ -75,29 +75,36 @@ Treat these as floors: the probe's connection to the API host was already warm
 from the seed search, and a real browser also pays DNS+TCP+TLS per origin
 (~100–300ms each) because nothing preconnects.
 
-## Where today's code disagrees with the measured reality
+## What the measurements changed
 
-1. **Retry ladder (1s/2s/4s) retries entirely inside the ~61s penalty** — every retry
-   is a guaranteed 403 that may extend the block ([constants.js](../src/utils/constants.js) `NETWORK_RETRY_DELAYS`).
-2. **Circuit breaker opens for only 5s** ([requestManager.js](../src/services/requestManager.js) `CB_OPEN_DURATION_MS`)
-   — after a real trip it sends ~12 doomed probes over the next minute instead of one
-   when the penalty actually lifts.
-3. **No cumulative request budget.** The knobs (6 concurrent, 50ms gap, 80ms cooldown)
-   pace bursts fine, but nothing stops a fast scroller from spending ~100 requests in
-   a window (8 per feed load-more incl. 2× overfetch; 9–18 per grid load). Concurrency
-   is NOT the trigger, so `MAX_CONCURRENT_REQUESTS=6` is not the problem.
-4. **Batch-gated rendering.** The feed paints nothing until a whole batch of objects
-   resolves. Measured intra-batch completion spread: 157–340ms — the first card could
-   consistently paint that much earlier (more at p90+), and the initial batch waits on
-   4 fetches to fill 2 slots.
-5. **The modal downloads `/original/` (1.2–8.3MB)** even though the ~600px web-large
-   is typically already in the browser cache from the feed, and a 1200px tier exists.
-6. **No preconnect** to either origin.
-7. **Images are never service-worker cached** — now known safe via CORS mode.
-8. `hasImages=true` returns imageless objects (confirmed API bug, issues #52/#57) —
-   already handled by `validateArtwork` + overfetch; a persistent negative cache of
-   known-bad IDs would stop refetching them every session.
+The request layer is built on these numbers (the constants in
+[constants.js](../src/utils/constants.js) and
+[requestManager.js](../src/services/requestManager.js) cite them):
+
+1. **403s are never retried** — a 403 means the penalty window is active, and an
+   in-penalty retry is a guaranteed 403 that may extend the block. Only network
+   errors use the retry ladder (`NETWORK_RETRY_DELAYS`).
+2. **The circuit breaker opens for the measured penalty** (`CB_OPEN_BASE_MS`, 60s)
+   and escalates on a failed probe (`CB_OPEN_MAX_MS`), so one probe goes out when
+   the penalty actually lifts instead of a dozen doomed ones.
+3. **A rolling request budget** (`REQUEST_BUDGET` per `REQUEST_BUDGET_WINDOW_MS`)
+   keeps a fast scroller under the cumulative-volume threshold; it persists
+   across reloads and tabs. Concurrency is not the trigger, so
+   `MAX_CONCURRENT_REQUESTS=6` stays.
+4. **Progressive rendering** — each card paints as its object resolves, in order,
+   instead of after the whole batch (intra-batch spread measured 157–340ms).
+5. **The modal opens on the web-large copy** the card already showed and fetches
+   the `/original/` (1.2–8.3MB) only for the zoom.
+6. **Both origins are preconnected** from index.html.
+7. **Images are not service-worker cached**: the image CDN does not send CORS
+   headers consistently, so image loads are no-cors and their responses opaque —
+   an opaque entry is padded to ~7MB in quota accounting. The browser's own HTTP
+   cache covers repeat visits.
+8. `hasImages=true` returns imageless objects (confirmed API bug, issues #52/#57)
+   — handled by `validateArtwork` + overfetch, and every reject is negative-cached
+   so it is never refetched.
 9. **The search endpoint is parameter-order sensitive: `q` must be serialized
+
    last.** `...&q=Rembrandt&artistOrCulture=true` returns `total: 0`;
    `...&artistOrCulture=true&q=Rembrandt` returns 421 (verified live 2026-07-07,
    stable across artists/runs; corroborated by TheMetApp's `//IMPORTANT: The API

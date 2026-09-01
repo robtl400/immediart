@@ -228,7 +228,9 @@ export async function fetchArtworkWithStatus(objectID, signal = null, { strict =
     if (response.status === 404) {
       // Negative-cache the 404 as a tombstone on its own short TTL (see
       // TTL_NOT_FOUND_MS and the tombstone branch in the cache read above).
-      await setCachedArtwork(objectID, { objectID: Number(objectID), notFound: true }, TTL_NOT_FOUND_MS);
+      // Not awaited: the write's commit would hold the in-order render drain
+      // behind an IndexedDB transaction for a result nobody reads back now.
+      void setCachedArtwork(objectID, { objectID: Number(objectID), notFound: true }, TTL_NOT_FOUND_MS);
       return { artwork: null, status: 'notFound' };
     }
     if (!response.ok) return { artwork: null, status: 'error' };
@@ -259,13 +261,15 @@ export async function fetchArtworkWithStatus(objectID, signal = null, { strict =
     if (isRealApiObject(artwork, objectID)) {
       if (validateArtwork(artwork)) {
         // Baseline-valid: store whole (a non-strict caller can display it).
-        await setCachedArtwork(objectID, artwork);
+        // The writes are not awaited: each would hold the in-order render
+        // drain behind a transaction commit, and they swallow their errors.
+        void setCachedArtwork(objectID, artwork);
       } else {
         // Baseline-invalid: store a minimal tombstone (nothing can display it,
         // and rejects are the majority of fetches — full payloads would bloat
         // IndexedDB severalfold) on the short self-healing TTL.
         const { objectID: id, primaryImage, title, objectName } = artwork;
-        await setCachedArtwork(objectID, { objectID: id, primaryImage, title, objectName }, TTL_INVALID_ARTWORK_MS);
+        void setCachedArtwork(objectID, { objectID: id, primaryImage, title, objectName }, TTL_INVALID_ARTWORK_MS);
       }
     }
     // No fromCache flag on network-path results — the flag is set (true) only

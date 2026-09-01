@@ -16,6 +16,12 @@ export const TIMING = {
 };
 TIMING.BACKSTOP_MS = TIMING.READY_WAIT_MS + TIMING.FADE_DELAY_MS + TIMING.FADE_MS + 400;
 
+// A viewport change larger than this fraction of the overlay, on either axis,
+// ends the splash: the px keyframes were resolved for the old box and would
+// land the flier on a slot that has moved. A settling mobile toolbar moves a
+// few percent and stays under it.
+export const RESIZE_END_FRACTION = 0.15;
+
 // The flier's largest on-screen size, in landed-logo heights. Its layout box
 // is sized to this, so keyframe scale 1 = this size and the landing = 1/MAX.
 export const MAX_SCALE = 4.4;

@@ -38,6 +38,11 @@ vi.mock('../../context/ArtworkModalContext', () => ({
 vi.mock('../../context/LikesContext', () => ({
   useLikes: vi.fn(),
 }));
+// The zoom state gates the full-resolution fetch; tests flip it directly.
+const zoom = vi.hoisted(() => ({ isZoomed: false }));
+vi.mock('../../hooks/useImageZoom', () => ({
+  default: () => ({ containerRef: { current: null }, imgRef: { current: null }, handlers: {}, isZoomed: zoom.isZoomed }),
+}));
 vi.mock('../../hooks/useShareArtwork', async (importOriginal) => ({
   ...(await importOriginal()), // keep shareLabel
   useShareArtwork: vi.fn(),
@@ -83,6 +88,7 @@ function setup({ artwork = makeArtwork(), liked = false } = {}) {
 }
 
 beforeEach(() => {
+  zoom.isZoomed = false;
   mockNavigate.mockClear();
   mockCloseModal.mockClear();
   mockToggleLike.mockClear();
@@ -169,12 +175,18 @@ describe('ArtworkModal — artist link', () => {
 });
 
 // jsdom never loads images. This stub "loads" whatever src it is given on
-// the next microtask, so the modal's original-image preload can be driven.
-const stubImage = () => vi.stubGlobal('Image', class {
-  set src(v) { this._src = v; if (v) queueMicrotask(() => this.onload?.()); }
-  get src() { return this._src; }
-  decode() { return Promise.resolve(); }
-});
+// the next microtask, so the modal's original-image preload can be driven;
+// the instances are returned so a test can inspect the preloader.
+const stubImage = () => {
+  const instances = [];
+  vi.stubGlobal('Image', class {
+    constructor() { instances.push(this); }
+    set src(v) { this._src = v; if (v) queueMicrotask(() => this.onload?.()); }
+    get src() { return this._src; }
+    decode() { return Promise.resolve(); }
+  });
+  return instances;
+};
 
 describe('ArtworkModal — image error fallback', () => {
   it('a failed web-large copy retries the original; a failed original shows the fallback', () => {
@@ -201,22 +213,42 @@ describe('ArtworkModal — image error fallback', () => {
 describe('ArtworkModal — image source', () => {
   afterEach(() => vi.unstubAllGlobals());
 
-  it('shows the web-large copy the card already had, then swaps in the original once it has loaded', async () => {
-    stubImage();
+  it('shows the web-large copy the card already had and fetches the original only once the user zooms', async () => {
+    const images = stubImage();
     setup({ artwork: makeArtwork() });
-    const { container } = render(<ArtworkModal />);
+    const { container, rerender } = render(<ArtworkModal />);
     expect(container.querySelector('.artwork-modal-image').src).toBe('https://example.com/img.jpg'); // instant, from the browser cache
     await act(async () => {});
-    expect(container.querySelector('.artwork-modal-image').src).toBe('https://example.com/full.jpg'); // the multi-MB original, once it arrived
+    expect(images).toHaveLength(0); // no multi-MB transfer for a look
+    expect(container.querySelector('.artwork-modal-image').src).toBe('https://example.com/img.jpg');
+
+    zoom.isZoomed = true;
+    rerender(<ArtworkModal />);
+    await act(async () => {});
+    expect(container.querySelector('.artwork-modal-image').src).toBe('https://example.com/full.jpg'); // the original, decoded, for the zoom
   });
 
   it('prefers viewImageUrl (the slide the carousel opened on) over the primary', async () => {
     stubImage();
+    zoom.isZoomed = true;
     setup({ artwork: makeArtwork({ viewImageUrl: 'https://images.metmuseum.org/CRDImages/ep/original/slide-3.jpg' }) });
     const { container } = render(<ArtworkModal />);
     expect(container.querySelector('.artwork-modal-image').src).toBe('https://images.metmuseum.org/CRDImages/ep/web-large/slide-3.jpg');
     await act(async () => {});
     expect(container.querySelector('.artwork-modal-image').src).toBe('https://images.metmuseum.org/CRDImages/ep/original/slide-3.jpg');
+  });
+
+  it('closing the modal mid-transfer cancels the original instead of finishing it', async () => {
+    const images = stubImage();
+    zoom.isZoomed = true;
+    setup({ artwork: makeArtwork() });
+    const { unmount } = render(<ArtworkModal />);
+    expect(images).toHaveLength(1);
+    expect(images[0].src).toBe('https://example.com/full.jpg');
+    unmount(); // before the stub's microtask "load"
+    expect(images[0].src).toBe('');       // the browser drops the request
+    expect(images[0].onload).toBeNull();  // and nothing can swap after unmount
+    await act(async () => {});
   });
 
   it('the image sits inside a focusable zoom viewport', () => {

@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { formatArtistUsername, buildComments, transformAPIToDisplay } from './transformers';
+import { formatArtistUsername, buildComments, transformAPIToDisplay, artworkCaption } from './transformers';
 
 describe('formatArtistUsername (T2-A)', () => {
   it('formats plain name', () => {
@@ -164,5 +164,14 @@ describe('transformAPIToDisplay — frameAspect seeded from catalogued dimension
       measurements: [{ elementName: 'Overall', elementMeasurements: { Height: 30, Width: 15, Depth: 15 } }],
     }));
     expect(vase.frameAspect).toBeNull();
+  });
+});
+
+describe('artworkCaption', () => {
+  it('names the artist when there is one', () => {
+    expect(artworkCaption({ title: 'The Garter', artistName: 'Jean François de Troy' })).toBe('The Garter by Jean François de Troy');
+  });
+  it('is just the title for anonymous works — never "Title by "', () => {
+    expect(artworkCaption({ title: 'Portrait of a Man', artistName: '' })).toBe('Portrait of a Man');
   });
 });

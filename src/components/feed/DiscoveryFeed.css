@@ -55,19 +55,19 @@
 }
 
 /* Right-aligned action cluster — absolute so it never de-centres the logo.
-   Kept tight (two 44px targets, 8px from the edge) so the centred logo +
-   wordmark clears it on a 360px phone; the icons sit centred in their targets,
-   so the visual gap between them stays generous. */
+   Kept tight (two 44px targets, one spacing step from the edge) so the
+   centred logo + wordmark clears it on a 360px phone; the icons sit centred
+   in their targets, so the visual gap between them stays generous. */
 .banner-actions {
   position: absolute;
-  right: 8px;
+  right: var(--space-2);
   /* Centred on the logo row, not the banner box: the box also holds the
      safe-area top padding, which shifts its midpoint down by half the inset. */
   top: calc(50% + env(safe-area-inset-top, 0px) / 2);
   transform: translateY(-50%);
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 0;
 }
 
 .banner-icon-btn {

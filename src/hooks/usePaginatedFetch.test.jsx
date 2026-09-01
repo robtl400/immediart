@@ -528,9 +528,9 @@ describe('usePaginatedFetch — duplicate key regression', () => {
   it('pause() during the initial ID fetch: a later loadMore re-runs the initial phase (no silent dead feed)', async () => {
     // Regression (red team): navigate away while the FIRST load is fetching IDs
     // → pause() aborts with allIDsRef still empty → returning to the feed,
-    // loadMore used to run fetchBatch(false) against zero candidates and set
-    // hasMore=false — no cards, no error, no retry. It must instead re-run the
-    // initial phase, like retryLoadMore does.
+    // loadMore must re-run the initial phase (like retryLoadMore does): a
+    // fetchBatch(false) against zero candidates would set hasMore=false — no
+    // cards, no error, no retry.
     const abortableFetchIDs = vi.fn((signal) =>
       new Promise((_, reject) => {
         signal?.addEventListener('abort', () =>
@@ -565,9 +565,9 @@ describe('usePaginatedFetch — duplicate key regression', () => {
 // ─── outage windows (5xx storm) ───────────────────────────────────────────────
 //
 // batchFetchArtworks does NOT throw when every id fails with a transport error
-// (per-id failures become 'error' outcomes). The hook used to scan straight
-// past such windows — advancing the cursor, permanently skipping the ids, and
-// ending a sustained outage at a false "explored the whole collection".
+// (per-id failures become 'error' outcomes). Scanning straight past such a
+// window would advance the cursor, permanently skip the ids, and end a
+// sustained outage at a false "explored the whole collection".
 
 describe('usePaginatedFetch — outage windows', () => {
   beforeEach(() => {
@@ -1412,7 +1412,7 @@ describe('usePaginatedFetch — throttle countdown', () => {
   });
 
   it('an OPEN breaker becomes a countdown, and the hook retries on its own when it lapses', async () => {
-    const retryAfter = vi.spyOn(requestManager, 'retryAfterMs', 'get').mockReturnValue(30000);
+    const retryAfter = vi.spyOn(requestManager, 'breakerWaitMs', 'get').mockReturnValue(30000);
     batchFetchArtworks
       .mockResolvedValueOnce(makeBatch(BATCH, 1))                  // initial → ids 1-4
       .mockResolvedValueOnce(makeBatch(BATCH, 5))                  // prefetch (dropped by the pause)
@@ -1445,8 +1445,55 @@ describe('usePaginatedFetch — throttle countdown', () => {
     expect(result.current.artworks).toHaveLength(BATCH * 2);
   });
 
+  it('an OPEN breaker with nothing left on its clock counts one second, then retries', async () => {
+    vi.spyOn(requestManager, 'breakerWaitMs', 'get').mockReturnValue(0);
+    vi.spyOn(requestManager, 'state', 'get').mockReturnValue('OPEN');
+    batchFetchArtworks
+      .mockResolvedValueOnce(makeBatch(BATCH, 1))
+      .mockResolvedValueOnce(makeBatch(BATCH, 5))
+      .mockRejectedValueOnce(new Error(CIRCUIT_BREAKER_OPEN))
+      .mockResolvedValue(makeBatch(BATCH, 5));
+    const { result } = renderHook(() =>
+      usePaginatedFetch({ shuffleIDs: true, batchSize: BATCH })
+    );
+    await act(async () => { result.current.reset(fetchIDs); });
+    await drain();
+    await act(async () => { result.current.pause(); });
+
+    await act(async () => { result.current.loadMore(); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    expect(result.current.error).toBeTruthy();
+    expect(result.current.throttledUntil).toBe(Date.now() + 1000); // the fallback second
+
+    const calls = batchFetchArtworks.mock.calls.length;
+    await act(async () => { await vi.advanceTimersByTimeAsync(1500); });
+    await drain();
+    expect(batchFetchArtworks.mock.calls.length).toBeGreaterThan(calls);
+    expect(result.current.error).toBeNull();
+  });
+
+  it('a breaker error while the breaker is not OPEN leaves the error showing with no countdown', async () => {
+    vi.spyOn(requestManager, 'breakerWaitMs', 'get').mockReturnValue(0);
+    vi.spyOn(requestManager, 'state', 'get').mockReturnValue('CLOSED');
+    batchFetchArtworks
+      .mockResolvedValueOnce(makeBatch(BATCH, 1))
+      .mockResolvedValueOnce(makeBatch(BATCH, 5))
+      .mockRejectedValueOnce(new Error(CIRCUIT_BREAKER_OPEN));
+    const { result } = renderHook(() =>
+      usePaginatedFetch({ shuffleIDs: true, batchSize: BATCH })
+    );
+    await act(async () => { result.current.reset(fetchIDs); });
+    await drain();
+    await act(async () => { result.current.pause(); });
+
+    await act(async () => { result.current.loadMore(); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    expect(result.current.error).toBeTruthy();
+    expect(result.current.throttledUntil).toBeNull();
+  });
+
   it('a long budget wait shows a countdown for the batch and clears when it lands', async () => {
-    vi.spyOn(requestManager, 'budgetWaitMs', 'get').mockReturnValue(5000);
+    vi.spyOn(requestManager, 'nextDispatchAt', 'get').mockImplementation(() => Date.now() + 5000);
     let resolveBatch;
     batchFetchArtworks
       .mockResolvedValueOnce(makeBatch(BATCH, 1))
@@ -1471,7 +1518,7 @@ describe('usePaginatedFetch — throttle countdown', () => {
   });
 
   it('a budget that runs out partway through a batch still shows the countdown', async () => {
-    const wait = vi.spyOn(requestManager, 'budgetWaitMs', 'get').mockReturnValue(0);
+    const wait = vi.spyOn(requestManager, 'nextDispatchAt', 'get').mockReturnValue(0);
     let resolveBatch;
     batchFetchArtworks
       .mockResolvedValueOnce(makeBatch(BATCH, 1))
@@ -1486,7 +1533,7 @@ describe('usePaginatedFetch — throttle countdown', () => {
 
     await act(async () => { result.current.loadMore(); });
     expect(result.current.throttledUntil).toBeNull(); // nothing to wait for at the start
-    wait.mockReturnValue(8000);                        // the bucket empties mid-batch
+    wait.mockImplementation(() => Date.now() + 8000);  // the bucket empties mid-batch
     await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
     expect(result.current.throttledUntil).toBe(Date.now() + 8000);
 
@@ -1495,7 +1542,7 @@ describe('usePaginatedFetch — throttle countdown', () => {
   });
 
   it('a short budget wait is invisible (no countdown for a moment behind the loader)', async () => {
-    vi.spyOn(requestManager, 'budgetWaitMs', 'get').mockReturnValue(800);
+    vi.spyOn(requestManager, 'nextDispatchAt', 'get').mockImplementation(() => Date.now() + 800);
     batchFetchArtworks.mockResolvedValue(makeBatch(BATCH, 1));
     const { result } = renderHook(() =>
       usePaginatedFetch({ shuffleIDs: true, batchSize: BATCH })

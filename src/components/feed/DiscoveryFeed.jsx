@@ -7,17 +7,19 @@ import { useArtworkModal } from '../../context/ArtworkModalContext';
 import { useLikes } from '../../context/LikesContext';
 import LoadingSpinner, { InlineLoader } from '../common/LoadingSpinner';
 import Banner from '../common/Banner';
-import ThrottleNotice from '../common/ThrottleNotice';
+import LoadStatus from '../common/LoadStatus';
 import ArtworkCard from './ArtworkCard';
 import useInfiniteScroll from '../../hooks/useInfiniteScroll';
 import { FEED_ROOT_MARGIN, BANNER_SCROLL_THRESHOLD } from '../../utils/constants';
 import { searchByArtist, searchByTag } from '../../services/metAPI';
 import { debounce } from '../../utils/delay';
+import { scrollBehavior } from '../../utils/motion';
+import { readStorage, writeStorage } from '../../utils/storage';
 
 const HINT_STORAGE_KEY = 'immediart_hint_seen';
 
 export default function DiscoveryFeed() {
-  const { artworks, loading, loadingMore, error, hasMore, throttledUntil, loadMoreArtworks, retryLoadMore, retry, pause, feedScrollRef } = useArtworks();
+  const { artworks, loading, loadingMore, error, hasMore, throttledUntil, loadMoreArtworks, retryLoadMore, pause, feedScrollRef } = useArtworks();
   const { openModal } = useArtworkModal();
   const { isLiked, toggleLike } = useLikes();
   const navigate = useNavigate();
@@ -45,19 +47,15 @@ export default function DiscoveryFeed() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const [showHint, setShowHint] = useState(() => {
-    try {
-      return !localStorage.getItem(HINT_STORAGE_KEY);
-    } catch {
-      return false;
-    }
-  });
+  // Shown on a definite first visit only: unusable storage would show it on
+  // every visit.
+  const [showHint, setShowHint] = useState(() => readStorage('localStorage', HINT_STORAGE_KEY) === null);
 
   useEffect(() => {
     if (!showHint) return;
     const timer = setTimeout(() => {
       setShowHint(false);
-      try { localStorage.setItem(HINT_STORAGE_KEY, '1'); } catch { /* ignore */ }
+      writeStorage('localStorage', HINT_STORAGE_KEY, '1');
     }, 3000);
     return () => clearTimeout(timer);
   }, [showHint]);
@@ -230,9 +228,7 @@ export default function DiscoveryFeed() {
         return best;
       };
 
-      // JS scroll behaviour isn't governed by the CSS reduced-motion reset —
-      // honour the preference here too.
-      const behavior = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
+      const behavior = scrollBehavior();
 
       switch (e.key) {
         case 'ArrowDown':
@@ -281,7 +277,7 @@ export default function DiscoveryFeed() {
       <div className="discovery-feed app-frame" ref={feedRef}>
         <Banner feedRef={feedRef} />
         <LoadingSpinner />
-        {throttledUntil && <ThrottleNotice until={throttledUntil} />}
+        <LoadStatus throttledUntil={throttledUntil} />
       </div>
     );
   }
@@ -291,15 +287,7 @@ export default function DiscoveryFeed() {
     return (
       <div className="discovery-feed app-frame" ref={feedRef}>
         <Banner feedRef={feedRef} />
-        {throttledUntil ? (
-          <ThrottleNotice until={throttledUntil} />
-        ) : (
-          <div className="error-container">
-            <p className="error-message">Unable to load artworks</p>
-            <p className="error-detail">{error}</p>
-            <button className="retry-button" onClick={retry}>Try again</button>
-          </div>
-        )}
+        <LoadStatus error={error} throttledUntil={throttledUntil} onRetry={retryLoadMore} />
       </div>
     );
   }
@@ -334,14 +322,7 @@ export default function DiscoveryFeed() {
 
       {loadingMore && <InlineLoader />}
 
-      {throttledUntil && <ThrottleNotice until={throttledUntil} />}
-
-      {error && !throttledUntil && artworks.length > 0 && (
-        <div className="inline-error" role="status">
-          <p>{error}</p>
-          <button className="retry-button" onClick={retryLoadMore}>Try again</button>
-        </div>
-      )}
+      <LoadStatus inline error={error} throttledUntil={throttledUntil} onRetry={retryLoadMore} />
 
       {!hasMore && artworks.length > 0 && (
         <div className="end-message">

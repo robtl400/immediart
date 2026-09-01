@@ -5,6 +5,11 @@ import { useArtworks } from '../../context/ArtworksContext';
 import { useGridBrowse } from '../../context/GridBrowseContext';
 import BannerActions from './BannerActions';
 import BannerSearch from './BannerSearch';
+import { scrollBehavior } from '../../utils/motion';
+
+// Taps on the logo closer together than this reshuffle once: every reshuffle
+// spends a fresh initial batch and prefetch out of the shared request budget.
+const REFRESH_MIN_GAP_MS = 3000;
 
 /**
  * Shared Banner.
@@ -22,9 +27,10 @@ import BannerSearch from './BannerSearch';
 export default function Banner({ isScrolled = false, feedRef = null, showActions = true, interactive = true }) {
   const navigate = useNavigate();
   const location = useLocation();
-  const { refresh } = useArtworks();
+  const { refresh, loading } = useArtworks();
   const { abort: abortGrid } = useGridBrowse();
   const isHome = location.pathname === '/';
+  const lastRefreshRef = useRef(0);
 
   // Search open/closed lives here (not in BannerActions) so the expanded input
   // can take over the full masthead. Closing restores focus to the magnifier
@@ -39,11 +45,13 @@ export default function Banner({ isScrolled = false, feedRef = null, showActions
 
   const handleLogoClick = () => {
     if (isHome) {
-      if (feedRef?.current) {
-        // JS scrolling isn't governed by the CSS reduced-motion reset — honour it here
-        const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-        feedRef.current.scrollTo({ top: 0, behavior: reduce ? 'auto' : 'smooth' });
-      }
+      feedRef?.current?.scrollTo({ top: 0, behavior: scrollBehavior() });
+      // A reshuffle while the first batch is still loading, or hard on the
+      // heels of the last one, would only abort in-flight requests whose
+      // tokens are already spent.
+      const now = Date.now();
+      if (loading || now - lastRefreshRef.current < REFRESH_MIN_GAP_MS) return;
+      lastRefreshRef.current = now;
       refresh();
     } else {
       // Going home from a grid is free: the feed is still mounted in its

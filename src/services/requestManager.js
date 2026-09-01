@@ -18,6 +18,8 @@
  *                     └──► OPEN (doubled timer, capped)
  */
 
+import { isOffline } from '../utils/network';
+
 import { delay, delayOrAbort } from '../utils/delay';
 
 // Shared error message for the open-breaker fast-fail. Consumers match on
@@ -86,6 +88,7 @@ export class RequestManager {
     this._cbOpenDurationMs     = CB_OPEN_BASE_MS; // escalates on failed probes
     this._cbProbeInFlight      = false;
     this._cbPendingResolvers   = []; // { resolve, reject, url, signal }[]
+    this._onlineAt             = null; // last `online` event (see reconnect)
 
     // ── Dynamic concurrency ───────────────────────────────────────────────
     // Sliding window ring buffer: true = success, false = failure, null = empty
@@ -117,22 +120,29 @@ export class RequestManager {
   // again" that fails on the spot (breaker).
 
   // Time until an OPEN breaker moves to HALF_OPEN (0 when not OPEN).
-  get retryAfterMs() {
+  get breakerWaitMs() {
     if (this._cbState !== 'OPEN' || this._cbOpenUntil == null) return 0;
     return Math.max(0, this._cbOpenUntil - Date.now());
   }
 
-  // Time the next dispatch would wait at the gate: a server-requested hold,
-  // or the rolling budget being spent (0 when a request could go now).
-  get budgetWaitMs() {
+  // The instant the next dispatch could leave the gate: the end of a
+  // server-requested hold, or of the rolling budget being spent — whichever
+  // is later (0 when a request could go now). An absolute time, so a view
+  // that samples it repeatedly sees one value for one wait.
+  get nextDispatchAt() {
     this._syncDispatchTimes();
     const now = Date.now();
-    let wait = Math.max(0, this._holdUntil - now);
+    let at = this._holdUntil > now ? this._holdUntil : 0;
     if (this._budget !== Infinity) {
       const live = this._dispatchTimes.filter(t => now - t < this._budgetWindowMs);
-      if (live.length >= this._budget) wait = Math.max(wait, live[0] + this._budgetWindowMs - now);
+      if (live.length >= this._budget) at = Math.max(at, live[0] + this._budgetWindowMs);
     }
-    return wait;
+    return at;
+  }
+
+  // Time the next dispatch would wait at the gate (0 when it could go now).
+  get budgetWaitMs() {
+    return Math.max(0, this.nextDispatchAt - Date.now());
   }
 
   // ── Budget persistence ────────────────────────────────────────────────────
@@ -165,24 +175,22 @@ export class RequestManager {
     this._dispatchTimes = [...stored, ...this._unsavedTimes].sort((a, b) => a - b);
   }
 
+  // Write the in-memory list, which the gate has just synced with storage
+  // (the bucket is per connection, not per tab, so it holds every tab's
+  // dispatches) — no second read. `_unsavedTimes` tracks this tab's own
+  // dispatches until a write lands, because timestamps are not unique (two
+  // requests can share a millisecond, and both must count) and a merge
+  // could not tell them from another tab's. Two tabs saving in the same
+  // instant can lose one entry to the read-modify-write race; that costs a
+  // token against a 40-request safety margin and is accepted rather than
+  // engineered around.
   _saveDispatchTimes() {
     if (!this._persistKey) return;
     try {
       const storage = globalThis.localStorage;
       if (!storage) throw new Error('no storage');
-      // Merge with what other tabs wrote — the bucket is per connection, not
-      // per tab — and fold their dispatches into this tab's view of it. Only
-      // dispatches not yet written are appended (timestamps are not unique:
-      // two requests can share a millisecond, and both must count). Two tabs
-      // saving in the same instant can lose one entry to the read-modify-
-      // write race; that costs a token against a 40-request safety margin
-      // and is accepted rather than engineered around.
-      const merged = [...this._readStoredTimes(), ...this._unsavedTimes].sort((a, b) => a - b);
-      storage.setItem(this._persistKey, JSON.stringify(merged));
-      // Only a successful write may replace the in-memory list: until then the
-      // storage copy is missing this tab's own dispatches.
+      storage.setItem(this._persistKey, JSON.stringify(this._dispatchTimes));
       this._unsavedTimes = [];
-      this._dispatchTimes = merged;
     } catch {
       // Storage is unusable (private mode, quota, a sandboxed frame): stop
       // persisting and let the in-memory bucket, still complete, be the truth.
@@ -446,8 +454,7 @@ export class RequestManager {
       // A request the browser will refuse outright (no connection) is not a
       // request the Met will count: it must not spend a token that outlives
       // the drop, or a few seconds offline throttle the minute after.
-      const offlineNow = typeof navigator !== 'undefined' && navigator.onLine === false;
-      if (this._budget !== Infinity && !offlineNow) {
+      if (this._budget !== Infinity && !isOffline()) {
         const t = Date.now();
         this._dispatchTimes.push(t);
         if (this._persistKey) this._unsavedTimes.push(t);

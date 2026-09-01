@@ -29,67 +29,26 @@
 
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { batchFetchArtworks } from '../services/metAPI';
-import { requestManager, CIRCUIT_BREAKER_OPEN } from '../services/requestManager';
+import { CIRCUIT_BREAKER_OPEN } from '../services/requestManager';
 import { shuffleArray } from '../utils/shuffle';
 import { transformAPIToDisplay } from '../utils/transformers';
 import { delayOrAbort } from '../utils/delay';
 import { RATE_LIMIT_RECOVERY_MS } from '../utils/constants';
+import { isOffline } from '../utils/network';
+import { isOutageWindow, NO_OUTAGE, recordOutageAttempt } from './outageWindow';
+import useThrottleCountdown from './useThrottleCountdown';
 
 const LOAD_ERROR = "Couldn't load more art. Tap to retry.";
 const OFFLINE_ERROR = "You appear to be offline. Reconnect and tap to retry.";
 
-// An "outage window": a batch that kept zero artworks where transport errors
-// (5xx / network) are the majority of the ids that ACTUALLY hit the network.
-// Batch fetch doesn't throw for these — per-id failures become 'error'
-// outcomes — so callers must detect them or they'd scan straight past the
-// failed ids. errorCount and networkCount are both counted over the ordered
-// attempt list in batchFetchArtworks (never the deduped outcomes Map), and
-// cache-answered rejects are excluded: on a warm cache most outcomes never
-// touch the network and would dilute a real 5xx storm below any threshold.
-// OUTAGE_MIN_ERRORS keeps one flipped request from stopping infinite scroll:
-// a single 500 in a window of cached rejects is a blip, not an outage. The
-// floor scales down to the window size so a one-id window (a single like, the
-// tail of a search list) can still register — with nothing else to dilute it,
-// its lone error IS the whole picture.
-const OUTAGE_MIN_ERRORS = 2;
-const isOutageWindow = ({ artworks, outcomes, networkCount, errorCount }) =>
-  artworks.length === 0 &&
-  errorCount >= Math.min(OUTAGE_MIN_ERRORS, outcomes.size) &&
-  errorCount > networkCount / 2;
-
-// How many times the user may retry the SAME stuck window before the hook
-// gives up and scans past it (the pre-outage-guard behavior). Without this
-// cap, ids that deterministically 500 could pin the cursor forever.
-const OUTAGE_MAX_RETRIES = 3;
-
-// Outage bookkeeping pinned to one window position (the hook's outageRef):
-//   index — allIDsRef position of the window under suspicion (-1: none)
-//   count — outages SURFACED to the user at that window. 0 = seen once
-//           silently (by a prefetch, or the primary path's silent re-attempt)
-const NO_OUTAGE = () => ({ index: -1, count: 0 });
-
-// Record one more outage at `windowStart`. Returns true while the outage
-// should be surfaced as a retryable error; false once the cap is hit — the
-// caller then falls through and scans past the window. Mutates outageRef, so
-// call it exactly once per detection, after isOutageWindow.
-const recordOutageAttempt = (outageRef, windowStart) => {
-  const o = outageRef.current;
-  o.count = o.index === windowStart ? o.count + 1 : 1;
-  o.index = windowStart;
-  if (o.count <= OUTAGE_MAX_RETRIES) return true;
-  console.warn('[ImmediArt] window still failing after', o.count, 'attempts — scanning past it');
-  outageRef.current = NO_OUTAGE();
-  return false;
-};
-
 // Surface an offline-specific message when the browser reports no connection,
 // so a network drop reads as "you're offline" rather than a generic failure.
-const loadError = () =>
-  (typeof navigator !== 'undefined' && navigator.onLine === false) ? OFFLINE_ERROR : LOAD_ERROR;
+const loadError = () => (isOffline() ? OFFLINE_ERROR : LOAD_ERROR);
 
-// A budget wait shorter than this is invisible behind the loader; longer, and
-// the view says "resuming in Ns" instead of showing a dead spinner.
-const THROTTLE_NOTICE_MS = 1500;
+// A batch is many dispatches, and the budget usually runs out (or a
+// Retry-After lands) partway through — the gate wait is re-sampled this often
+// while a batch runs.
+const BUDGET_POLL_MS = 1000;
 
 export function usePaginatedFetch({
   shuffleIDs       = false,
@@ -105,10 +64,6 @@ export function usePaginatedFetch({
   const [loadingMore, setLoadingMore] = useState(false);
   const [error,       setError]       = useState(null);
   const [hasMore,     setHasMore]     = useState(true);
-  // Timestamp until which the request layer is deliberately waiting (budget
-  // spent, or a Met ban due to lift) — the views count it down and, when it
-  // is a breaker wait, the hook retries on its own at the end.
-  const [throttledUntil, setThrottledUntil] = useState(null);
 
   // ── Refs ─────────────────────────────────────────────────────────────────
   const allIDsRef            = useRef([]);
@@ -133,6 +88,17 @@ export function usePaginatedFetch({
   // whether the caller redefines the function each render
   const onBatchReadyRef      = useRef(onBatchReady);
   useEffect(() => { onBatchReadyRef.current = onBatchReady; }, [onBatchReady]);
+
+  // Hand a batch (or a window's outcomes, with whatever cards are on screen
+  // for it) to onBatchReady. Its failures are logged, never propagated: the
+  // hook continues regardless. Resolves once the callback has settled.
+  const callOnBatchReady = useCallback((list, signal, outcomes) => {
+    const fn = onBatchReadyRef.current;
+    if (!fn) return Promise.resolve();
+    return Promise.resolve()
+      .then(() => fn(list, signal, outcomes))
+      .catch(e => console.warn('[ImmediArt] onBatchReady error:', e.message));
+  }, []);
 
   // Prefetch state
   const prefetchRef          = useRef(null);   // { artworks, nextIndex, outcomes } | null
@@ -193,17 +159,14 @@ export function usePaginatedFetch({
         if (isOutageWindow({ artworks: raw, outcomes, networkCount, errorCount })) {
           outageRef.current = { index: fromIndex, count: 0 };
           prefetchPromiseRef.current = null;
-          if (onBatchReadyRef.current) {
-            Promise.resolve(onBatchReadyRef.current([], signal, outcomes))
-              .catch(e => console.warn('[ImmediArt] onBatchReady error:', e.message));
-          }
+          callOnBatchReady([], signal, outcomes);
           return;
         }
         const nextIndex = consumedCount > 0 ? srcIdx[consumedCount - 1] + 1 : fromIndex;
         prefetchRef.current = { artworks: raw.map(transformAPIToDisplay), nextIndex, outcomes };
       })
       .catch(() => {}); // prefetch failure is non-fatal
-  }, [shuffleIDs, batchSize, strictValidation, collectCandidates]);
+  }, [shuffleIDs, batchSize, strictValidation, collectCandidates, callOnBatchReady]);
 
   // ── fetchBatch ────────────────────────────────────────────────────────────
   //
@@ -215,35 +178,20 @@ export function usePaginatedFetch({
   //   On retry failure: show user-friendly "Couldn't load more art" message.
   //   Raw API error messages are never surfaced to the user.
 
-  // Surface a budget wait the coming batch is about to sit through.
-  const noteBudgetWait = useCallback(() => {
-    const wait = requestManager.budgetWaitMs;
-    setThrottledUntil(wait > THROTTLE_NOTICE_MS ? Date.now() + wait : null);
-  }, []);
-
-  // Surface an OPEN breaker as a countdown (the auto-retry effect fires at
-  // the end of it). Returns whether one was scheduled.
-  const noteBreakerWait = useCallback(() => {
-    let ms = requestManager.retryAfterMs;
-    if (ms <= 0) {
-      // OPEN with nothing left on the clock (a background tab's clamped
-      // timers): the breaker's own timer is about to flip it — count one
-      // second and retry, rather than showing a Try-again that fails.
-      if (requestManager.state !== 'OPEN') return false;
-      ms = 1000;
-    }
-    setThrottledUntil(Date.now() + ms);
-    return true;
-  }, []);
+  // "Resuming in Ns" while the request layer is deliberately waiting. When a
+  // countdown ends, a breaker wait retries the showing error on its own; a
+  // budget wait just clears the notice — its batch is already in flight.
+  // (retryLoadMore is defined below; the expiry reads it through a ref.)
+  const onThrottleEndRef = useRef(null);
+  const { throttledUntil, setThrottledUntil, noteBudgetWait, noteBreakerWait } =
+    useThrottleCountdown(() => onThrottleEndRef.current?.());
 
   const fetchBatch = useCallback(async (isInitial = false) => {
     if (fetchingRef.current) return;
     fetchingRef.current = true;
     pausedRef.current   = false; // a fetch is view-driven — the hook is live again
     noteBudgetWait();
-    // A batch is many dispatches, and the budget usually runs out (or a
-    // Retry-After lands) partway through — keep sampling while it runs.
-    const budgetPoll = setInterval(noteBudgetWait, 1000);
+    const budgetPoll = setInterval(noteBudgetWait, BUDGET_POLL_MS);
     let breakerWait = false; // set when this batch ended on an OPEN breaker
 
     abortControllerRef.current?.abort();
@@ -292,22 +240,13 @@ export function usePaginatedFetch({
     };
 
     const onArtwork = (raw, idIdx) => {
-      if (signal.aborted || fetchIdRef.current !== currentFetchId) return;
+      if (stale()) return;
       const display = transformAPIToDisplay(raw);
       streamed.push(display);
       streamedIdSet.add(display.id);
       lastStreamedSrcIdx = idsSrcIdx[idIdx];
       if (shuffleIDs) shownIDsRef.current.add(display.id);
       appendArtwork(display);
-    };
-
-    // Hand a window's outcomes to onBatchReady (with whatever cards are on
-    // screen for it). Used for outage windows, whose outcomes never reach the
-    // normal post-batch call because the cursor stays put.
-    const reportOutcomes = async (outcomes, list = []) => {
-      if (!onBatchReadyRef.current) return;
-      try { await onBatchReadyRef.current(list, signal, outcomes); }
-      catch (e) { console.warn('[ImmediArt] onBatchReady error:', e.message); }
     };
 
     try {
@@ -318,7 +257,7 @@ export function usePaginatedFetch({
 
         // Fetch IDs via the installed fetchIDs function (includes any delays)
         const allIDs = await fetchIDsRef.current(signal);
-        if (fetchIdRef.current !== currentFetchId) return;
+        if (stale()) return;
 
         allIDsRef.current   = shuffleIDs ? shuffleArray(allIDs) : allIDs;
         currentIndexRef.current = 0;
@@ -345,10 +284,10 @@ export function usePaginatedFetch({
       // A window that kept NOTHING and failed mostly with transport errors is
       // an API outage (5xx storm), not content to scan past. Batch fetch does
       // not throw for these (per-id errors become 'error' outcomes), so the
-      // cursor used to advance anyway — silently consuming ids window after
-      // window until the feed ended at a false "explored the whole collection".
-      // Surface the retry error instead; the cursor stays put, so a retry
-      // re-attempts this same window (bounded by OUTAGE_MAX_RETRIES).
+      // check lives here: the cursor stays put and a retry re-attempts this
+      // same window (bounded by OUTAGE_MAX_RETRIES) instead of the feed
+      // consuming ids window after window until it ends at a false "explored
+      // the whole collection".
       if (isOutageWindow(batch)) {
         if (outageRef.current.index !== start) {
           // First sighting at this window: re-attempt once, silently, after
@@ -356,7 +295,7 @@ export function usePaginatedFetch({
           // retry, and a momentary blip must not stop infinite scroll. The
           // first attempt's outcomes go to onBatchReady now (live-404 prune
           // evidence the re-attempt will only see as 'notFoundCached').
-          await reportOutcomes(batch.outcomes);
+          await callOnBatchReady([], signal, batch.outcomes);
           outageRef.current = { index: start, count: 0 };
           await delayOrAbort(RATE_LIMIT_RECOVERY_MS, signal);
           bailIfStale();
@@ -364,7 +303,7 @@ export function usePaginatedFetch({
           bailIfStale();
         }
         if (isOutageWindow(batch) && recordOutageAttempt(outageRef, start)) {
-          await reportOutcomes(batch.outcomes);
+          await callOnBatchReady([], signal, batch.outcomes);
           setError(loadError());
           return;
         }
@@ -397,10 +336,7 @@ export function usePaginatedFetch({
       setHasMore(currentIndexRef.current < allIDsRef.current.length);
       setError(null);
 
-      if (onBatchReadyRef.current) {
-        try { await onBatchReadyRef.current(newArtworks, signal, outcomes); }
-        catch (e) { console.warn('[ImmediArt] onBatchReady error:', e.message); }
-      }
+      await callOnBatchReady(newArtworks, signal, outcomes);
 
       // Always start (or restart) the prefetch so a stale in-flight prefetch
       // can't write duplicate IDs into prefetchRef after fetchBatch(false) has
@@ -412,6 +348,8 @@ export function usePaginatedFetch({
       // cleared state) must not touch the cursor — its streamed cards are no
       // longer on screen.
       if (fetchIdRef.current !== currentFetchId) return;
+      // (Not stale(): an abort with THIS fetch still current falls through to
+      // the cursor bookkeeping below before the AbortError exit.)
 
       // Whatever the failure mode (including pause()-aborts, where cards stay
       // in state), streamed cards remain on screen — their ids must never be
@@ -437,7 +375,7 @@ export function usePaginatedFetch({
 
       try {
         await delayOrAbort(RATE_LIMIT_RECOVERY_MS, signal);
-        if (signal.aborted || fetchIdRef.current !== currentFetchId) return;
+        if (stale()) return;
 
         // Only retry if we have IDs from the batch phase (not a fetchIDs failure)
         if (idsToTry.length === 0) {
@@ -464,7 +402,7 @@ export function usePaginatedFetch({
           const retryBatch =
             await batchFetchArtworks(retryIds, retryTarget, signal, { strict: strictValidation, onArtwork: (raw, idIdx) => {
               // Map emission indices through the FILTERED list's src positions
-              if (signal.aborted || fetchIdRef.current !== currentFetchId) return;
+              if (stale()) return;
               const display = transformAPIToDisplay(raw);
               streamed.push(display);
               streamedIdSet.add(display.id);
@@ -482,7 +420,7 @@ export function usePaginatedFetch({
           if (isOutageWindow(retryBatch) && recordOutageAttempt(outageRef, start)) {
             // Cards attempt 1 streamed are on screen — give onBatchReady its
             // usual shot at them (grid image warm-up) before bailing out.
-            await reportOutcomes(retryBatch.outcomes, streamed);
+            await callOnBatchReady(streamed, signal, retryBatch.outcomes);
             setError(loadError());
             return;
           }
@@ -522,10 +460,7 @@ export function usePaginatedFetch({
 
         // Always fires (even with zero cards): /liked's prune reads outcomes
         // regardless of how many artworks the retry kept.
-        if (onBatchReadyRef.current) {
-          try { await onBatchReadyRef.current(streamed, signal, retryOutcomes); }
-          catch (e) { console.warn('[ImmediArt] onBatchReady error:', e.message); }
-        }
+        await callOnBatchReady(streamed, signal, retryOutcomes);
 
         startPrefetch(currentIndexRef.current);
 
@@ -549,7 +484,7 @@ export function usePaginatedFetch({
         if (!breakerWait) setThrottledUntil(null); // a budget wait ends with the batch
       }
     }
-  }, [shuffleIDs, batchSize, initialBatchSize, maxInMemory, strictValidation, startPrefetch, collectCandidates, noteBudgetWait, noteBreakerWait]);
+  }, [shuffleIDs, batchSize, initialBatchSize, maxInMemory, strictValidation, startPrefetch, collectCandidates, callOnBatchReady, noteBudgetWait, noteBreakerWait, setThrottledUntil]);
 
   // ── loadMore ──────────────────────────────────────────────────────────────
 
@@ -570,10 +505,7 @@ export function usePaginatedFetch({
 
     // Prefetch-merged batches get the same onBatchReady treatment as
     // fetched ones (e.g. the grid's image warm-up, /liked's 404 prune).
-    if (onBatchReadyRef.current) {
-      Promise.resolve(onBatchReadyRef.current(prefetched, undefined, outcomes))
-        .catch(e => console.warn('[ImmediArt] onBatchReady error:', e.message));
-    }
+    callOnBatchReady(prefetched, undefined, outcomes);
 
     // An empty window (every candidate a cached reject) merges nothing, so
     // nothing the infinite-scroll observer watches would change and a still-
@@ -585,7 +517,7 @@ export function usePaginatedFetch({
     }
 
     startPrefetch(nextIndex);
-  }, [shuffleIDs, maxInMemory, startPrefetch, fetchBatch]);
+  }, [shuffleIDs, maxInMemory, startPrefetch, fetchBatch, callOnBatchReady]);
 
   const loadMore = useCallback(() => {
     // `error` gates the sentinel-driven loop: while an error is showing, the
@@ -631,7 +563,7 @@ export function usePaginatedFetch({
     // fetchBatch(false) would see zero candidates, set hasMore=false, and
     // dead-end the feed with no cards, no error, and no retry affordance.
     fetchBatch(allIDsRef.current.length === 0);
-  }, [fetchBatch, hasMore, loadingMore, error, mergePrefetch, noteBudgetWait]);
+  }, [fetchBatch, hasMore, loadingMore, error, mergePrefetch, noteBudgetWait, setThrottledUntil]);
 
   // ── retryLoadMore ─────────────────────────────────────────────────────────
   //
@@ -669,17 +601,11 @@ export function usePaginatedFetch({
     return () => { clearTimeout(timer); window.removeEventListener('online', onOnline); };
   }, [retryLoadMore]);
 
-  // When a throttle countdown ends: a breaker wait retries the showing error
-  // on its own (the "Try again" that used to fail on the spot); a budget
-  // wait just clears the notice — its batch is already in flight.
+  // A countdown that ends on a showing error retries it (a breaker wait);
+  // pause() clears the countdown, so a paused hook never gets here.
   useEffect(() => {
-    if (throttledUntil == null) return;
-    const t = setTimeout(() => {
-      setThrottledUntil(null);
-      if (errorRef.current && !pausedRef.current) retryLoadMore();
-    }, Math.max(0, throttledUntil - Date.now()) + 250);
-    return () => clearTimeout(t);
-  }, [throttledUntil, retryLoadMore]);
+    onThrottleEndRef.current = () => { if (errorRef.current) retryLoadMore(); };
+  }, [retryLoadMore]);
 
   // ── reset ─────────────────────────────────────────────────────────────────
   //
@@ -708,7 +634,7 @@ export function usePaginatedFetch({
     setHasMore(true);
     setThrottledUntil(null);
     fetchBatch(true);
-  }, [shuffleIDs, fetchBatch]);
+  }, [shuffleIDs, fetchBatch, setThrottledUntil]);
 
   // ── pause ─────────────────────────────────────────────────────────────────
 
@@ -726,7 +652,7 @@ export function usePaginatedFetch({
     setLoading(false);
     setLoadingMore(false);
     setThrottledUntil(null);
-  }, []);
+  }, [setThrottledUntil]);
 
   return {
     artworks,

@@ -1,4 +1,5 @@
 import { useRef, useState, useEffect, useCallback } from 'react';
+import { prefersReducedMotion } from '../utils/motion';
 
 /**
  * useImageZoom — zero-dependency pinch / pan / double-tap zoom for a single
@@ -28,10 +29,6 @@ const MAX_SCALE = 4;
 const DOUBLE_TAP_SCALE = 2.5;
 const DOUBLE_TAP_MS = 300;
 
-const prefersReduced = () =>
-  typeof window !== 'undefined' &&
-  window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-
 const clampScale = (s) => Math.max(1, Math.min(MAX_SCALE, s));
 
 export default function useImageZoom() {
@@ -48,7 +45,7 @@ export default function useImageZoom() {
     const img = imgRef.current;
     if (!img) return;
     const { scale, tx, ty } = view.current;
-    img.style.transition = animate && !prefersReduced() ? 'transform 0.2s ease' : 'none';
+    img.style.transition = animate && !prefersReducedMotion() ? 'transform 0.2s ease' : 'none';
     img.style.transform = `translate3d(${tx}px, ${ty}px, 0) scale(${scale})`;
     const z = scale > 1.01;
     setIsZoomed((prev) => (prev === z ? prev : z));

@@ -12,6 +12,7 @@ import ArtworkModal from './components/modal/ArtworkModal'
 import NotFound from './components/common/NotFound'
 import ErrorBoundary from './components/common/ErrorBoundary'
 import SplashScreen from './components/common/SplashScreen'
+import { shouldPlaySplash, markSplashSeen } from './components/common/splashGate'
 
 // The artwork modal is a route (/artwork/:id) rendered OVER whatever page the
 // user was on — the URL is the single source of truth for whether it's open.
@@ -48,25 +49,14 @@ function AppRoutes() {
   )
 }
 
-// The launch splash plays once per browser session (tab), not once per page
-// load: a pull-to-refresh or a reload mid-visit gets straight to the feed.
-// It also plays only when the session starts on the feed — its flier lands in
-// the feed's full banner, and a shared /artwork/:id link (or /liked, a grid)
-// opens under the collapsed banner, where the landing would not line up.
-const SPLASH_SEEN_KEY = 'immediart_splash_seen'
-const shouldPlaySplash = () => {
-  if (window.location.pathname !== '/') return false
-  try { return sessionStorage.getItem(SPLASH_SEEN_KEY) !== '1' } catch { return true }
-}
-
 export default function App() {
   // One-time launch animation, plays over the loading feed (also covers the
   // first fetch). Plays for everyone — including reduced-motion visitors
   // (owner's call for a personal app); it stays skippable by tapping anywhere.
-  const [showWelcome, setShowWelcome] = useState(shouldPlaySplash)
+  const [showWelcome, setShowWelcome] = useState(() => shouldPlaySplash())
   const dismissWelcome = () => {
     setShowWelcome(false)
-    try { sessionStorage.setItem(SPLASH_SEEN_KEY, '1') } catch { /* ignore */ }
+    markSplashSeen()
   }
 
   return (

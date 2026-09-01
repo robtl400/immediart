@@ -3,8 +3,9 @@
  *
  * Covers: one slide + one dot per image, opening the modal on the *current*
  * slide's full-res URL (click and keyboard), the onError → full-res fallback,
- * primary-image onLoad plumbing, and dot/arrow paging (scrollTo is stubbed since
- * jsdom doesn't implement it).
+ * primary-image onLoad plumbing, the lazy/eager loading ladder, the per-slide
+ * shimmer, and dot/arrow paging (scrollTo is stubbed since jsdom doesn't
+ * implement it).
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -83,6 +84,28 @@ describe('ImageCarousel', () => {
     expect(onPrimaryLoad).not.toHaveBeenCalled();
     fireEvent.load(imgs[0]);
     expect(onPrimaryLoad).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps every slide lazy until the primary loads, then pre-fetches only the next one', () => {
+    const { container } = setup();
+    const imgs = container.querySelectorAll('.carousel-slide img');
+    expect([...imgs].map(img => img.getAttribute('loading'))).toEqual(['lazy', 'lazy', 'lazy']);
+
+    fireEvent.load(imgs[0]);
+    // The primary has arrived, so the slide one swipe away is fetched ahead;
+    // everything past it stays lazy until it comes into range.
+    expect([...imgs].map(img => img.getAttribute('loading'))).toEqual(['lazy', 'eager', 'lazy']);
+  });
+
+  it('clears each slide\'s shimmer only when that slide\'s own image arrives', () => {
+    const { container } = setup();
+    const slides = container.querySelectorAll('.carousel-slide');
+    const placeholders = [...slides].map(s => s.querySelector('.image-placeholder'));
+    expect(placeholders.every(Boolean)).toBe(true);
+    expect(placeholders.map(p => p.classList.contains('loaded'))).toEqual([false, false, false]);
+
+    fireEvent.load(slides[1].querySelector('img'));
+    expect(placeholders.map(p => p.classList.contains('loaded'))).toEqual([false, true, false]);
   });
 
   it('a dot pages the strip via scrollTo', () => {

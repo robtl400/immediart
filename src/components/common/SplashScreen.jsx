@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import flyingMachine from '../../assets/FlyingMachine2_tinted_gold.png';
-import { TIMING, MAX_SCALE, buildFlightKeyframes } from './splashFlight';
+import { TIMING, MAX_SCALE, RESIZE_END_FRACTION, buildFlightKeyframes } from './splashFlight';
 import './SplashScreen.css';
 
 /**
@@ -15,7 +15,7 @@ import './SplashScreen.css';
  * the feed.
  *
  * The choreography (waypoints, timings — see splashFlight.js) runs on the Web
- * Animations API instead of CSS keyframes:
+ * Animations API:
  *   - it lifts off only once the flier has decoded and the wordmark font has
  *     loaded (capped at READY_WAIT_MS), so the first frames never stall on a
  *     decode and the title never swaps fonts mid-fade;
@@ -36,7 +36,13 @@ import './SplashScreen.css';
 const fadeIn = (el, delay, duration, easing = 'ease') =>
   el.animate([{ opacity: 0 }, { opacity: 1 }], { duration, delay, easing, fill: 'forwards' });
 
+// The skip hint names the input the visitor has: a pointer that hovers is a
+// mouse, and a keyboard beside it has the documented skip keys.
+const skipHintText = () =>
+  window.matchMedia?.('(hover: hover)').matches ? 'Click or press Esc to skip' : 'Tap to skip';
+
 export default function SplashScreen({ onDone }) {
+  const skipHint = useRef(skipHintText()).current;
   const overlayRef = useRef(null);
   const anchorRef  = useRef(null);
   const flierRef   = useRef(null);
@@ -87,14 +93,11 @@ export default function SplashScreen({ onDone }) {
       flier.style.left   = `${slot.left - box.left + slot.width / 2 - size / 2}px`;
       flier.style.top    = `${slot.top - box.top + slot.height / 2 - size / 2}px`;
 
-      // The keyframes are resolved to px for THIS viewport. A rotation or a
-      // window resize mid-flight would land the flier on a slot that has
-      // moved, so a real viewport change (not the few px of a settling
-      // toolbar) simply ends the splash.
+      // The keyframes are resolved to px for THIS viewport (see RESIZE_END_FRACTION).
       onResize = () => {
         const dw = Math.abs(overlay.clientWidth - box.width);
         const dh = Math.abs(overlay.clientHeight - box.height);
-        if (dw > box.width * 0.15 || dh > box.height * 0.15) finish();
+        if (dw > box.width * RESIZE_END_FRACTION || dh > box.height * RESIZE_END_FRACTION) finish();
       };
       window.addEventListener('resize', onResize);
 
@@ -155,7 +158,7 @@ export default function SplashScreen({ onDone }) {
         <h1 ref={titleRef} className="banner-title splash-title">ImmediArt</h1>
       </div>
       <img ref={flierRef} src={flyingMachine} alt="" className="splash-flier" draggable={false} decoding="async" />
-      <span ref={hintRef} className="splash-skip-hint">Tap to skip</span>
+      <span ref={hintRef} className="splash-skip-hint">{skipHint}</span>
     </div>
   );
 }

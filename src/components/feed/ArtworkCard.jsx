@@ -4,6 +4,7 @@ import { activateOnKey } from '../../utils/keyboard';
 import { useShareArtwork, shareLabel } from '../../hooks/useShareArtwork';
 import { buildSlides } from '../../utils/slides';
 import { clampFrameAspect } from '../../utils/frameAspect';
+import { artworkCaption } from '../../utils/transformers';
 import ImageCarousel from './ImageCarousel';
 
 /**
@@ -44,7 +45,7 @@ function ArtworkCard({ artwork, isLiked, onLike, onImageClick, onArtistClick, on
   };
 
   const hasArtist = Boolean(artwork.artistName);
-  const altText = `${artwork.title}${hasArtist ? ` by ${artwork.artistName}` : ''}`;
+  const altText = artworkCaption(artwork);
 
   // A card with additionalImages becomes a swipeable carousel; most works have a
   // single image and keep the lighter single-image path (and its aspect-driven

@@ -113,3 +113,9 @@ export function transformAPIToDisplay(apiArtwork) {
     additionalImages: apiArtwork.additionalImages || [],
   };
 }
+
+// "Title by Artist", or just the title for anonymous works (a large share of
+// the collection has no named artist). The alt text, share sheet and modal
+// caption all use it.
+export const artworkCaption = (artwork) =>
+  artwork.artistName ? `${artwork.title} by ${artwork.artistName}` : artwork.title;

@@ -1,9 +1,6 @@
 import { useRef, useState, useEffect, useCallback } from 'react';
 import { activateOnKey } from '../../utils/keyboard';
-
-const prefersReduced = () =>
-  typeof window !== 'undefined' &&
-  window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+import { scrollBehavior } from '../../utils/motion';
 
 /**
  * Horizontal image carousel for feed cards that have more than one image
@@ -47,7 +44,7 @@ export default function ImageCarousel({ slides, alt, frameAspect, onPrimaryLoad,
     const track = trackRef.current;
     if (!track) return;
     const clamped = Math.max(0, Math.min(i, slides.length - 1));
-    track.scrollTo({ left: clamped * track.clientWidth, behavior: prefersReduced() ? 'auto' : 'smooth' });
+    track.scrollTo({ left: clamped * track.clientWidth, behavior: scrollBehavior() });
   }, [slides.length]);
 
   const onKeyDown = (e) => {
@@ -80,7 +77,11 @@ export default function ImageCarousel({ slides, alt, frameAspect, onPrimaryLoad,
                 tabIndex={0}
                 aria-label={`Open details for ${alt}`}
                 onKeyDown={activateOnKey(() => onOpen(slide.full))}
-                loading={i <= active + 1 ? 'eager' : 'lazy'} /* the next slide is fetched before it is swiped to */
+                /* Every slide is lazy until the primary has loaded — which only
+                   happens near the viewport — then the next slide is fetched
+                   before it is swiped to. A card appended far below the fold
+                   costs nothing until it is nearly on screen. */
+                loading={i > 0 && loaded.has(0) && i <= active + 1 ? 'eager' : 'lazy'}
                 decoding="async"
                 draggable={false}
               />

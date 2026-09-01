@@ -847,20 +847,20 @@ describe('RequestManager — 429/5xx are strain, not a ban', () => {
     expect(rm.budgetWaitMs).toBeLessThanOrEqual(60000);
   });
 
-  it('retryAfterMs counts down the OPEN period and is 0 once HALF_OPEN', async () => {
+  it('breakerWaitMs counts down the OPEN period and is 0 once HALF_OPEN', async () => {
     globalThis.fetch.mockImplementation(err403);
     const rm = makeManager();
     for (let i = 0; i < 5; i++) {
       try { await rm.fetch('http://x', null); } catch { /* expected */ }
     }
     expect(rm.state).toBe('OPEN');
-    expect(rm.retryAfterMs).toBeGreaterThan(59000);
+    expect(rm.breakerWaitMs).toBeGreaterThan(59000);
     await vi.advanceTimersByTimeAsync(30000);
-    expect(rm.retryAfterMs).toBeGreaterThan(29000);
-    expect(rm.retryAfterMs).toBeLessThanOrEqual(30000);
+    expect(rm.breakerWaitMs).toBeGreaterThan(29000);
+    expect(rm.breakerWaitMs).toBeLessThanOrEqual(30000);
     await vi.advanceTimersByTimeAsync(30000);
     expect(rm.state).toBe('HALF_OPEN');
-    expect(rm.retryAfterMs).toBe(0);
+    expect(rm.breakerWaitMs).toBe(0);
   });
 });
 
@@ -938,8 +938,8 @@ describe('RequestManager — breaker state persists across a reload', () => {
 
     const b = makeManager({ persistKey: KEY }); // the reload
     expect(b.state).toBe('OPEN');
-    expect(b.retryAfterMs).toBeGreaterThan(39000);
-    expect(b.retryAfterMs).toBeLessThanOrEqual(40000);
+    expect(b.breakerWaitMs).toBeGreaterThan(39000);
+    expect(b.breakerWaitMs).toBeLessThanOrEqual(40000);
     await expect(b.fetch('http://y', null)).rejects.toThrow(/circuit breaker/i);
     await vi.advanceTimersByTimeAsync(40000);
     expect(b.state).toBe('HALF_OPEN');
@@ -960,7 +960,7 @@ describe('RequestManager — breaker state persists across a reload', () => {
     await a.fetch('http://x', null);
     const b = makeManager({ persistKey: KEY });
     expect(b.state).toBe('CLOSED');
-    expect(b.retryAfterMs).toBe(0);
+    expect(b.breakerWaitMs).toBe(0);
   });
 });
 
@@ -1037,5 +1037,99 @@ describe('RequestManager — HALF_OPEN after a wait, and trips with queued calle
     const queued = rm.fetch('http://queued', null);
     rm.reportBlockPage(); // a block page seen elsewhere trips it mid-probe
     await expect(queued).rejects.toThrow(/circuit breaker/i);
+  });
+});
+
+describe('RequestManager — Retry-After as an HTTP date', () => {
+  const withHeaders = (status, headers = {}) => () =>
+    Promise.resolve({ status, headers: { get: (h) => headers[h.toLowerCase()] ?? null } });
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-01T12:00:00Z'));
+    vi.stubGlobal('fetch', vi.fn());
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it('a date in the future holds until then', async () => {
+    globalThis.fetch.mockImplementationOnce(withHeaders(503, { 'retry-after': new Date(Date.now() + 5000).toUTCString() }));
+    const rm = makeManager();
+    await rm.fetch('http://x', null);
+    expect(rm.budgetWaitMs).toBeGreaterThan(3900); // HTTP dates have one-second resolution
+    expect(rm.budgetWaitMs).toBeLessThanOrEqual(5000);
+  });
+
+  it('a date in the past, or an unparseable value, holds nothing', async () => {
+    globalThis.fetch
+      .mockImplementationOnce(withHeaders(503, { 'retry-after': new Date(Date.now() - 5000).toUTCString() }))
+      .mockImplementationOnce(withHeaders(503, { 'retry-after': 'soon' }));
+    const rm = makeManager();
+    await rm.fetch('http://x', null);
+    expect(rm.budgetWaitMs).toBe(0);
+    await rm.fetch('http://y', null);
+    expect(rm.budgetWaitMs).toBe(0);
+  });
+});
+
+describe('RequestManager — unreadable storage', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.stubGlobal('fetch', vi.fn(ok200));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it('a getItem that throws reads as an empty bucket and a fresh breaker', async () => {
+    vi.stubGlobal('localStorage', { getItem: () => { throw new Error('SecurityError'); }, setItem: () => {} });
+    const rm = makeManager({ requestBudget: 5, requestBudgetWindowMs: 10000, persistKey: 'k' });
+    expect(rm.state).toBe('CLOSED');
+    expect(rm.budgetWaitMs).toBe(0);
+    await rm.fetch('http://x', null);
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('RequestManager — an offline probe', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.stubGlobal('fetch', vi.fn());
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it('releases the probe slot and promotes the queued caller once the network is back', async () => {
+    globalThis.fetch.mockImplementation(err403);
+    const rm = makeManager();
+    for (let i = 0; i < 5; i++) {
+      try { await rm.fetch('http://x', null); } catch { /* expected */ }
+    }
+    await vi.advanceTimersByTimeAsync(60000);
+    expect(rm.state).toBe('HALF_OPEN');
+
+    vi.stubGlobal('navigator', { onLine: false });
+    let failProbe, resolvePromoted;
+    globalThis.fetch
+      .mockImplementationOnce(() => new Promise((_, reject) => { failProbe = reject; }))
+      .mockImplementationOnce(() => new Promise((resolve) => { resolvePromoted = resolve; }));
+    const probe  = rm.fetch('http://probe', null);
+    const queued = rm.fetch('http://queued', null);
+    probe.catch(() => {});
+    await vi.advanceTimersByTimeAsync(0); // the probe leaves the dispatch queue
+
+    failProbe(new TypeError('Failed to fetch')); // the drop, not the Met
+    await vi.advanceTimersByTimeAsync(100);
+    expect(rm.state).toBe('HALF_OPEN');           // says nothing about the API
+    expect(globalThis.fetch).toHaveBeenCalledTimes(7); // the queued caller is now the probe
+
+    vi.stubGlobal('navigator', { onLine: true });
+    resolvePromoted({ status: 200 });
+    await queued;
+    expect(rm.state).toBe('CLOSED');
   });
 });

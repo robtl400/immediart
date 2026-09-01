@@ -9,8 +9,21 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { useState } from 'react';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 import ArtworkCard from './ArtworkCard';
+
+// The card calls useShareArtwork exactly once per render, so this spy doubles
+// as the card's render counter. shareLabel stays real — the share button's
+// visible label is asserted elsewhere in this file.
+const shareHookCall = vi.hoisted(() => vi.fn());
+vi.mock('../../hooks/useShareArtwork', async (importOriginal) => ({
+  ...(await importOriginal()),
+  useShareArtwork: () => {
+    shareHookCall();
+    return { copied: false, failed: false, share: vi.fn() };
+  },
+}));
 
 // ArtworkCard is purely presentational — it must not navigate on its own.
 // mockNavigate exists only to assert that nothing router-related is invoked.
@@ -362,5 +375,63 @@ describe('ArtworkCard — adaptive frame', () => {
     fireEvent.load(img);
 
     expect(frame.dataset.frameAspect).toBe('1.6'); // panorama clamped to the wide cap
+  });
+});
+
+// ─── memoisation ──────────────────────────────────────────────────────────────
+//
+// The card is exported wrapped in React.memo. The feed re-renders on every like
+// and every scroll-driven state change, so a card whose own props are unchanged
+// must skip its render entirely; only the card whose isLiked flipped re-renders.
+// The module-level callbacks and artwork below stand in for the feed's stable
+// (useCallback'd) props — with fresh identities each parent render, memo could
+// never bail out and this test would prove nothing.
+
+const memoArtwork = makeArtwork();
+const memoOnLike = vi.fn();
+const memoOnImageClick = vi.fn();
+const memoOnArtistClick = vi.fn();
+const memoOnTagClick = vi.fn();
+
+function MemoHarness() {
+  const [count, setCount] = useState(0);
+  const [liked, setLiked] = useState(false);
+  return (
+    <>
+      <button data-testid="bump" onClick={() => setCount((c) => c + 1)}>bump {count}</button>
+      <button data-testid="flip" onClick={() => setLiked((l) => !l)}>flip</button>
+      <ArtworkCard
+        artwork={memoArtwork}
+        isLiked={liked}
+        onLike={memoOnLike}
+        onImageClick={memoOnImageClick}
+        onArtistClick={memoOnArtistClick}
+        onTagClick={memoOnTagClick}
+      />
+    </>
+  );
+}
+
+describe('ArtworkCard — memoisation', () => {
+  beforeEach(() => shareHookCall.mockClear());
+
+  it('does not re-render when the parent re-renders with unrelated state', () => {
+    render(<MemoHarness />);
+    const rendersAfterMount = shareHookCall.mock.calls.length;
+
+    act(() => { fireEvent.click(screen.getByTestId('bump')); });
+
+    expect(screen.getByTestId('bump').textContent).toContain('1'); // parent did re-render
+    expect(shareHookCall.mock.calls.length).toBe(rendersAfterMount);
+  });
+
+  it('re-renders once when isLiked flips', () => {
+    render(<MemoHarness />);
+    const rendersAfterMount = shareHookCall.mock.calls.length;
+
+    act(() => { fireEvent.click(screen.getByTestId('flip')); });
+
+    expect(shareHookCall.mock.calls.length).toBe(rendersAfterMount + 1);
+    expect(screen.getByRole('button', { name: 'Like', pressed: true })).toBeTruthy();
   });
 });

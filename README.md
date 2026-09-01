@@ -80,7 +80,7 @@ The parts that were hard, and how they are handled:
 
 **Staying under a limit that bans on volume.** Every request passes through one dispatch queue with a rolling budget of 60 per minute, kept below the measured ban threshold and persisted in local storage so a reload or a second tab cannot spend a second bucket. A 403 (or a block page served with a 200) opens a circuit breaker for the measured penalty length, escalating on a failed probe; going offline or hitting a busy server never trips it. When the app is waiting on purpose, the feed says so and counts down.
 
-**Never fetching the same thing twice.** Every artwork the API returns is cached, including the ones the feed rejects, which are the majority: a reject that was refetched by every scan window used to cost about twelve requests per rendered card. 404s are tombstoned for an hour. Paginated ID lists are cached for a day.
+**Never fetching the same thing twice.** Every artwork the API returns is cached, including the ones the feed rejects, which are the majority: an uncached reject would be refetched by every scan window that revisits its id, about twelve requests per rendered card. 404s are tombstoned for an hour. Paginated ID lists are cached for a day.
 
 **Pagination over a shuffled list with holes.** A batch scans candidate IDs, skips ones already shown, and advances the cursor only past the id that produced the last kept artwork, so over-fetched or unattempted ids stay visitable. A batch that fails on transport errors is retried once quietly, then surfaced as a retryable error instead of being skipped. Each card renders the moment its artwork resolves, in order.
 

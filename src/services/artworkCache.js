@@ -76,33 +76,55 @@ function openDB() {
 // soonest-to-expire are dropped first.
 const MAX_ARTWORK_ENTRIES = 5000;
 
-function cleanupExpired(db) {
-  const now = Date.now();
-  for (const storeName of ['ids', 'artworks']) {
+// The walk is read-only, so the feed's cache reads (which every fetch awaits)
+// are never queued behind it; the deletions land in one short readwrite
+// transaction at the end. Resolves when every store has been swept.
+function cleanupExpired(db, { now = Date.now(), maxArtworkEntries = MAX_ARTWORK_ENTRIES } = {}) {
+  const sweeps = ['ids', 'artworks'].map((storeName) => /** @type {Promise<void>} */ (new Promise((resolve) => {
     try {
-      const tx = db.transaction(storeName, 'readwrite');
-      const store = tx.objectStore(storeName);
-      const live = []; // { key, expiresAt } of entries kept, for the size cap
-      const req = store.openCursor();
-      req.onsuccess = () => {
-        const cursor = req.result;
-        if (!cursor) {
-          if (storeName === 'artworks' && live.length > MAX_ARTWORK_ENTRIES) {
-            live.sort((a, b) => a.expiresAt - b.expiresAt);
-            for (const { key } of live.slice(0, live.length - MAX_ARTWORK_ENTRIES)) store.delete(key);
+      const scan = db.transaction(storeName, 'readonly').objectStore(storeName);
+      const countReq = scan.count();
+      countReq.onsuccess = () => {
+        // Only a store over the cap pays for the kept-entries list and sort.
+        const overCap = storeName === 'artworks' && countReq.result > maxArtworkEntries;
+        const doomed = [];
+        const live = []; // { key, expiresAt } of entries kept, for the size cap
+        const req = scan.openCursor();
+        req.onsuccess = () => {
+          const cursor = req.result;
+          if (cursor) {
+            const { expiresAt } = cursor.value;
+            if (now > expiresAt) doomed.push(cursor.key);
+            else if (overCap) live.push({ key: cursor.key, expiresAt });
+            cursor.continue();
+            return;
           }
-          return;
-        }
-        if (now > cursor.value.expiresAt) {
-          cursor.delete();
-        } else {
-          live.push({ key: cursor.key, expiresAt: cursor.value.expiresAt });
-        }
-        cursor.continue();
+          if (overCap && live.length > maxArtworkEntries) {
+            live.sort((a, b) => a.expiresAt - b.expiresAt);
+            for (const { key } of live.slice(0, live.length - maxArtworkEntries)) doomed.push(key);
+          }
+          if (doomed.length === 0) { resolve(); return; }
+          const tx = db.transaction(storeName, 'readwrite');
+          const store = tx.objectStore(storeName);
+          for (const key of doomed) store.delete(key);
+          tx.oncomplete = tx.onerror = tx.onabort = () => resolve();
+        };
+        req.onerror = () => resolve();
       };
+      countReq.onerror = () => resolve();
     } catch {
-      // Swallow — cleanup is best-effort
+      resolve(); // cleanup is best-effort
     }
+  })));
+  return Promise.all(sweeps);
+}
+
+// Sweep now (tests, and any caller that wants the cache trimmed on demand).
+export async function sweepCache(options) {
+  try {
+    await cleanupExpired(await openDB(), options);
+  } catch {
+    // no database — nothing to sweep
   }
 }
 

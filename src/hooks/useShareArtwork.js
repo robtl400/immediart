@@ -1,10 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { SHARE_FEEDBACK_MS } from '../utils/constants';
-
-// Share sheet text: "Title by Artist", or just the title for anonymous works
-// (a large share of the collection has no named artist).
-export const shareText = (artwork) =>
-  artwork.artistName ? `${artwork.title} by ${artwork.artistName}` : artwork.title;
+import { artworkCaption } from '../utils/transformers';
 
 /**
  * Share an artwork via the Web Share API, falling back to copying its deep link
@@ -38,7 +34,7 @@ export function useShareArtwork() {
 
     if (navigator.share) {
       try {
-        await navigator.share({ title: artwork.title, text: shareText(artwork), url });
+        await navigator.share({ title: artwork.title, text: artworkCaption(artwork), url });
       } catch (err) {
         if (err.name !== 'AbortError') await copyWithFeedback();
       }

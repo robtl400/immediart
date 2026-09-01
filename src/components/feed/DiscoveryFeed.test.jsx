@@ -197,6 +197,54 @@ describe('DiscoveryFeed — hover prefetch debounce', () => {
   });
 });
 
+describe('DiscoveryFeed — hover prefetch gate', () => {
+  // Prefetch is wired only where hover exists: the feed reads
+  // `(hover: hover)` once and, on a device that reports no hover, passes the
+  // card no onArtistHover/onTagHover at all — a finger brushing chips while
+  // scrolling must not spend the shared search budget. The stub answers every
+  // query with the same `matches`, so the feed's other media-query reads
+  // (reduced motion, on keyboard nav) still get a well-formed list.
+  let localStorageMock;
+
+  beforeEach(() => {
+    localStorageMock = makeLocalStorageMock();
+    vi.stubGlobal('localStorage', localStorageMock);
+    vi.useFakeTimers();
+    useArtworks.mockReturnValue(makeArtworksContext());
+    searchByArtist.mockClear();
+    searchByTag.mockClear();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it('does not prefetch on artist hover when the device reports no hover', () => {
+    vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({ matches: false }));
+    render(<DiscoveryFeed />);
+    fireEvent.mouseEnter(screen.getByRole('button', { name: /vangogh/i }));
+    act(() => vi.advanceTimersByTime(150));
+    expect(searchByArtist).not.toHaveBeenCalled();
+  });
+
+  it('prefetches on artist hover when the device reports hover', () => {
+    vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({ matches: true }));
+    render(<DiscoveryFeed />);
+    fireEvent.mouseEnter(screen.getByRole('button', { name: /vangogh/i }));
+    act(() => vi.advanceTimersByTime(150));
+    expect(searchByArtist).toHaveBeenCalledWith('Van Gogh');
+  });
+
+  it('does not prefetch on tag hover when the device reports no hover', () => {
+    vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({ matches: false }));
+    render(<DiscoveryFeed />);
+    fireEvent.mouseEnter(screen.getByRole('button', { name: /#impressionism/i }));
+    act(() => vi.advanceTimersByTime(150));
+    expect(searchByTag).not.toHaveBeenCalled();
+  });
+});
+
 describe('DiscoveryFeed — keyboard navigation', () => {
   let localStorageMock;
 

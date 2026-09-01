@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Fixed
+- The request bucket keeps counting when local storage is unusable (private mode, a full quota), spends no tokens while the browser is offline, and the circuit breaker's state, its escalation and a `Retry-After` hold now survive a reload
+- Callers that wake into a half-open breaker follow the single-probe rule; tripping the breaker while callers wait behind a probe rejects them instead of stranding them; a block page arriving just after a probe closed the breaker reopens it with its escalation
+- A like is removed only after the Met has 404'd it on two visits half an hour apart, so a deploy that 404s for a minute cannot wipe the liked page
+- The feed retries once when it comes back into view in an error state, the throttle countdown on a populated feed is reachable in the snap container, and an empty prefetch window no longer stalls infinite scroll
+
+### Changed
+- The modal fetches the full-resolution original only once you zoom; a look costs the web-large copy the card already had
+- Carousel slides stay lazy until the primary has loaded near the viewport, then the next slide is fetched ahead of a swipe
+- Tapping the logo while the first batch is still loading, or within three seconds of the last reshuffle, only scrolls to the top
+- The cache sweep walks the store read-only and deletes in one short transaction, so cache reads are never queued behind it; artwork cache writes no longer hold up the render of the card they belong to
+- The throttle countdown samples an absolute resume time, so a running wait no longer re-renders the provider tree every second
+- Empty-state and retry buttons meet the 44px touch target and draw the focus ring; the splash skip hint names the input you have
+
+### For contributors
+- One `LoadStatus` component renders the countdown-or-error in every view, one `GridHeader` carries the back control for grids, and reduced-motion, offline and storage checks live in `src/utils`
+- The outage-window rules and the throttle countdown are their own modules with their own tests; the breaker's remaining time is `breakerWaitMs`, the gate's next dispatch time `nextDispatchAt`
+
 ## [0.1.0] - 2026-09-01
 
 Everything since 0.0.3, in the order it shipped.

@@ -8,20 +8,11 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
-import { useShareArtwork, shareText, shareLabel } from './useShareArtwork';
+import { useShareArtwork, shareLabel } from './useShareArtwork';
 import { SHARE_FEEDBACK_MS } from '../utils/constants';
 
 const named = { id: 7, title: 'The Garter', artistName: 'Jean François de Troy' };
 const anonymous = { id: 8, title: 'Portrait of a Man', artistName: '' };
-
-describe('shareText', () => {
-  it('names the artist when there is one', () => {
-    expect(shareText(named)).toBe('The Garter by Jean François de Troy');
-  });
-  it('is just the title for anonymous works — never "Title by "', () => {
-    expect(shareText(anonymous)).toBe('Portrait of a Man');
-  });
-});
 
 describe('useShareArtwork', () => {
   beforeEach(() => {

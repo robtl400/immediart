@@ -331,3 +331,24 @@ describe('ArtworksContext — MAX_ARTWORKS_IN_MEMORY trim', () => {
     expect(result.current.artworks.length).toBeLessThanOrEqual(MAX_ARTWORKS_IN_MEMORY);
   });
 });
+
+describe('ArtworksContext — refresh', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.clearAllMocks();
+    getCachedIDs.mockResolvedValue(ALL_IDS);
+    batchFetchArtworks.mockResolvedValue(makeBatch(FEED_BATCH_SIZE));
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it('reshuffles at once from the cached ID list: one reset, no delay, no cache wipe', async () => {
+    const { result } = renderHook(() => useArtworks(), { wrapper: ArtworksProvider });
+    await act(async () => { await vi.runAllTimersAsync(); });
+    const idFetches = fetchAllObjectIDs.mock.calls.length;
+    await act(async () => { result.current.refresh(); });
+    expect(fetchAllObjectIDs.mock.calls.length).toBe(idFetches + 1); // synchronous, no recovery timer
+    await act(async () => { await vi.runAllTimersAsync(); });
+    expect(fetchAllObjectIDs.mock.calls.length).toBe(idFetches + 1); // and only one
+    expect(result.current.artworks.length).toBeGreaterThan(0);
+  });
+});

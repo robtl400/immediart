@@ -7,7 +7,7 @@
 import { createContext, useContext, useEffect, useCallback, useRef } from 'react';
 import { fetchAllObjectIDs } from '../services/metAPI';
 import { usePaginatedFetch } from '../hooks/usePaginatedFetch';
-import { FEED_BATCH_SIZE, FEED_INITIAL_BATCH_SIZE, MAX_ARTWORKS_IN_MEMORY, RATE_LIMIT_RECOVERY_MS } from '../utils/constants';
+import { FEED_BATCH_SIZE, FEED_INITIAL_BATCH_SIZE, MAX_ARTWORKS_IN_MEMORY } from '../utils/constants';
 
 const ArtworksContext = createContext(null);
 
@@ -31,33 +31,17 @@ export function ArtworksProvider({ children }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Retry — waits for rate limit recovery, then re-fetches from scratch if
-  // no artworks are shown, or re-fetches more if some artworks exist
-  // The recovery timer is cancelled by pause(): navigating to a grid inside
-  // that second must not restart the feed fetch in the background, where it
-  // would compete with the grid for the shared request budget.
-  const retryTimer = useRef(null);
-  const retry = useCallback(() => {
-    feed.pause();
-    clearTimeout(retryTimer.current);
-    retryTimer.current = setTimeout(() => feed.reset((signal) => fetchAllObjectIDs(signal)), RATE_LIMIT_RECOVERY_MS);
-  }, [feed]);
-  const feedPause = feed.pause; // stable (the hook's pause is a fixed callback)
-  const pause = useCallback(() => {
-    clearTimeout(retryTimer.current);
-    feedPause();
-  }, [feedPause]);
-
   // Refresh — a fresh shuffle of the feed. The cache stays: the ID list and
   // every cached artwork (including the negative cache that keeps rejected
   // ids from costing ~12 requests per card) serve the new feed instantly, and
   // a "go home" tap must never spend the request budget on refetching what
-  // the app already knows.
+  // the app already knows. (Recovery from an error is the hook's own
+  // retryLoadMore, which paces itself.)
+  const { pause: feedPause, reset: feedReset } = feed; // stable hook callbacks
   const refresh = useCallback(() => {
-    clearTimeout(retryTimer.current);
-    feed.pause();
-    feed.reset((signal) => fetchAllObjectIDs(signal));
-  }, [feed]);
+    feedPause();
+    feedReset((signal) => fetchAllObjectIDs(signal));
+  }, [feedPause, feedReset]);
 
   const value = {
     artworks:       feed.artworks,
@@ -68,9 +52,8 @@ export function ArtworksProvider({ children }) {
     throttledUntil: feed.throttledUntil,
     loadMoreArtworks: feed.loadMore,
     retryLoadMore:  feed.retryLoadMore,
-    retry,
     refresh,
-    pause,
+    pause:          feed.pause,
     feedScrollRef,
   };
 

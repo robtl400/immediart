@@ -2,11 +2,13 @@
  * SplashScreen — the one-time launch animation.
  *
  * Covers: it renders the flier, the crest anchor and the wordmark; is
- * decorative + tap/keyboard skippable; lifts off only once ready, with the
- * flier laid out at its largest size over the logo slot and scaled DOWN to
- * land; finishes only on the overlay fade (not the flight); is idempotent;
- * has a backstop timeout; cancels its animations on unmount; and reveals the
- * app at once where the Web Animations API is missing.
+ * decorative + tap/keyboard skippable; lifts off only once ready — and no later
+ * than READY_WAIT_MS — with the flier laid out at its largest size over the
+ * logo slot and scaled DOWN to land; finishes only on the overlay fade (not the
+ * flight); is idempotent; has a backstop timeout; ends on a viewport change
+ * past RESIZE_END_FRACTION but rides out smaller ones; cancels its animations
+ * on unmount; and reveals the app at once where the Web Animations API is
+ * missing.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -160,6 +162,50 @@ describe('SplashScreen', () => {
     // jsdom's clientWidth/clientHeight are 0 — a 100% change against the measured 390x844 box
     await act(async () => { window.dispatchEvent(new Event('resize')); });
     expect(onDone).toHaveBeenCalledTimes(1);
+  });
+
+  it('rides out a small viewport change and ends only once one axis passes RESIZE_END_FRACTION', async () => {
+    const onDone = vi.fn();
+    const { container } = render(<SplashScreen onDone={onDone} />);
+    await flush();
+
+    // The overlay measured 390x844 at lift-off (RECTS). Give it live client
+    // dimensions so the resize handler compares against a real box.
+    const overlay = container.querySelector('.splash-screen');
+    const setClientSize = (width, height) => {
+      Object.defineProperty(overlay, 'clientWidth', { value: width, configurable: true });
+      Object.defineProperty(overlay, 'clientHeight', { value: height, configurable: true });
+    };
+
+    // A settling mobile toolbar: ~5% off the height, under the 15% threshold
+    setClientSize(390, 800);
+    await act(async () => { window.dispatchEvent(new Event('resize')); });
+    expect(onDone).not.toHaveBeenCalled();
+
+    // A real rotation/window change: >50% off the height, over the threshold
+    setClientSize(390, 400);
+    await act(async () => { window.dispatchEvent(new Event('resize')); });
+    expect(onDone).toHaveBeenCalledTimes(1);
+  });
+
+  it('lifts off at READY_WAIT_MS even while the decode and the font are still pending', async () => {
+    vi.useFakeTimers();
+    // jsdom implements neither, so define both as promises that never settle
+    const pending = () => new Promise(() => {});
+    Object.defineProperty(HTMLImageElement.prototype, 'decode', { value: pending, configurable: true });
+    Object.defineProperty(document, 'fonts', { value: { load: pending }, configurable: true });
+
+    try {
+      render(<SplashScreen onDone={vi.fn()} />);
+      await act(async () => { await vi.advanceTimersByTimeAsync(TIMING.READY_WAIT_MS - 1); });
+      expect(animations).toHaveLength(0);
+
+      await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+      expect(animations).toHaveLength(4); // flight, wordmark, skip hint, overlay fade
+    } finally {
+      delete HTMLImageElement.prototype.decode;
+      delete document.fonts;
+    }
   });
 
   it('cancels its animations on unmount (StrictMode double-mount, early skip)', async () => {

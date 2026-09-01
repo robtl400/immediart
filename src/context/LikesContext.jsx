@@ -11,6 +11,7 @@
 /* eslint-disable react-refresh/only-export-components */
 
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { readStorage, writeStorage } from '../utils/storage';
 
 const LIKES_KEY = 'immediart_liked_artworks';
 const LIKES_VERSION = 1;
@@ -90,7 +91,7 @@ export function LikesProvider({ children }) {
   const reportNotFound = useCallback((id) => {
     const n = Number(id);
     let seen = {};
-    try { seen = JSON.parse(localStorage.getItem(NOT_FOUND_KEY) || '{}') || {}; } catch { seen = {}; }
+    try { seen = JSON.parse(readStorage('localStorage', NOT_FOUND_KEY) || '{}') || {}; } catch { seen = {}; }
     const now = Date.now();
     const first = seen[n];
     if (first && now - first >= NOT_FOUND_CONFIRM_GAP_MS) {
@@ -99,7 +100,7 @@ export function LikesProvider({ children }) {
     } else if (!first) {
       seen[n] = now;
     }
-    try { localStorage.setItem(NOT_FOUND_KEY, JSON.stringify(seen)); } catch { /* ignore */ }
+    writeStorage('localStorage', NOT_FOUND_KEY, JSON.stringify(seen));
   }, [pruneLike]);
 
   const value = { likedIds, toggleLike, pruneLike, reportNotFound, isLiked };

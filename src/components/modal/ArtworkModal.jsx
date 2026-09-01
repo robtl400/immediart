@@ -4,7 +4,7 @@ import { useArtworkModal } from '../../context/ArtworkModalContext';
 import { useLikes } from '../../context/LikesContext';
 import { useShareArtwork, shareLabel } from '../../hooks/useShareArtwork';
 import { fetchArtworkByID } from '../../services/metAPI';
-import { transformAPIToDisplay } from '../../utils/transformers';
+import { transformAPIToDisplay, artworkCaption } from '../../utils/transformers';
 import { activateOnKey } from '../../utils/keyboard';
 import { toWebLarge } from '../../utils/slides';
 import useImageZoom from '../../hooks/useImageZoom';
@@ -20,15 +20,16 @@ function ModalImage({ artwork }) {
   const [imageError, setImageError] = useState(false);
   const [imageLoaded, setImageLoaded] = useState(false);
   const { containerRef, imgRef, handlers, isZoomed } = useImageZoom();
-  // The full-resolution original can be several megabytes; the web-large copy
-  // is what the card already showed, so it is in the browser cache. Show that
-  // at once and swap the original in when it has arrived (the zoom then has
-  // the pixels it needs). A direct load with no card behind it does the same.
+  // The web-large copy is what the card already showed, so it is in the
+  // browser cache and paints at once. The full-resolution original can be
+  // several megabytes; the zoom is the one view that needs more pixels than
+  // the web-large copy, so the original is fetched only once the user zooms,
+  // decoded off-screen, then swapped in.
   const full  = artwork.viewImageUrl || artwork.primaryImageFull || artwork.imageUrl;
   const quick = artwork.viewImageUrl ? toWebLarge(artwork.viewImageUrl) : artwork.imageUrl;
   const [src, setSrc] = useState(quick || full);
   useEffect(() => {
-    if (!full || full === src) return;
+    if (!isZoomed || !full || full === src) return;
     let cancelled = false;
     const img = new Image();
     // Decode before swapping, not just fetch: an undecoded multi-MB original
@@ -41,7 +42,7 @@ function ModalImage({ artwork }) {
       img.src = ''; // closing the modal cancels the transfer instead of finishing it on mobile data
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [full]);
+  }, [isZoomed, full]);
 
   if (imageError) {
     return (
@@ -71,7 +72,7 @@ function ModalImage({ artwork }) {
         <img
           ref={imgRef}
           src={src}
-          alt={artwork.artistName ? `${artwork.title} by ${artwork.artistName}` : artwork.title}
+          alt={artworkCaption(artwork)}
           className="artwork-modal-image"
           onLoad={() => setImageLoaded(true)}
           onError={() => { if (src !== full) setSrc(full); else setImageError(true); }} /* a missing web-large copy still tries the original */
