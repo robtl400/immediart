@@ -5,6 +5,13 @@
 
 // API Configuration
 export const API_BASE_URL = 'https://collectionapi.metmuseum.org/public/collection/v1';
+// Search is paginated: at most 500 IDs per page, and offsets past 10,000
+// return nothing (Elastic window).
+export const SEARCH_URL = 'https://collectionapi.metmuseum.org/public/collection/v1.1/search';
+export const SEARCH_PAGE_SIZE = 500;
+// Every page costs one request from the rolling budget below, so cap the walk.
+export const SEARCH_MAX_PAGES = 1;  // artist/tag/search grids and hover prefetch: up to 500 IDs
+export const FEED_SEARCH_PAGES = 4; // discovery feed pool: up to 2,000 paintings
 
 // Parallel Fetching Configuration
 // Re-measured 2026-07-07 via scripts/api-probe.mjs (see scripts/API-FINDINGS.md):

@@ -54,6 +54,7 @@ import { fileURLToPath } from 'node:url';
 import { writeFile } from 'node:fs/promises';
 
 const BASE_URL = 'https://collectionapi.metmuseum.org/public/collection/v1';
+const SEARCH_URL = 'https://collectionapi.metmuseum.org/public/collection/v1.1/search'; // 500 IDs per page at most
 
 const ARGS = Object.fromEntries(
   process.argv.slice(2)
@@ -224,12 +225,12 @@ async function withConcurrency(items, limit, fn) {
 // One search seeds every phase; IDs are partitioned so no phase re-hits an ID
 // another phase warmed in the CDN cache (except cacheRepeat, by design).
 async function buildIdPool(rand) {
-  const url = `${BASE_URL}/search?hasImages=true&medium=Paintings&q=painting`;
+  const url = `${SEARCH_URL}?limit=500&hasImages=true&medium=Paintings&q=painting`;
   const r = await fetchJson(url);
   if (!r.json) throw new Error(`Seed search failed: ${r.status}${r.blockPage ? ' (block page)' : ''}`);
   const ids = shuffled(r.json.objectIDs || [], rand);
   if (ids.length < 300) throw new Error(`Seed search returned only ${ids.length} IDs`);
-  console.log(`ID pool: ${r.json.total} paintings, all shuffled (seed search: ${r.totalMs}ms, ${Math.round(r.bytes / 1024)}KB)`);
+  console.log(`ID pool: ${ids.length} of ${r.json.total} paintings, shuffled (seed search: ${r.totalMs}ms, ${Math.round(r.bytes / 1024)}KB)`);
   let cursor = 0;
   return {
     seedSearch: { status: r.status, totalMs: r.totalMs, bytes: r.bytes },
@@ -255,7 +256,7 @@ async function phaseAppPath(pool) {
   const t0 = performance.now();
 
   // Stage 1: search (fresh query string to dodge any CDN cache of the seed search)
-  const search = await timedFetch(`${BASE_URL}/search?hasImages=true&medium=Paintings&q=paintings`);
+  const search = await timedFetch(`${SEARCH_URL}?limit=500&hasImages=true&medium=Paintings&q=paintings`);
   const tSearch = performance.now() - t0;
 
   // Stage 2: mimic the app's initial batch — target 2 cards, overfetch 2x
@@ -336,10 +337,10 @@ async function phaseBaseline(pool) {
 async function phaseSearch() {
   console.log('\n═══ Phase: search — the app\'s real query shapes ═══');
   const queries = [
-    ['feed (medium=Paintings)', `${BASE_URL}/search?hasImages=true&medium=Paintings&q=portrait`],
-    ['artist (artistOrCulture)', `${BASE_URL}/search?hasImages=true&artistOrCulture=true&q=Claude%20Monet`],
-    ['tag/free-text', `${BASE_URL}/search?hasImages=true&q=landscape`],
-    ['narrow free-text', `${BASE_URL}/search?hasImages=true&q=astrolabe`],
+    ['feed (medium=Paintings)', `${SEARCH_URL}?limit=500&hasImages=true&medium=Paintings&q=portrait`],
+    ['artist (artistOrCulture)', `${SEARCH_URL}?limit=500&hasImages=true&artistOrCulture=true&q=Claude%20Monet`],
+    ['tag/free-text', `${SEARCH_URL}?limit=500&hasImages=true&q=landscape`],
+    ['narrow free-text', `${SEARCH_URL}?limit=500&hasImages=true&q=astrolabe`],
   ];
   const rows = [];
   const raw = [];

@@ -261,6 +261,106 @@ describe('search() — q param must be serialized last', () => {
   });
 });
 
+describe('search() — v1.1 pagination', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  const page = (n, start, total) => ({
+    ok: true,
+    json: async () => ({ total, objectIDs: Array.from({ length: n }, (_, i) => start + i) }),
+  });
+
+  it('hits the v1.1 endpoint with offset and limit', async () => {
+    const { requestManager } = await import('./requestManager');
+    await metAPI.search('test');
+    const url = new URL(requestManager.fetch.mock.calls[0][0]);
+    expect(url.pathname).toBe('/public/collection/v1.1/search');
+    expect(url.searchParams.get('offset')).toBe('0');
+    expect(url.searchParams.get('limit')).toBe('500');
+  });
+
+  it('walks full pages up to maxPages and concatenates the IDs', async () => {
+    const { requestManager } = await import('./requestManager');
+    requestManager.fetch
+      .mockResolvedValueOnce(page(500, 0, 5000))
+      .mockResolvedValueOnce(page(500, 500, 5000))
+      .mockResolvedValueOnce(page(500, 1000, 5000));
+    const ids = await metAPI.search('painting', { maxPages: 3 });
+    expect(ids).toHaveLength(1500);
+    expect(requestManager.fetch).toHaveBeenCalledTimes(3);
+    expect(new URL(requestManager.fetch.mock.calls[2][0]).searchParams.get('offset')).toBe('1000');
+  });
+
+  it('stops after a short page without spending another request', async () => {
+    const { requestManager } = await import('./requestManager');
+    requestManager.fetch.mockResolvedValueOnce(page(120, 0, 120));
+    const ids = await metAPI.search('Vermeer', { maxPages: 4 });
+    expect(ids).toHaveLength(120);
+    expect(requestManager.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('stops when a full first page already reaches total', async () => {
+    const { requestManager } = await import('./requestManager');
+    requestManager.fetch.mockResolvedValueOnce(page(500, 0, 500));
+    const ids = await metAPI.search('x', { maxPages: 4 });
+    expect(ids).toHaveLength(500);
+    expect(requestManager.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('grids default to a single page', async () => {
+    const { requestManager } = await import('./requestManager');
+    requestManager.fetch.mockResolvedValueOnce(page(500, 0, 5000));
+    await metAPI.search('Portraits');
+    expect(requestManager.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  // Live 2026-10-30: the 4-page feed walk returned 2000 IDs, 1999 distinct.
+  it('drops an ID repeated across overlapping pages', async () => {
+    const { requestManager } = await import('./requestManager');
+    requestManager.fetch
+      .mockResolvedValueOnce(page(500, 0, 1000))
+      .mockResolvedValueOnce(page(500, 499, 1000));
+    const ids = await metAPI.search('painting', { maxPages: 2 });
+    expect(ids).toHaveLength(999);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it('requests the pages after the first together, once total is known', async () => {
+    const { requestManager } = await import('./requestManager');
+    const pending = [];
+    requestManager.fetch.mockResolvedValueOnce(page(500, 0, 5000));
+    for (let i = 0; i < 3; i++) requestManager.fetch.mockImplementationOnce(() => new Promise(r => pending.push(r)));
+    const result = metAPI.search('painting', { maxPages: 4 });
+    await vi.waitFor(() => expect(requestManager.fetch).toHaveBeenCalledTimes(4));
+    pending.forEach((resolve, i) => resolve(page(500, 500 * (i + 1), 5000)));
+    expect(await result).toHaveLength(2000);
+  });
+
+  it('keeps the pages that succeeded when a later page fails', async () => {
+    const { requestManager } = await import('./requestManager');
+    requestManager.fetch
+      .mockResolvedValueOnce(page(500, 0, 5000))
+      .mockResolvedValueOnce({ ok: false, status: 403, json: async () => ({}) });
+    const ids = await metAPI.search('painting', { maxPages: 2 });
+    expect(ids).toHaveLength(500);
+  });
+
+  it('still rejects when a later page is aborted', async () => {
+    const { requestManager } = await import('./requestManager');
+    requestManager.fetch
+      .mockResolvedValueOnce(page(500, 0, 5000))
+      .mockRejectedValueOnce(new DOMException('Aborted', 'AbortError'));
+    await expect(metAPI.search('painting', { maxPages: 2 })).rejects.toThrow('Aborted');
+  });
+
+  it('rejects when the first page fails', async () => {
+    const { requestManager } = await import('./requestManager');
+    requestManager.fetch.mockResolvedValueOnce({ ok: false, status: 403, json: async () => ({}) });
+    await expect(metAPI.search('painting', { maxPages: 4 })).rejects.toThrow('Search failed: 403');
+  });
+});
+
 // ─── fetchAllObjectIDs() ─────────────────────────────────────────────────────
 
 import { getCachedIDs, setCachedIDs, getCachedArtwork, setCachedArtwork, removeCachedArtwork } from './artworkCache';
@@ -315,6 +415,36 @@ describe('fetchAllObjectIDs()', () => {
     const { fetchAllObjectIDs } = await import('./metAPI');
     await fetchAllObjectIDs();
     expect(setCachedIDs).toHaveBeenCalledWith('ids:feed:paintings-v2', expect.any(Array));
+  });
+
+  it('walks four pages for the feed pool', async () => {
+    getCachedIDs.mockResolvedValue(null);
+    const { requestManager } = await import('./requestManager');
+    const full = (start) => ({ ok: true, json: async () => ({ total: 5000, objectIDs: Array.from({ length: 500 }, (_, i) => start + i) }) });
+    requestManager.fetch
+      .mockResolvedValueOnce(full(0))
+      .mockResolvedValueOnce(full(500))
+      .mockResolvedValueOnce(full(1000))
+      .mockResolvedValueOnce(full(1500));
+    const { fetchAllObjectIDs } = await import('./metAPI');
+    const ids = await fetchAllObjectIDs();
+    expect(requestManager.fetch).toHaveBeenCalledTimes(4);
+    expect(ids).toHaveLength(2000);
+  });
+
+  it('caches a partial feed walk for an hour, not a day', async () => {
+    getCachedIDs.mockResolvedValue(null);
+    const { requestManager } = await import('./requestManager');
+    const full = (start) => ({ ok: true, json: async () => ({ total: 5000, objectIDs: Array.from({ length: 500 }, (_, i) => start + i) }) });
+    requestManager.fetch
+      .mockResolvedValueOnce(full(0))
+      .mockResolvedValueOnce(full(500))
+      .mockResolvedValueOnce({ ok: false, status: 403, json: async () => ({}) })
+      .mockResolvedValueOnce(full(1500));
+    const { fetchAllObjectIDs } = await import('./metAPI');
+    const ids = await fetchAllObjectIDs();
+    expect(ids).toHaveLength(1500);
+    expect(setCachedIDs).toHaveBeenCalledWith('ids:feed:paintings-v2', ids, 60 * 60 * 1000);
   });
 
   it('does not cache when API returns empty array', async () => {

@@ -42,18 +42,18 @@ Continuous integration runs lint, the dead-code scan, the type check, the tests 
 
 ## API
 
-The app uses **The Metropolitan Museum of Art Collection API** ([docs](https://metmuseum.github.io/)), base URL `https://collectionapi.metmuseum.org/public/collection/v1`.
+The app uses **The Metropolitan Museum of Art Collection API** ([docs](https://metmuseum.github.io/)), base URL `https://collectionapi.metmuseum.org/public/collection`.
 
 | Endpoint | Used for |
 |----------|----------|
-| `GET /search?hasImages=true&medium=Paintings&q=painting` | the feed's ID list |
-| `GET /search?hasImages=true&artistOrCulture=true&q={artist}` | artist grids |
-| `GET /search?hasImages=true&q={term}` | hashtag grids and free-text search |
-| `GET /objects/{objectID}` | every artwork |
+| `GET /v1.1/search?hasImages=true&medium=Paintings&offset=…&limit=500&q=painting` | the feed's ID list |
+| `GET /v1.1/search?hasImages=true&artistOrCulture=true&offset=…&limit=500&q={artist}` | artist grids |
+| `GET /v1.1/search?hasImages=true&offset=…&limit=500&q={term}` | hashtag grids and free-text search |
+| `GET /v1/objects/{objectID}` | every artwork |
 
 Two things about this API are not in its documentation and shape the code:
 
-- **The search endpoint is parameter-order sensitive.** `q` must be serialised last; a boolean filter after it zeroes the result set.
+- **Search is paginated and capped.** A page holds at most 500 IDs and offsets past 10,000 return nothing, so the app fetches a fixed number of pages: the feed up to 4, grids 1.
 - **The rate limit is a bot-protection layer, not a requests-per-second cap.** Measured with `scripts/api-probe.mjs` (findings in `scripts/API-FINDINGS.md`): the Met bans on cumulative volume, roughly 100 requests in a rolling window of about a minute, and the penalty is about 60 seconds of instant 403s. Concurrency and burst rate on their own do not trigger it.
 
 ## Tech stack

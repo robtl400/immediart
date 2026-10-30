@@ -4,6 +4,10 @@
 
 import {
   API_BASE_URL,
+  SEARCH_URL,
+  SEARCH_PAGE_SIZE,
+  SEARCH_MAX_PAGES,
+  FEED_SEARCH_PAGES,
   MAX_RETRIES,
   NETWORK_RETRY_DELAYS,
 } from '../utils/constants';
@@ -37,17 +41,50 @@ async function fetchWithRetry(url, signal = null) {
   }
 }
 
-// Search API
-export async function search(query, { artistMode = false, medium = null, signal = null } = {}) {
-  // The Met search endpoint is parameter-order sensitive: q must be serialized
-  // LAST. A boolean filter appearing after q is not just ignored — it zeroes
-  // the result set (verified live 2026-07-07: ...&q=Rembrandt&artistOrCulture=true
-  // returns total:0, while ...&artistOrCulture=true&q=Rembrandt returns 421).
+// Search API — the first page carries the total, so the remaining pages (up to
+// maxPages) go out together. A failed later page costs only its own IDs: the
+// pages that arrived are still a usable list. Offset pages over a live index
+// can overlap, hence the dedupe.
+export async function search(query, options) {
+  return (await searchPages(query, options)).ids;
+}
+
+// complete is false when a later page was lost, so callers can cache briefly.
+async function searchPages(query, { artistMode = false, medium = null, signal = null, maxPages = SEARCH_MAX_PAGES } = {}) {
+  const opts = { artistMode, medium, signal };
+  const first = await searchPage(query, { ...opts, offset: 0 });
+  const pageCount = first.objectIDs.length < SEARCH_PAGE_SIZE
+    ? 1
+    : Math.min(maxPages, Math.ceil(first.total / SEARCH_PAGE_SIZE));
+
+  const rest = await Promise.allSettled(
+    Array.from({ length: pageCount - 1 }, (_, i) =>
+      searchPage(query, { ...opts, offset: (i + 1) * SEARCH_PAGE_SIZE }))
+  );
+
+  const ids = [...first.objectIDs];
+  let complete = true;
+  for (const page of rest) {
+    if (page.status === 'fulfilled') {
+      ids.push(...page.value.objectIDs);
+    } else if (page.reason?.name === 'AbortError') {
+      throw page.reason;
+    } else {
+      complete = false;
+      console.warn(`[metAPI] search "${query}" lost a page: ${page.reason?.message}`);
+    }
+  }
+  return { ids: [...new Set(ids)], complete };
+}
+
+async function searchPage(query, { artistMode, medium, signal, offset }) {
   const params = new URLSearchParams({ hasImages: 'true' });
   if (artistMode) params.set('artistOrCulture', 'true');
   if (medium) params.set('medium', medium);
+  params.set('offset', String(offset));
+  params.set('limit', String(SEARCH_PAGE_SIZE));
   params.set('q', query);
-  const url = `${API_BASE_URL}/search?${params}`;
+  const url = `${SEARCH_URL}?${params}`;
 
   if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
 
@@ -66,10 +103,15 @@ export async function search(query, { artistMode = false, medium = null, signal 
       if (err instanceof SyntaxError) requestManager.reportBlockPage();
       throw new Error('Search failed: non-JSON response (block page)');
     }
-    return data.objectIDs || [];
+    const objectIDs = data.objectIDs || [];
+    return { objectIDs, total: data.total ?? objectIDs.length };
   }
   throw new Error(`Search failed: ${response.status}`);
 }
+
+// A feed pool missing a page is cached briefly, so the full pool returns
+// within the hour instead of the smaller one sticking for the 24h default.
+const PARTIAL_FEED_TTL_MS = 60 * 60 * 1000;
 
 // Convenience wrappers — cache result in IndexedDB with named keys
 export async function fetchAllObjectIDs(signal) {
@@ -77,12 +119,13 @@ export async function fetchAllObjectIDs(signal) {
   // length guard (not truthy) — a cached empty array must be a miss, same as
   // cachedSearch below, or a poisoned entry would blank the feed for 24h.
   if (cached?.length > 0) return cached;
-  const ids = await search('painting', { medium: 'Paintings', signal });
+  const { ids, complete } = await searchPages('painting', { medium: 'Paintings', signal, maxPages: FEED_SEARCH_PAGES });
   if (ids.length === 0) {
     console.warn('[metAPI] fetchAllObjectIDs returned 0 IDs — skipping cache');
     return ids;
   }
-  await setCachedIDs('ids:feed:paintings-v2', ids);
+  if (complete) await setCachedIDs('ids:feed:paintings-v2', ids);
+  else await setCachedIDs('ids:feed:paintings-v2', ids, PARTIAL_FEED_TTL_MS);
   return ids;
 }
 

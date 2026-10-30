@@ -15,6 +15,7 @@
  */
 
 const BASE_URL = 'https://collectionapi.metmuseum.org/public/collection/v1';
+const SEARCH_URL = 'https://collectionapi.metmuseum.org/public/collection/v1.1/search'; // 500 IDs per page at most
 const SAMPLE_SIZE = 300;
 const CONCURRENCY = 4;
 const BATCH_COOLDOWN_MS = 200;
@@ -40,7 +41,7 @@ function sampleIDs(ids, n) {
 async function main() {
   console.log('Fetching ID pool from medium=Paintings&q=painting...');
   const searchData = await fetchJSON(
-    `${BASE_URL}/search?hasImages=true&medium=Paintings&q=painting`
+    `${SEARCH_URL}?limit=500&hasImages=true&medium=Paintings&q=painting`
   );
 
   if (!searchData?.objectIDs?.length) {
