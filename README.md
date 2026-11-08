@@ -97,3 +97,7 @@ npm test
 ## Design
 
 Dark ground (`#121212`), one gold accent (`#F0B900`), Allura for the wordmark, Outfit for everything else. The icons are deliberate: text glyphs, a hand-drawn location pin, and the flying machine as the share icon. There is no icon library, and adding one would change the character of the app.
+
+## License
+
+MIT. See [LICENSE](LICENSE).
